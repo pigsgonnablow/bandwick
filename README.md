@@ -85,7 +85,22 @@ npm run build        # -> dist/index.html (single self-contained file)
 npm run preview      # serves the build at http://localhost:4173
 npm run check        # type-check only
 ```
-Headless checks (no browser needed):
+Tests (no browser needed; they also run on every pull request):
+```
+npm test                   # everything, about half a minute
+npm run test:unit          # pure functions: random numbers, calendar, noise, pathfinding, names, saves
+npm run test:integration   # whole worlds: generation, years of simulation under the invariants, save/load
+npm run test:regression    # golden fingerprints of fixed seeds, and tests for bugs that were fixed
+npm run test:watch         # re-run on every change
+npm run test:update        # accept new golden fingerprints after an intended change to the sim
+```
+The tests live in `test/` (Vitest). When a change to world generation or the simulation is meant to
+change what happens, `test/regression/golden.test.ts` fails with a diff of the hashes, numbers and
+momentous events; read it over, run `npm run test:update` and commit the new snapshot with the change.
+When you fix a bug, add a test for it under `test/regression/` (see `carry-home.test.ts`).
+The daily invariant checks are shared with `npm run invariants` through `tools/lib/invariants.ts`.
+
+Longer headless checks (no browser needed):
 ```
 npm run gentest -- 4471 --size 256          # world generation: timing, hash, preview image
 npm run bandtest -- --seeds 1,2,3 --years 30 # survival, births, deaths per seed
@@ -143,4 +158,5 @@ If the simulation ever hits a bug it stops and says so, with the seed and tick, 
 - `src/saves.ts` — save storage (IndexedDB, gzip, export/import)
 - `blender/build_assets.py` — every tree, bush, reed, grass tuft, rock, outcrop, stump, log pile and grave
 - `blender/build_band.py` — villagers (jointed: thighs/shins, upper arms/forearms), their walk and run cycles and every other animation clip, deer (stags with antlers), carried items, hearth, lean-to, two kinds of hut, storehouse, drying rack
+- `test/` — the test suite: `unit/`, `integration/`, `regression/` (Vitest)
 - `tools/` — headless tests (generation, survival, invariants, traces) and Playwright browser checks
