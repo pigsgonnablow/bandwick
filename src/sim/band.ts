@@ -75,6 +75,8 @@ export interface Task {
   near: boolean;
   /** tick by which a chase gives up (hunting: longer for herds further out) */
   deadline?: number;
+  /** tick the walk back to the stores began, while carrying goods home */
+  homeAt?: number;
 }
 
 export interface Memory {

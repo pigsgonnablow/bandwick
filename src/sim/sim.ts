@@ -15,7 +15,7 @@ import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
   isDark, temperature, berriesRipe, freshFrozen, seasonPos, seasonOf, ageYears, yearOf, dayOf,
 } from './time';
-import { decide, runTask, abandon, sendHome } from './ai';
+import { decide, runTask, abandon, sendHome, delivering } from './ai';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 const TREE_TYPES = SPECIES.length * STAGES * TREE_VARIANTS;
@@ -806,7 +806,8 @@ export class Sim {
         this.carriedInfant(p);
         continue;
       }
-      if (!p.task || t >= p.nextThink || ((t + p.id) % 10 === 0 && this.urgent(p))) decide(this, p);
+      // someone carrying goods home doesn't stop to rethink, only for an emergency
+      if (!p.task || (t >= p.nextThink && !delivering(p)) || ((t + p.id) % 10 === 0 && this.urgent(p))) decide(this, p);
       if (p.task) runTask(this, p);
     }
     this.updateDeer();
@@ -846,10 +847,13 @@ export class Sim {
     // (far from camp, turn back sooner: the walk home costs food too)
     const gathering = k === 'hunt' || k === 'fish' || k === 'forage';
     const starveAt = 15 + Math.min(22, hyp(p.x - this.camp.x, p.z - this.camp.z) * 0.6);
-    if (p.food < starveAt && k !== 'eat' && k !== 'eatwild' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
+    // (carrying food home, they eat from what they carry instead)
+    const foodInHand = delivering(p) && p.carryAmt >= 1 && (p.carry === CARRY.Berries || p.carry === CARRY.Meat || p.carry === CARRY.Fish);
+    if (p.food < starveAt && !foodInHand && k !== 'eat' && k !== 'eatwild' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
     const woodRun = (k === 'fell' || k === 'haul' || k === 'deadwood') && this.hearth().fuel < 2;
     if (p.warmth < (woodRun ? 8 : 18) && k !== 'warm' && k !== 'sleep') return true;
-    if (p.rest < 8 && k !== 'sleep') return true;
+    // worn out on the way home with a load: the bed is at camp, where they're going anyway
+    if (p.rest < 8 && k !== 'sleep' && !delivering(p)) return true;
     // at nightfall, workers who haven't started back yet call it a day
     // except wood runs in the cold when the store is low: coming home empty-handed means a cold night
     const emergency = (k === 'fell' || k === 'haul' || k === 'deadwood') && (this.hearth().fuel < 2 || this.camp.stock.wood < 20) && this.tempAt(p) < 12;
@@ -961,7 +965,7 @@ export class Sim {
     // the infant of a mother who dies may not survive either: handled by the fostering rule
   }
 
-  private dropCarry(p: Person) {
+  dropCarry(p: Person) {
     const k = p.carry;
     if (k === CARRY.Log && p.carryAmt > 0) {
       const lp = this.addProp(LOGS, p.x, this.world.groundY[this.tileOf(p)], p.z, 0, 0.8);
