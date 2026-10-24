@@ -418,8 +418,9 @@ function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
 }
 
 /**
- * Stop whatever they're doing without losing anything: wood or food set aside for the task
- * goes back to the store, a body being carried is laid down, carried goods are brought in.
+ * Stop whatever they're doing: wood or food set aside for the task goes back to the store,
+ * a body being carried is laid down, carried goods are put in the stores if they're close by
+ * (otherwise logs are left in a pile and food is lost).
  * @param keepCarry leave carried goods with the person (the caller handles them)
  */
 /** Set off for a band's camp (a new one, or home from far away). */
