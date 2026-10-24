@@ -1,0 +1,1270 @@
+// Utility AI: each person weighs their own needs against the work the camp needs,
+// coloured by traits, skills and age, then carries the chosen task out step by step.
+import type { Sim } from './sim';
+import { isBerry, isTreeType, treeStage, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, STAGE_WORD, art, clamp } from './sim';
+import { Person, Task, TaskKind, SK, ACT, CARRY, BUILD, FLASH, foodTotal, Building } from './band';
+import { hourOf, isDark, berriesRipe, freshFrozen, TICKS_PER_DAY } from './time';
+import { WATER, treeId } from './types';
+
+const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
+
+interface Option {
+  kind: TaskKind;
+  score: number;
+}
+
+function newTask(s: Sim, kind: TaskKind, goal: number, gx: number, gz: number, ref = -1, near = false): Task {
+  return { kind, stage: 0, goal, gx, gz, ref, timer: 0, started: s.tick, amount: 0, near };
+}
+
+/** A seat around the hearth, different for each person. */
+function seat(s: Sim, p: Person, radius = 1.15) {
+  const a = ((p.look % 360) / 360) * 6.2831853 + (s.tick % 7) * 0.05;
+  // cheap deterministic sin/cos via a rotated unit vector table
+  const k = Math.floor(((a % 6.2831853) / 6.2831853) * 16);
+  const [cx, cz] = CIRCLE[k];
+  return { x: s.camp.x + cx * radius, z: s.camp.z + cz * radius };
+}
+const CIRCLE: number[][] = Array.from({ length: 16 }, (_, i) => {
+  // fixed literal unit vectors (computed once, identical everywhere)
+  const t = [1, 0.9239, 0.7071, 0.3827, 0, -0.3827, -0.7071, -0.9239, -1, -0.9239, -0.7071, -0.3827, 0, 0.3827, 0.7071, 0.9239];
+  return [t[i], t[(i + 12) % 16]];
+});
+
+function workDrive(s: Sim, p: Person) {
+  const age = s.age(p);
+  let d = 1;
+  if (s.has(p, 'industrious')) d *= 1.28;
+  if (s.has(p, 'lazy')) d *= 0.72;
+  d *= 0.72 + p.mood / 360;
+  if (age < 9) return 0;
+  if (age < 14) d *= 0.45;
+  else if (age >= 60) d *= 0.55;
+  else if (age >= 52) d *= 0.8;
+  if (p.pregnantUntil > 0 && p.pregnantUntil - s.tick < 4 * TICKS_PER_DAY) d *= 0.5;
+  if (p.sick > 0) d *= 0.3;
+  if (p.health < 40) d *= 0.5;
+  return d;
+}
+const fit = (p: Person, k: number) => 0.7 + Math.min(20, p.skills[k]) * 0.03;
+
+function busyWith(s: Sim, kind: TaskKind) {
+  let n = 0;
+  for (const q of s.people) if (q.alive && q.band === s.camp.id && q.task?.kind === kind) n++;
+  return n;
+}
+
+export function decide(s: Sim, p: Person) {
+  const age = s.age(p);
+  const child = age < 14;
+  const dark = isDark(s.tick);
+  const hour = hourOf(s.tick);
+  const c = s.camp;
+  const stock = foodTotal(c.stock);
+  const temp = s.tempAt(p);
+  const r = s.rAi;
+  const opts: Option[] = [];
+  const add = (kind: TaskKind, score: number) => {
+    if (score > 0.01) opts.push({ kind, score: score + r.next() * 0.07 });
+  };
+
+  // ---- personal needs
+  const hk = (78 - p.food) / 78;
+  let hunger = p.food >= 78 ? 0 : hk * hk * 1.9;
+  // real hunger beats everything except danger: nobody should starve beside a full store
+  if (p.food < 35) hunger = Math.max(hunger, 1.35 + ((35 - p.food) / 35) * 1.7);
+  const mealtime = ((hour >= 6.5 && hour < 8.5) || (hour >= 17.5 && hour < 19.5)) && p.food < 82 ? 0.5 : 0;
+  if (stock >= 0.4) add('eat', hunger + mealtime);
+  else if (berriesRipe(s.tick)) add('eatwild', hunger * 1.1);
+  if (dark) add('sleep', p.rest < 94 ? 1.45 + (hour > 21 || hour < 5 ? 0.3 : 0) : 0.2);
+  else add('sleep', p.rest < 32 ? ((32 - p.rest) / 32) * 1.7 : 0);
+  if (temp < 11 && p.warmth < 62) add('warm', ((62 - p.warmth) / 62) * 1.7 + (dark ? 0.15 : 0));
+  add('socialize', p.belonging < 62 ? ((62 - p.belonging) / 62) * 0.95 + (hour > 17 && !dark ? 0.15 : 0) : 0);
+  add('idle', 0.16 + (hour > 18 && !dark ? 0.15 : 0) + (s.has(p, 'lazy') ? 0.1 : 0));
+  if (child && age >= 2 && !dark) add('play', 0.5 + (age < 9 ? 0.2 : 0));
+  // a hot afternoon: the young go down to the water to cool off
+  if (!dark && temp >= 21 && age >= 4 && age < 40 && p.health > 50 && hour > 10 && hour < 19)
+    add('swim', (child ? 0.42 : 0.24) + Math.min(0.3, (temp - 21) * 0.05) + (s.has(p, 'wanderlust') ? 0.05 : 0));
+  // far from their own camp (left behind in a move, or newly joined): make for it
+  const away = hyp(p.x - c.x, p.z - c.z);
+  if (away > 16 && !dark) add('migrate', 1.6 + Math.min(1.5, (away - 16) * 0.05));
+  const grief = p.memories.find((m) => m.kind === 'death' && s.tick - m.tick < 2 * TICKS_PER_DAY && m.tick > p.mourned);
+  if (grief && !dark) add('mourn', 0.65);
+
+  // ---- work for the camp
+  const drive = workDrive(s, p);
+  if (drive > 0) {
+    const night = dark ? 0.06 : 1;
+    // crowding is relative: ten fishers is a crowd for a band of twelve, not for a band of fifty
+    const workers = Math.max(1, s.people.reduce((n, q) => n + (q.alive && q.band === p.band && s.age(q) >= 13 ? 1 : 0), 0));
+    const share = Math.max(1, workers / 8);
+    const crowd = (k: TaskKind) => 1 / (1 + (0.33 * busyWith(s, k)) / share);
+    const j = c.jobs;
+    const food = (j.food ?? 0.5) * drive * night;
+    if (berriesRipe(s.tick)) add('forage', food * fit(p, SK.forage) * (child ? 1.3 : 1) * crowd('forage'));
+    // a hunt can mean a day's walk: not for the sick, the weak or the half-starved
+    if (age >= 16 && age < 56 && p.sick === 0 && p.health >= 45 && (p.food >= 50 || stock < 0.4)) {
+      const nerve = s.has(p, 'brave') ? 1.4 : s.has(p, 'cautious') ? 0.55 : 1;
+      add('hunt', food * fit(p, SK.hunt) * nerve * 0.95 * crowd('hunt'));
+    }
+    if (age >= 11) add('fish', food * fit(p, SK.fish) * 0.85 * crowd('fish'));
+    if (age >= 13) {
+      const wood = (j.wood ?? 0.3) * drive * night * fit(p, SK.wood);
+      add(s.countProps(LOGS) > 0 ? 'haul' : 'fell', wood * crowd('fell') * crowd('haul'));
+      // fallen branches near camp: a little wood at a time, and no tree has to come down
+      add('deadwood', wood * 0.8 * crowd('deadwood'));
+      add('build', (j.build ?? 0) * drive * night * fit(p, SK.build) * crowd('build') * 1.05);
+      add('preserve', (j.preserve ?? 0) * drive * night * fit(p, SK.craft) * crowd('preserve'));
+    }
+    if ((j.fuel ?? 0) > 0.5 && c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', j.fuel * (dark ? 1.1 : 1));
+    // a dying fire in the cold is everyone's problem: a few go for wood whatever the hour
+    const fireLow = s.hearth().fuel < 2;
+    if (fireLow && temp < 9 && age >= 13 && p.health > 30) {
+      if (c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', 2.1);
+      else if (c.stock.wood < 3) {
+        const fetching = busyWith(s, 'fell') + busyWith(s, 'haul') + busyWith(s, 'deadwood');
+        if (fetching < 4) {
+          add(s.countProps(LOGS) > 0 ? 'haul' : 'fell', 1.95 - fetching * 0.3);
+          add('deadwood', 2.0 - fetching * 0.3); // quickest way to get the fire going again
+        }
+      }
+    }
+    if ((j.bury ?? 0) > 0 && age >= 15 && !dark) {
+      // one burial at a time, unless there are several dead waiting (after a hard winter)
+      let waiting = 0;
+      for (const q of s.people) if (!q.alive && !q.buried && q.band === p.band) waiting++;
+      if (busyWith(s, 'bury') < Math.min(3, waiting)) add('bury', 1.2);
+    }
+  }
+
+  opts.sort((a, b) => b.score - a.score);
+  // keep going with the current job if it is still among the best
+  const cur = p.task;
+  if (cur && opts.length && opts[0].kind === cur.kind) {
+    p.nextThink = s.tick + 30;
+    return;
+  }
+  for (const o of opts) {
+    const t = setup(s, p, o.kind);
+    if (t) {
+      // put down the old task properly (setup may already have reserved things for the new one)
+      const keep = p.carry === CARRY.Spear && (o.kind === 'hunt' || o.kind === 'fish');
+      const prev = p.task;
+      if (prev) {
+        p.task = prev;
+        abandon(s, p, keep);
+      } else if (!keep && p.carry !== CARRY.None) abandon(s, p);
+      if (keep) p.carry = CARRY.Spear;
+      p.task = t;
+      p.path = null;
+      p.indoors = false;
+      p.nextThink = s.tick + (['idle', 'play', 'socialize', 'mourn', 'swim'].includes(o.kind) ? 40 : o.kind === 'migrate' ? 300 : 600);
+      return;
+    }
+  }
+  // nothing to do: stand where they are a while
+  p.task = null;
+  p.act = ACT.Idle;
+  p.nextThink = s.tick + 15;
+}
+
+// ---------------------------------------------------------------- task setup
+function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
+  const c = s.camp;
+  const N = s.N;
+  const ti = (x: number, z: number) => Math.floor(z) * N + Math.floor(x);
+  switch (kind) {
+    case 'eat': {
+      const st = seat(s, p, 1.2);
+      p.thought = p.food < 30 ? 'Hungry. Heading back to eat.' : 'Time for a meal by the fire.';
+      return newTask(s, kind, ti(st.x, st.z), st.x, st.z);
+    }
+    case 'eatwild': {
+      const k = s.nearestProp(p.x, p.z, 20, (k) => isBerry(s.propType[k]) && s.propVal[k] >= 1);
+      if (k < 0) return null;
+      s.reserved.set(k, p.id);
+      p.thought = 'Nothing in the stores. Eating berries off the bush.';
+      return newTask(s, kind, s.propTile[k], s.propX[k] + 0.3, s.propZ[k] + 0.2, k);
+    }
+    case 'sleep': {
+      const home = s.buildings.find((b) => b.id === p.home && b.built);
+      if (home) {
+        p.thought = 'Going home to sleep.';
+        return newTask(s, kind, home.tile, home.x + 0.5, home.z + 0.5, home.id);
+      }
+      const st = seat(s, p, 1.7);
+      p.thought = 'Sleeping under the sky by the fire.';
+      return newTask(s, kind, ti(st.x, st.z), st.x, st.z);
+    }
+    case 'warm': {
+      if (s.hearthLit()) {
+        const st = seat(s, p, 1.0);
+        p.thought = 'Cold. Warming up at the fire.';
+        return newTask(s, kind, ti(st.x, st.z), st.x, st.z);
+      }
+      const home = s.buildings.find((b) => b.id === p.home && b.built);
+      if (!home) return null;
+      p.thought = 'The fire is out. Sheltering at home.';
+      return newTask(s, kind, home.tile, home.x + 0.5, home.z + 0.5, home.id);
+    }
+    case 'socialize': {
+      let best: Person | null = null, bestS = -Infinity;
+      for (const q of s.people) {
+        if (!q.alive || q === p || q.indoors || q.act === ACT.Sleep || s.age(q) < 3) continue;
+        const d = hyp(q.x - p.x, q.z - p.z);
+        if (d > 18 || (q.band !== p.band && d > 6)) continue;
+        const sc = s.opinion(p, q) + (q.id === p.partner ? 30 : 0) - d * 1.5 + s.rAi.next() * 20;
+        if (sc > bestS) { bestS = sc; best = q; }
+      }
+      if (!best) return null;
+      p.thought = `Going to talk with ${best.name}.`;
+      return newTask(s, kind, s.tileOf(best), best.x, best.z, best.id, true);
+    }
+    case 'idle': {
+      const st = seat(s, p, 1.3);
+      p.thought = s.hearthLit() ? 'Sitting by the fire.' : 'Resting near camp.';
+      return newTask(s, kind, ti(st.x, st.z), st.x, st.z);
+    }
+    case 'play': {
+      const mom = s.byId.get(p.mother);
+      const cx = mom && mom.alive && hyp(mom.x - c.x, mom.z - c.z) < 6 ? mom.x : c.x;
+      const cz = mom && mom.alive && hyp(mom.x - c.x, mom.z - c.z) < 6 ? mom.z : c.z;
+      // children join a game already going if there is one nearby
+      const game = s.people.find((q) => q !== p && q.alive && q.band === p.band && q.task?.kind === 'play' && hyp(q.task.gx - cx, q.task.gz - cz) < 8);
+      for (let k = 0; k < 6; k++) {
+        const spread = game ? 0.8 : 4;
+        const x = (game ? game.task!.gx : cx) + s.rAi.range(-spread, spread), z = (game ? game.task!.gz : cz) + s.rAi.range(-spread, spread);
+        const t = ti(x, z);
+        if (x > 0 && z > 0 && x < N && z < N && s.grid.walkable(t) && s.world.water[t] === WATER.None) {
+          p.thought = s.rAi.chance(0.5) ? 'Playing chase.' : 'Exploring near camp.';
+          return newTask(s, kind, t, x, z);
+        }
+      }
+      return null;
+    }
+    case 'migrate': {
+      p.thought = `Heading back to ${c.name}.`;
+      return newTask(s, kind, c.tile, c.x, c.z, -1, true);
+    }
+    case 'swim': {
+      // the nearest water a person can swim in, near camp; join others already in it
+      const inWater = s.people.find((q) => q !== p && q.alive && q.band === p.band && q.task?.kind === 'swim');
+      const cx = inWater ? inWater.task!.gx : c.x, cz = inWater ? inWater.task!.gz : c.z;
+      let best = -1, bd = 1e9;
+      const R = 14;
+      for (let dz = -R; dz <= R; dz++)
+        for (let dx = -R; dx <= R; dx++) {
+          const x = Math.floor(cx) + dx, z = Math.floor(cz) + dz;
+          if (x < 1 || z < 1 || x >= N - 1 || z >= N - 1) continue;
+          const i = z * N + x;
+          if (s.world.water[i] === WATER.None || !s.grid.walkable(i)) continue;
+          const d = hyp(dx, dz) + s.rAi.next() * 1.5;
+          if (d < bd) { bd = d; best = i; }
+        }
+      if (best < 0 || bd > (inWater ? 4 : R)) return null;
+      p.thought = s.rAi.chance(0.5) ? 'Too hot. Off to the water.' : 'Going for a swim.';
+      return newTask(s, kind, best, (best % N) + s.rAi.range(0.25, 0.75), Math.floor(best / N) + s.rAi.range(0.25, 0.75));
+    }
+    case 'mourn': {
+      const m = p.memories.filter((m) => m.kind === 'death').sort((a, b) => b.tick - a.tick)[0];
+      p.mourned = s.tick;
+      if (!m) return null;
+      let gk = -1;
+      for (let k = 0; k < s.propCount; k++) if (s.propAlive[k] && s.propType[k] >= GRAVE && s.propType[k] < GRAVE + 2 && s.propVal[k] === m.subject) gk = k;
+      const dead = s.byId.get(m.subject);
+      p.thought = `Mourning ${dead?.name ?? 'the dead'}.`;
+      if (gk >= 0) return newTask(s, kind, s.propTile[gk], s.propX[gk] + 0.45, s.propZ[gk] + 0.3, -1);
+      const st = seat(s, p, 1.4);
+      return newTask(s, kind, ti(st.x, st.z), st.x, st.z);
+    }
+    case 'forage': {
+      const k = s.nearestProp(p.x, p.z, 28, (k) => isBerry(s.propType[k]) && s.propVal[k] >= 1 && hyp(s.propX[k] - c.x, s.propZ[k] - c.z) < 30,
+        (k, d) => s.propVal[k] / (d + 5));
+      if (k < 0) return null;
+      s.reserved.set(k, p.id);
+      p.thought = 'Picking berries.';
+      return newTask(s, kind, s.propTile[k], s.propX[k] + 0.3, s.propZ[k] + 0.22, k);
+    }
+    case 'fell': {
+      // the nearest good timber first; as the woods around camp thin out, go further or take younger trees
+      const score = (k: number, d: number) => treeStage(s.propType[k]) * 3 - d - hyp(s.propX[k] - p.x, s.propZ[k] - p.z) * 0.4 + (s.chopped.has(k) ? 8 : 0);
+      const tree = (min: number) => (k: number) => isTreeType(s.propType[k]) && treeStage(s.propType[k]) >= min;
+      // a dying fire in the cold: the nearest usable wood, young trees included, beats a long walk
+      const desperate = s.hearth().fuel < 2 && s.tempAt(p) < 9 && c.stock.wood < 3;
+      let k = desperate ? s.nearestProp(c.x, c.z, 18, tree(1), (k, d) => -d + (s.chopped.has(k) ? 6 : 0) + treeStage(s.propType[k])) : -1;
+      // otherwise good timber, near first; young trees are left to grow so the woods around camp come back
+      if (k < 0) k = s.nearestProp(c.x, c.z, 26, tree(2), score);
+      if (k < 0) k = s.nearestProp(c.x, c.z, 48, tree(2), score);
+      if (k < 0) k = s.nearestProp(c.x, c.z, 30, tree(1), score);
+      if (k < 0) return null;
+      s.reserved.set(k, p.id);
+      const kindName = ['pine', 'oak', 'birch'][Math.floor(s.propType[k] / 12)];
+      p.thought = treeStage(s.propType[k]) === 3 ? `Felling an old ${kindName}.` : `Felling a ${kindName} for wood.`;
+      return newTask(s, kind, s.propTile[k], s.propX[k] + 0.34, s.propZ[k] + 0.18, k);
+    }
+    case 'deadwood': {
+      const k = s.nearestProp(c.x, c.z, 26, (k) => isTreeType(s.propType[k]) && treeStage(s.propType[k]) >= 1 && !s.deadwoodTaken.has(k),
+        (k, d) => DEADWOOD_BY_STAGE[treeStage(s.propType[k])] * 4 - d - hyp(s.propX[k] - p.x, s.propZ[k] - p.z) * 0.3);
+      if (k < 0) return null;
+      s.reserved.set(k, p.id);
+      p.thought = 'Gathering fallen branches for the fire.';
+      return newTask(s, kind, s.propTile[k], s.propX[k] + 0.3, s.propZ[k] + 0.25, k);
+    }
+    case 'haul': {
+      const k = s.nearestProp(c.x, c.z, 52, (k) => s.propType[k] === LOGS && s.propVal[k] > 0);
+      if (k < 0) return setup(s, p, 'fell');
+      s.reserved.set(k, p.id);
+      p.thought = 'Hauling logs back to camp.';
+      return newTask(s, kind, s.propTile[k], s.propX[k] + 0.25, s.propZ[k] + 0.2, k);
+    }
+    case 'hunt': {
+      let best = -1, bestD = 56;
+      s.deer.forEach((d, i) => {
+        if (!d.alive) return;
+        const dist = hyp(d.x - c.x, d.z - c.z);
+        if (dist < bestD && !s.people.some((q) => q !== p && q.alive && q.task?.kind === 'hunt' && q.task.ref === d.id)) {
+          bestD = dist;
+          best = i;
+        }
+      });
+      if (best < 0) return null;
+      const d = s.deer[best];
+      p.thought = 'Tracking deer.';
+      p.carry = CARRY.Spear;
+      const t = newTask(s, kind, s.tileOf(d), d.x, d.z, d.id, true);
+      // time to walk out there, plus time to stalk and chase
+      t.deadline = s.tick + 110 + Math.round(hyp(d.x - p.x, d.z - p.z) / 0.3);
+      return t;
+    }
+    case 'fish': {
+      const frozen = freshFrozen(s.tick);
+      let best = -1, bestS = -Infinity, bestW = -1;
+      for (const spot of s.fishingSpots) {
+        const x = (spot % N) + 0.5, z = Math.floor(spot / N) + 0.5;
+        const dc = hyp(x - c.x, z - c.z);
+        if (dc > 28) continue;
+        if (s.people.some((q) => q !== p && q.alive && q.task?.kind === 'fish' && q.task.goal === spot)) continue;
+        if ((s.unreachable.get(-(spot + 1)) ?? 0) > s.tick) continue;
+        for (let dz = -1; dz <= 1; dz++)
+          for (let dx = -1; dx <= 1; dx++) {
+            if (Math.abs(dx) + Math.abs(dz) !== 1) continue;
+            const wx = (spot % N) + dx, wz = Math.floor(spot / N) + dz;
+            if (wx < 0 || wz < 0 || wx >= N || wz >= N) continue;
+            const w = wz * N + wx;
+            if (s.fishCap[w] <= 0 || s.fish[w] < 1.5) continue;
+            if (frozen && s.world.water[w] !== WATER.Sea) continue;
+            const sc = s.fish[w] / (dc + hyp(x - p.x, z - p.z) * 0.5 + 6);
+            if (sc > bestS) { bestS = sc; best = spot; bestW = w; }
+          }
+      }
+      if (best < 0) return null;
+      p.thought = s.world.water[bestW] === WATER.Sea ? 'Fishing from the shore.' : 'Fishing at the water.';
+      p.carry = CARRY.Spear;
+      const t = newTask(s, kind, best, (best % N) + 0.5, Math.floor(best / N) + 0.5, bestW);
+      return t;
+    }
+    case 'build': {
+      const sites = s.buildings.filter((b) => !b.built && b.band === p.band).sort((a, b) => a.started - b.started);
+      for (const b of sites) {
+        const need = BUILD[b.kind].wood - b.wood - inTransit(s, b.id);
+        if (need > 0.5) {
+          if (c.stock.wood < 1) continue;
+          const st = s.storeSpot(true);
+          p.thought = `Carrying wood to the ${BUILD[b.kind].label.toLowerCase()}.`;
+          const t = newTask(s, 'supply', st.tile, st.x, st.z, b.id);
+          t.amount = Math.min(6, need, c.stock.wood);
+          c.stock.wood -= t.amount; // set aside now so others don't count it twice
+          return t;
+        }
+        if (b.wood >= BUILD[b.kind].wood - 0.01) {
+          const owner = s.byId.get(b.owner);
+          p.thought = owner && owner.alive ? `Building a ${BUILD[b.kind].label.toLowerCase()} for ${owner.id === p.id ? 'their family' : owner.name + "'s family"}.` : `Building the ${BUILD[b.kind].label.toLowerCase()}.`;
+          return newTask(s, 'build', b.tile, b.x + 0.5, b.z + 0.5, b.id, true);
+        }
+      }
+      // no wood for any site: go get some
+      return c.stock.wood < 1 ? setup(s, p, s.countProps(LOGS) > 0 ? 'haul' : 'fell') : null;
+    }
+    case 'fuel': {
+      if (c.stock.wood < 1) return null;
+      const st = s.storeSpot(true);
+      const t = newTask(s, kind, st.tile, st.x, st.z);
+      t.amount = Math.min(4, Math.floor(c.stock.wood));
+      c.stock.wood -= t.amount;
+      p.thought = s.hearthLit() ? 'Feeding the fire.' : 'Relighting the fire.';
+      return t;
+    }
+    case 'preserve': {
+      const rack = s.buildings.find((b) => b.kind === 'rack' && b.built && b.band === p.band);
+      if (!rack || c.stock.meat + c.stock.fish < 3) return null;
+      const st = s.storeSpot();
+      const t = newTask(s, kind, st.tile, st.x, st.z, rack.id);
+      const take = Math.min(6, c.stock.meat + c.stock.fish);
+      const fromFish = Math.min(c.stock.fish, take);
+      c.stock.fish -= fromFish;
+      c.stock.meat -= take - fromFish;
+      t.amount = take;
+      p.thought = 'Drying meat and fish on the rack.';
+      return t;
+    }
+    case 'bury': {
+      const body = s.people.find((q) => !q.alive && !q.buried && q.band === p.band && !s.people.some((o) => o.alive && o.task?.kind === 'bury' && o.task.ref === q.id));
+      if (!body) return null;
+      p.thought = `Preparing ${body.name} for burial.`;
+      return newTask(s, kind, s.tileOf(body), body.x, body.z, body.id, true);
+    }
+  }
+  return null;
+}
+
+/**
+ * Stop whatever they're doing without losing anything: wood or food set aside for the task
+ * goes back to the store, a body being carried is laid down, carried goods are brought in.
+ * @param keepCarry leave carried goods with the person (the caller handles them)
+ */
+/** Set off for a band's camp (a new one, or home from far away). */
+export function sendHome(s: Sim, p: Person, c = s.campOf(p)) {
+  p.task = newTask(s, 'migrate', c.tile, c.x, c.z, -1, true);
+  p.path = null;
+  p.nextThink = s.tick + 400;
+  p.thought = c.founded === s.tick ? `Off to make a new home at ${c.name}.` : `Heading for ${c.name}.`;
+}
+
+export function abandon(s: Sim, p: Person, keepCarry = false) {
+  const t = p.task;
+  const st = s.camp.stock;
+  if (t) {
+    if ((t.kind === 'supply' || t.kind === 'fuel') && t.amount > 0) {
+      st.wood += t.amount;
+      t.amount = 0;
+      if (p.carry === CARRY.Log) { p.carry = CARRY.None; p.carryAmt = 0; }
+    }
+    if (t.kind === 'preserve' && t.amount > 0) {
+      st.meat += t.amount;
+      t.amount = 0;
+      if (p.carry === CARRY.Meat) { p.carry = CARRY.None; p.carryAmt = 0; }
+    }
+    if (t.kind === 'bury' && p.carry === CARRY.Body) {
+      const body = s.byId.get(t.ref);
+      if (body && !body.buried) {
+        body.indoors = false;
+        body.x = p.x;
+        body.z = p.z;
+      }
+      p.carry = CARRY.None;
+    }
+  }
+  if (p.carry === CARRY.Spear || p.carry === CARRY.Body) p.carry = CARRY.None;
+  if (!keepCarry && p.carry !== CARRY.None) deposit(s, p);
+  s.releaseTask(p);
+  p.task = null;
+  p.path = null;
+  p.indoors = false;
+}
+
+function inTransit(s: Sim, buildingId: number) {
+  let n = 0;
+  for (const q of s.people) if (q.alive && q.task?.kind === 'supply' && q.task.ref === buildingId) n += q.task.amount;
+  return n;
+}
+
+// ---------------------------------------------------------------- movement
+type GoResult = 'arrived' | 'moving' | 'fail';
+
+function go(s: Sim, p: Person, t: Task, running = false): GoResult {
+  const here = s.tileOf(p);
+  if (!p.path) {
+    if (here === t.goal || (t.near && Math.abs((here % s.N) - (t.goal % s.N)) <= 1 && Math.abs(Math.floor(here / s.N) - Math.floor(t.goal / s.N)) <= 1)) {
+      p.path = new Int32Array(0);
+    } else {
+      const path = s.grid.find(here, t.goal, t.near);
+      if (!path) return 'fail';
+      p.path = path;
+    }
+    p.pathIdx = 0;
+  }
+  const path = p.path;
+  let tx: number, tz: number;
+  const last = p.pathIdx >= path.length;
+  if (!last) {
+    const n = path[p.pathIdx];
+    // each person keeps to their own side of a tile so groups don't stack up
+    const ox = (((p.look >>> 3) & 15) / 15 - 0.5) * 0.45;
+    const oz = (((p.look >>> 7) & 15) / 15 - 0.5) * 0.45;
+    tx = (n % s.N) + 0.5 + ox;
+    tz = Math.floor(n / s.N) + 0.5 + oz;
+    if (p.pathIdx === path.length - 1 && !t.near) {
+      tx = t.gx;
+      tz = t.gz;
+    }
+  } else {
+    if (t.near) return 'arrived';
+    tx = t.gx;
+    tz = t.gz;
+  }
+  const dx = tx - p.x, dz = tz - p.z;
+  const d = hyp(dx, dz);
+  const sp = speed(s, p) * (running ? 1.35 : 1);
+  if (d <= sp) {
+    p.x = tx;
+    p.z = tz;
+    if (last) return 'arrived';
+    p.pathIdx++;
+    if (p.pathIdx >= path.length && t.near) return 'arrived';
+  } else {
+    p.x += (dx / d) * sp;
+    p.z += (dz / d) * sp;
+  }
+  p.fx = tx;
+  p.fz = tz;
+  p.act = running ? ACT.Run : ACT.Walk;
+  return 'moving';
+}
+
+function speed(s: Sim, p: Person) {
+  const age = s.age(p);
+  const cost = s.grid.cost[s.tileOf(p)] || 10;
+  let v = 0.42 * Math.min(1, Math.max(0.35, 12 / cost));
+  if (age < 8) v *= 0.8;
+  else if (age >= 60) v *= 0.75;
+  if (p.carry === CARRY.Meat || p.carry === CARRY.Body) v *= 0.65;
+  else if (p.carry === CARRY.Log) v *= 0.82;
+  if (p.health < 40) v *= 0.7;
+  return v;
+}
+
+function finish(s: Sim, p: Person) {
+  s.releaseTask(p);
+  p.task = null;
+  p.path = null;
+  p.nextThink = s.tick;
+  if (p.carry === CARRY.Spear) p.carry = CARRY.None;
+}
+
+function face(p: Person, x: number, z: number) {
+  p.fx = x;
+  p.fz = z;
+}
+
+/** Put whatever they carry into the camp stores. */
+export function deposit(s: Sim, p: Person) {
+  const st = s.camp.stock;
+  const a = p.carryAmt;
+  const kind = p.carry === CARRY.Berries ? 'berries' : p.carry === CARRY.Meat ? 'meat' : p.carry === CARRY.Fish ? 'fish' : p.carry === CARRY.Log ? 'wood' : '';
+  if (kind) {
+    st[kind] += a;
+    s.book(`gathered.${kind}`, a);
+  }
+  p.carry = CARRY.None;
+  p.carryAmt = 0;
+}
+
+function goStore(s: Sim, p: Person, t: Task, next: number) {
+  const st = s.storeSpot(p.carry === CARRY.Log);
+  t.goal = st.tile;
+  t.gx = st.x + (((p.look >>> 11) & 7) / 7 - 0.5) * 0.6;
+  t.gz = st.z + (((p.look >>> 14) & 7) / 7 - 0.5) * 0.6;
+  t.near = false;
+  t.stage = next;
+  p.path = null;
+}
+
+/** Ask the renderer to play a one-off move (a spear thrust, a stab into the water). */
+function flash(p: Person, code: number) {
+  p.flash = ((((p.flash ?? 0) >> 2) + 1) % 4096) * 4 + code;
+}
+
+function skillUp(p: Person, k: number, amt: number) {
+  p.skills[k] = Math.min(20, p.skills[k] + amt);
+}
+
+// ---------------------------------------------------------------- task execution
+export function runTask(s: Sim, p: Person) {
+  const t = p.task!;
+  const c = s.camp;
+  const r = s.rAi;
+  // anything left half-done for too long is abandoned
+  if (s.tick - t.started > 520 && t.kind !== 'sleep') {
+    abandon(s, p);
+    p.nextThink = s.tick;
+    return;
+  }
+  const moving = (res: GoResult) => {
+    if (res === 'fail') {
+      // nobody tries this target again for a while (it is across a river, up a cliff...)
+      const propTask = t.kind === 'forage' || t.kind === 'fell' || t.kind === 'haul' || t.kind === 'eatwild' || t.kind === 'deadwood';
+      if (propTask && t.ref >= 0) s.unreachable.set(t.ref, s.tick + 2 * TICKS_PER_DAY);
+      if (t.kind === 'fish') s.unreachable.set(-(t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
+      abandon(s, p);
+      p.nextThink = s.tick;
+      return true;
+    }
+    return res === 'moving';
+  };
+
+  switch (t.kind) {
+    case 'eat': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 8;
+      }
+      p.act = ACT.Eat;
+      face(p, c.x, c.z);
+      if (--t.timer > 0) return;
+      // a portion is enough to fill about half a belly: the very hungry eat more, up to two helpings
+      const portion = s.age(p) < 12 ? 0.6 : s.has(p, 'greedy') ? 1.25 : 1;
+      const want = portion * Math.max(1, Math.min(2, (88 - p.food) / 48));
+      let got = 0;
+      const st = c.stock;
+      for (const k of ['berries', 'fish', 'meat', 'preserved'] as const) {
+        const take = Math.min(st[k], want - got);
+        st[k] -= take;
+        s.book(`eaten.${k}`, take);
+        got += take;
+        if (got >= want - 1e-6) break;
+      }
+      p.food = clamp(p.food + 48 * (got / portion));
+      // a shared meal is good company
+      const company = s.people.filter((q) => q !== p && q.alive && (q.act === ACT.Eat || q.act === ACT.Sit || q.act === ACT.Warm) && hyp(q.x - p.x, q.z - p.z) < 2.6);
+      if (company.length) {
+        p.belonging = clamp(p.belonging + 6 + company.length * 2);
+        for (const q of company) s.adjust(p, q, 0.6);
+      }
+      p.thought = got < want * 0.5 ? 'There was hardly anything to eat.' : 'Ate well.';
+      finish(s, p);
+      return;
+    }
+    case 'eatwild': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 10;
+      }
+      p.act = ACT.Gather;
+      face(p, s.propX[t.ref], s.propZ[t.ref]);
+      if (--t.timer > 0) return;
+      const take = Math.min(2, s.propVal[t.ref]);
+      s.propVal[t.ref] -= take;
+      s.propsVersion++;
+      p.food = clamp(p.food + 22 * take);
+      finish(s, p);
+      return;
+    }
+    case 'sleep': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        p.indoors = t.ref >= 0;
+      }
+      p.act = ACT.Sleep;
+      p.rest = clamp(p.rest + (p.indoors ? 1.35 : 0.85));
+      p.thought = p.indoors ? 'Asleep at home.' : 'Asleep by the fire.';
+      const dark = isDark(s.tick);
+      if ((!dark && p.rest >= 96) || (!dark && hourOf(s.tick) > 7.5 && p.rest > 65) || s.tick - t.started > 150) {
+        p.indoors = false;
+        finish(s, p);
+      }
+      return;
+    }
+    case 'warm': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 40;
+        p.indoors = t.ref >= 0;
+      }
+      p.act = t.ref >= 0 ? ACT.Sit : ACT.Warm;
+      face(p, c.x, c.z);
+      if (t.ref >= 0) p.warmth = clamp(p.warmth + 0.5);
+      if (--t.timer <= 0 || p.warmth > 90) {
+        p.indoors = false;
+        finish(s, p);
+      }
+      return;
+    }
+    case 'socialize': {
+      const q = s.byId.get(t.ref);
+      if (!q || !q.alive || q.indoors) return finish(s, p);
+      if (t.stage === 0) {
+        // keep up with them as they move about
+        if (s.tick % 8 === 0 && s.tileOf(q) !== t.goal) {
+          t.goal = s.tileOf(q);
+          p.path = null;
+        }
+        if (hyp(q.x - p.x, q.z - p.z) > 1.3) {
+          if (moving(go(s, p, t))) return;
+          if (hyp(q.x - p.x, q.z - p.z) > 1.8) return;
+        }
+        t.stage = 1;
+        t.timer = 16;
+        p.thought = `Talking with ${q.name}.`;
+      }
+      p.act = ACT.Chat;
+      face(p, q.x, q.z);
+      if (q.act === ACT.Idle || q.act === ACT.Sit) {
+        q.act = ACT.Chat;
+        face(q, p.x, p.z);
+      }
+      if (--t.timer > 0) return;
+      p.belonging = clamp(p.belonging + 24 + (s.has(q, 'charismatic') ? 8 : 0));
+      q.belonging = clamp(q.belonging + 12 + (s.has(p, 'charismatic') ? 6 : 0));
+      if (s.has(p, 'cruel') && r.chance(0.22)) {
+        s.adjust(q, p, -9);
+        s.adjust(p, q, -2);
+        s.remember(q, 'insulted', -8, 0.6, p.id, `${p.name} mocked them.`);
+        p.thought = `Mocked ${q.name}.`;
+      } else {
+        const gain = 2 + r.int(0, 4) + (s.has(p, 'kind') ? 1 : 0);
+        s.adjust(p, q, gain);
+        s.adjust(q, p, gain - 1);
+      }
+      finish(s, p);
+      return;
+    }
+    case 'idle': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 25 + r.int(0, 20);
+      }
+      p.act = ACT.Sit;
+      face(p, c.x, c.z);
+      if (--t.timer <= 0) finish(s, p);
+      return;
+    }
+    case 'play': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t, true))) return;
+        t.stage = 1;
+        t.timer = 6 + r.int(0, 10);
+      }
+      p.act = ACT.Play;
+      if (--t.timer <= 0) finish(s, p);
+      return;
+    }
+    case 'migrate': {
+      if (moving(go(s, p, t))) return;
+      p.thought = `Home at ${c.name}.`;
+      finish(s, p);
+      return;
+    }
+    case 'swim': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 50 + r.int(0, 40);
+        t.amount = 0;
+        p.thought = 'Cooling off in the water.';
+      }
+      // paddle about a little, then float, then paddle somewhere else
+      const w = s.tileOf(p);
+      if (t.amount > 0) {
+        t.amount--;
+        p.act = ACT.Idle;
+      } else {
+        const dx = t.gx - p.x, dz = t.gz - p.z, d = hyp(dx, dz), sp = speed(s, p);
+        if (d <= sp) {
+          p.x = t.gx;
+          p.z = t.gz;
+          t.amount = 4 + r.int(0, 8);
+          // somewhere else in this stretch of water
+          for (let k = 0; k < 4; k++) {
+            const nx = p.x + r.range(-1.2, 1.2), nz = p.z + r.range(-1.2, 1.2);
+            const nt = Math.floor(nz) * s.N + Math.floor(nx);
+            if (nx > 0 && nz > 0 && nx < s.N && nz < s.N && s.world.water[nt] !== WATER.None && s.grid.step(w, nt)) { t.gx = nx; t.gz = nz; break; }
+          }
+        } else {
+          p.x += (dx / d) * sp;
+          p.z += (dz / d) * sp;
+          p.fx = t.gx;
+          p.fz = t.gz;
+          p.act = ACT.Walk;
+        }
+      }
+      p.warmth = clamp(p.warmth - 0.04);
+      if (--t.timer <= 0) {
+        // the water is not always kind
+        if (r.chance(s.age(p) < 12 ? 0.006 : 0.0015)) return s.kill(p, 'drowning');
+        p.mood = clamp(p.mood + 4);
+        const others = s.people.some((q) => q !== p && q.alive && q.task?.kind === 'swim' && hyp(q.x - p.x, q.z - p.z) < 4);
+        if (others) p.belonging = clamp(p.belonging + 6);
+        if (!p.memories.some((m) => m.kind === 'swim')) s.remember(p, 'swim', 8, 1, -1, others ? 'Swam with the others on a hot day.' : 'Swam alone on a hot day.');
+        finish(s, p);
+      }
+      return;
+    }
+    case 'mourn': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 30;
+      }
+      p.act = ACT.Mourn;
+      if (--t.timer <= 0) finish(s, p);
+      return;
+    }
+    case 'forage': {
+      if (t.stage === 0) {
+        if (!s.propAlive[t.ref] || s.propVal[t.ref] < 0.5) return finish(s, p);
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = Math.max(8, Math.round(16 * (1.2 - p.skills[0] * 0.02)));
+      }
+      if (t.stage === 1) {
+        p.act = ACT.Gather;
+        face(p, s.propX[t.ref], s.propZ[t.ref]);
+        if (--t.timer > 0) return;
+        const take = Math.min(s.propVal[t.ref], 2.6 + p.skills[SK.forage] * 0.12);
+        s.propVal[t.ref] -= take;
+        s.propsVersion++;
+        s.reserved.delete(t.ref);
+        p.carry = CARRY.Berries;
+        p.carryAmt = take;
+        if (p.food < 45 && take >= 1) {
+          p.carryAmt -= 0.5;
+          p.food = clamp(p.food + 20);
+        }
+        skillUp(p, SK.forage, 0.06);
+        goStore(s, p, t, 2);
+        p.thought = 'Bringing berries back to camp.';
+      }
+      if (t.stage === 2) {
+        if (moving(go(s, p, t))) return;
+        deposit(s, p);
+        finish(s, p);
+      }
+      return;
+    }
+    case 'fell': {
+      if (t.stage === 0) {
+        if (!s.propAlive[t.ref]) return finish(s, p);
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        const st = treeStage(s.propType[t.ref]);
+        // a tree someone already half cut through needs only the rest
+        const total = Math.round([10, 22, 40, 55][st] * (1.25 - p.skills[SK.wood] * 0.03));
+        t.timer = Math.max(1, total - (s.chopped.get(t.ref) ?? 0));
+        if (s.chopped.has(t.ref)) p.thought = 'Finishing a tree someone started.';
+      }
+      if (t.stage === 1) {
+        p.act = ACT.Chop;
+        face(p, s.propX[t.ref], s.propZ[t.ref]);
+        s.chopped.set(t.ref, (s.chopped.get(t.ref) ?? 0) + 1);
+        if (--t.timer > 0) return;
+        const k = t.ref;
+        const type = s.propType[k];
+        const sp = Math.floor(type / 12);
+        const wood = WOOD_BY_STAGE[treeStage(type)];
+        const stump = s.addProp(STUMP_BASE + sp, s.propX[k], s.propY[k], s.propZ[k], s.propRot[k], s.propScale[k]);
+        const what = `${STAGE_WORD[treeStage(type)]} ${['pine', 'oak', 'birch'][sp]}`;
+        s.propNote.set(stump, `${art(what) === 'an' ? 'An' : 'A'} ${what}, felled by ${p.name} in the ${s.when(s.tick)}.`);
+        s.removeProp(k);
+        s.stats.felled++;
+        skillUp(p, SK.wood, 0.08);
+        if (r.chance(0.006)) {
+          p.health -= 35;
+          s.remember(p, 'injured', -15, 1, -1, 'Hurt by a falling tree.');
+          s.event('injury', `${p.name} was hurt by a falling tree.`, [p.id], p.x, p.z, 2);
+          if (p.health <= 0) return s.kill(p, 'accident');
+        }
+        const carryNow = Math.min(6, wood);
+        if (wood > carryNow) {
+          const lp = s.addProp(LOGS, s.propX[k] + 0.15, s.propY[k], s.propZ[k] + 0.12, s.propRot[k], 1);
+          s.propNote.set(lp, `Cut from ${art(what)} ${what} that ${p.name} felled.`);
+          s.propVal[lp] = wood - carryNow;
+        }
+        p.carry = CARRY.Log;
+        p.carryAmt = carryNow;
+        goStore(s, p, t, 2);
+        p.thought = 'Carrying logs to camp.';
+      }
+      if (t.stage === 2) {
+        if (moving(go(s, p, t))) return;
+        deposit(s, p);
+        finish(s, p);
+      }
+      return;
+    }
+    case 'deadwood': {
+      if (t.stage === 0) {
+        if (!s.propAlive[t.ref] || s.deadwoodTaken.has(t.ref)) return finish(s, p);
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 14;
+      }
+      if (t.stage === 1) {
+        p.act = ACT.Gather;
+        face(p, s.propX[t.ref], s.propZ[t.ref]);
+        if (--t.timer > 0) return;
+        const k = t.ref;
+        s.deadwoodTaken.set(k, s.tick + TICKS_PER_DAY * 48);
+        s.reserved.delete(k);
+        p.carry = CARRY.Log;
+        p.carryAmt = DEADWOOD_BY_STAGE[treeStage(s.propType[k])];
+        skillUp(p, SK.wood, 0.02);
+        goStore(s, p, t, 2);
+        p.thought = 'Bringing firewood back to camp.';
+      }
+      if (t.stage === 2) {
+        if (moving(go(s, p, t))) return;
+        deposit(s, p);
+        finish(s, p);
+      }
+      return;
+    }
+    case 'haul': {
+      if (t.stage === 0) {
+        if (!s.propAlive[t.ref]) return finish(s, p);
+        if (moving(go(s, p, t))) return;
+        const take = Math.min(6, s.propVal[t.ref]);
+        s.propVal[t.ref] -= take;
+        if (s.propVal[t.ref] <= 0.01) s.removeProp(t.ref);
+        else s.reserved.delete(t.ref);
+        p.carry = CARRY.Log;
+        p.carryAmt = take;
+        goStore(s, p, t, 1);
+      }
+      if (moving(go(s, p, t))) return;
+      deposit(s, p);
+      finish(s, p);
+      return;
+    }
+    case 'hunt': {
+      const d = s.deer.find((q) => q.id === t.ref);
+      if (t.stage === 0) {
+        if (!d || !d.alive) return finish(s, p);
+        if (s.tick > (t.deadline ?? t.started + 110)) {
+          p.thought = 'The deer got away.';
+          return finish(s, p);
+        }
+        const dist = hyp(d.x - p.x, d.z - p.z);
+        if (dist > 2.9) {
+          if (s.tick % 10 === 0 && s.tileOf(d) !== t.goal) {
+            t.goal = s.tileOf(d);
+            p.path = null;
+          }
+          const res = go(s, p, t);
+          if (res === 'fail') return finish(s, p);
+          p.act = ACT.Hunt;
+          return;
+        }
+        // in range: throw
+        p.act = ACT.Hunt;
+        face(p, d.x, d.z);
+        if (t.timer > 0) {
+          t.timer--;
+          return;
+        }
+        t.timer = 5;
+        if (r.chance(0.006)) {
+          p.health -= 40;
+          s.remember(p, 'injured', -18, 1, -1, 'Gored by a stag.');
+          s.event('injury', `${p.name} was gored by a stag.`, [p.id], p.x, p.z, 2);
+          if (p.health <= 0) return s.kill(p, 'hunting');
+        }
+        const chance = 0.15 + p.skills[SK.hunt] * 0.022 + (s.has(p, 'brave') ? 0.05 : 0);
+        flash(p, FLASH.Thrust);
+        if (r.next() < chance) {
+          d.alive = false;
+          p.kills++;
+          s.stats.kills++;
+          // once in a long while the whole herd is driven into the hunters' hands
+          if (r.chance(0.02)) {
+            const more = s.deer.filter((q) => q.alive && q.herd === d.herd && hyp(q.x - d.x, q.z - d.z) < 4).slice(0, 2);
+            for (const q of more) { q.alive = false; c.stock.meat += q.fawn ? 4 : 8; s.book('gathered.meat', q.fawn ? 4 : 8); s.stats.kills++; }
+            if (more.length) {
+              s.event('great_hunt', `A great hunt: ${p.name} and the hunters of ${c.name} brought down ${more.length + 1} deer in one day.`, [p.id], p.x, p.z, 4);
+              for (const q of s.members()) s.remember(q, 'feast', 15, 1, p.id, `Feasted after ${p.name}'s great hunt.`);
+            }
+          }
+          skillUp(p, SK.hunt, 0.35);
+          if (p.kills === 1) s.remember(p, 'first_kill', 18, 2, -1, 'Brought down their first deer.');
+          if (s.stats.kills === 1) s.event('hunt', `${p.name} brought down the band's first deer at ${s.camp.name}.`, [p.id], p.x, p.z, 3);
+          p.carry = CARRY.Meat;
+          p.carryAmt = d.fawn ? 4 : 8;
+          goStore(s, p, t, 1);
+          p.thought = 'Carrying the kill home.';
+        } else {
+          skillUp(p, SK.hunt, 0.05);
+          p.thought = 'Missed. Following the herd.';
+          p.path = null;
+        }
+        return;
+      }
+      if (moving(go(s, p, t))) return;
+      deposit(s, p);
+      finish(s, p);
+      return;
+    }
+    case 'fish': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 30;
+        t.amount = 0;
+      }
+      if (t.stage === 1) {
+        const w = t.ref;
+        p.act = ACT.Fish;
+        face(p, (w % s.N) + 0.5, Math.floor(w / s.N) + 0.5);
+        // a stab at a fish that got away now and then while waiting (just looks; decides nothing)
+        if (t.timer % 9 === 4 && t.timer > 6) flash(p, FLASH.Stab);
+        if (--t.timer > 0) return;
+        const chance = 0.42 + p.skills[SK.fish] * 0.028 + (s.fish[w] / Math.max(1, s.fishCap[w])) * 0.18;
+        flash(p, FLASH.Stab);
+        if (r.next() < chance) {
+          const got = Math.min(s.fish[w], 3 + Math.floor(p.skills[SK.fish] / 4));
+          s.fish[w] -= got;
+          skillUp(p, SK.fish, 0.12);
+          p.carry = CARRY.Fish;
+          p.carryAmt = got;
+          goStore(s, p, t, 2);
+          p.thought = 'Bringing fish home.';
+        } else if (t.amount === 0) {
+          t.amount = 1;
+          t.timer = 24;
+          p.thought = 'Nothing biting yet.';
+          skillUp(p, SK.fish, 0.03);
+        } else {
+          p.thought = 'Caught nothing today.';
+          return finish(s, p);
+        }
+      }
+      if (t.stage === 2) {
+        if (moving(go(s, p, t))) return;
+        deposit(s, p);
+        finish(s, p);
+      }
+      return;
+    }
+    case 'supply': {
+      const b = s.buildings.find((q) => q.id === t.ref);
+      if (!b || b.built) {
+        c.stock.wood += t.amount;
+        return finish(s, p);
+      }
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        p.carry = CARRY.Log;
+        p.carryAmt = t.amount;
+        t.stage = 1;
+        t.goal = b.tile;
+        t.gx = b.x + 0.5;
+        t.gz = b.z + 0.5;
+        t.near = true;
+        p.path = null;
+      }
+      if (moving(go(s, p, t))) return;
+      b.wood += t.amount;
+      s.book('built', t.amount);
+      p.carry = CARRY.None;
+      p.carryAmt = 0;
+      t.amount = 0;
+      s.buildingsVersion++;
+      finish(s, p);
+      return;
+    }
+    case 'build': {
+      const b = s.buildings.find((q) => q.id === t.ref);
+      if (!b || b.built) return finish(s, p);
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 70;
+      }
+      p.act = ACT.Build;
+      face(p, b.x + 0.5, b.z + 0.5);
+      b.work += (1 + p.skills[SK.build] * 0.06) * (s.age(p) >= 58 ? 0.7 : 1);
+      if (!b.builders.includes(p.id)) b.builders.push(p.id);
+      if (s.tick % 10 === 0) s.buildingsVersion++;
+      if (s.tick % 20 === 0) skillUp(p, SK.build, 0.05);
+      if (b.work >= BUILD[b.kind].work) completeBuilding(s, b, p);
+      if (--t.timer <= 0 || b.built) finish(s, p);
+      return;
+    }
+    case 'fuel': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        p.carry = CARRY.Log;
+        p.carryAmt = t.amount;
+        t.stage = 1;
+        const st = seat(s, p, 0.75);
+        t.goal = s.tileOf(st);
+        t.gx = st.x;
+        t.gz = st.z;
+        p.path = null;
+      }
+      if (t.stage === 1) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 2;
+        t.timer = 6;
+      }
+      p.act = ACT.Tend;
+      face(p, c.x, c.z);
+      if (--t.timer > 0) return;
+      const h = s.hearth();
+      const wasOut = h.fuel <= 0;
+      s.book('burned', t.amount);
+      h.fuel = Math.min(12, h.fuel + t.amount);
+      p.carry = CARRY.None;
+      p.carryAmt = 0;
+      t.amount = 0;
+      if (wasOut) s.buildingsVersion++;
+      finish(s, p);
+      return;
+    }
+    case 'preserve': {
+      const rack = s.buildings.find((q) => q.id === t.ref);
+      if (!rack) {
+        c.stock.meat += t.amount;
+        return finish(s, p);
+      }
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        p.carry = CARRY.Meat;
+        p.carryAmt = t.amount;
+        t.stage = 1;
+        t.goal = rack.tile;
+        t.gx = rack.x + 0.5;
+        t.gz = rack.z + 0.5;
+        t.near = true;
+        p.path = null;
+      }
+      if (t.stage === 1) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 2;
+        t.timer = 30;
+        p.carry = CARRY.None;
+      }
+      p.act = ACT.Rack;
+      face(p, rack.x + 0.5, rack.z + 0.5);
+      if (--t.timer > 0) return;
+      c.stock.preserved += t.amount * 0.9;
+      s.book('dried', t.amount);
+      t.amount = 0;
+      skillUp(p, SK.craft, 0.1);
+      finish(s, p);
+      return;
+    }
+    case 'bury': {
+      const body = s.byId.get(t.ref);
+      if (!body || body.buried) {
+        p.carry = CARRY.None;
+        return finish(s, p);
+      }
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 10;
+      }
+      if (t.stage === 1) {
+        p.act = ACT.Mourn;
+        face(p, body.x, body.z);
+        if (--t.timer > 0) return;
+        // lift the body and carry it to the burial ground
+        p.carry = CARRY.Body;
+        body.indoors = true;
+        const spot = graveSpot(s);
+        t.goal = s.tileOf(spot);
+        t.gx = spot.x;
+        t.gz = spot.z;
+        t.near = false;
+        t.stage = 2;
+        p.path = null;
+        p.thought = `Carrying ${body.name} to the burial ground.`;
+      }
+      if (t.stage === 2) {
+        body.x = p.x;
+        body.z = p.z;
+        if (moving(go(s, p, t))) return;
+        t.stage = 3;
+        t.timer = 30;
+      }
+      p.act = ACT.Dig;
+      if (--t.timer > 0) return;
+      const tile = s.tileOf(p);
+      const g = s.addProp(GRAVE + (r.chance(0.5) ? 1 : 0), p.x - 0.25, s.world.groundY[tile], p.z, r.range(-0.3, 0.3), 1);
+      s.propVal[g] = body.id;
+      body.buried = true;
+      body.indoors = true;
+      p.carry = CARRY.None;
+      s.event('burial', `${p.name} laid ${body.name} to rest.`, [p.id, body.id], p.x, p.z, 1);
+      s.adjust(p, body, 0);
+      for (const q of s.people) if (q.alive && (s.isKin(q, body) || q.id === body.partner)) s.adjust(q, p, 6);
+      finish(s, p);
+      return;
+    }
+  }
+}
+
+function graveSpot(s: Sim) {
+  const c = s.camp;
+  const N = s.N;
+  if (c.graveyard < 0) {
+    // a quiet spot a little way from the hearth, on the same terrace if possible
+    let best = -1, bestS = -Infinity;
+    const hx = Math.floor(c.x), hz = Math.floor(c.z);
+    for (let dz = -9; dz <= 9; dz++)
+      for (let dx = -9; dx <= 9; dx++) {
+        const x = hx + dx, z = hz + dz;
+        if (x < 2 || z < 2 || x >= N - 2 || z >= N - 2) continue;
+        const i = z * N + x;
+        if (!s.grid.walkable(i) || s.world.water[i] !== WATER.None) continue;
+        if (s.buildings.some((b) => Math.abs(b.x - x) <= 2 && Math.abs(b.z - z) <= 2)) continue;
+        const d = hyp(dx, dz);
+        const sc = -Math.abs(d - 7.5) - s.treesOnTile[i] * 0.5 + ((x * 31 + z * 17) % 10) * 0.01;
+        if (sc > bestS) { bestS = sc; best = i; }
+      }
+    c.graveyard = best >= 0 ? best : c.tile;
+  }
+  // graves fill the plot outward from its centre, two to a tile, always on reachable ground
+  const g0 = c.graveyard;
+  const gx0 = g0 % N, gz0 = Math.floor(g0 / N);
+  for (let ring = 0; ring < 7; ring++)
+    for (let dz = -ring; dz <= ring; dz++)
+      for (let dx = -ring; dx <= ring; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
+        const x = gx0 + dx, z = gz0 + dz;
+        if (x < 1 || z < 1 || x >= N - 1 || z >= N - 1) continue;
+        const i = z * N + x;
+        if (!s.grid.walkable(i) || s.world.water[i] !== WATER.None) continue;
+        if (s.buildings.some((b) => b.tile === i)) continue;
+        let graves = 0;
+        for (let k = 0; k < s.propCount; k++) if (s.propAlive[k] && s.propTile[k] === i && s.propType[k] >= GRAVE && s.propType[k] < GRAVE + 2) graves++;
+        if (graves >= 2) continue;
+        if (!s.grid.find(c.tile, i)) continue;
+        return { x: x + 0.3 + graves * 0.42, z: z + 0.55 };
+      }
+  return { x: c.x + 2.5, z: c.z + 2.5 };
+}
+
+function completeBuilding(s: Sim, b: Building, p: Person) {
+  b.built = true;
+  b.finished = s.tick;
+  s.buildingsVersion++;
+  const label = BUILD[b.kind].label.toLowerCase();
+  const first = s.buildings.filter((q) => q.kind === b.kind && q.built && q.band === b.band).length === 1;
+  const owner = s.byId.get(b.owner);
+  if (b.kind === 'hut' || b.kind === 'leanto') {
+    if (owner && owner.alive) {
+      const household = [owner, s.byId.get(owner.partner)].filter((q): q is Person => !!q && q.alive);
+      for (const h of [...household]) for (const cid of h.children) {
+        const ch = s.byId.get(cid);
+        if (ch && ch.alive && ch.partner < 0 && s.age(ch) < 22 && !household.includes(ch)) household.push(ch);
+      }
+      for (const q of s.living()) if (household.some((h) => h.id === q.carer) && s.age(q) < 14 && !household.includes(q)) household.push(q);
+      for (const h of household) {
+        h.home = b.id;
+        s.remember(h, 'home', 20, 2, b.id, `Moved into a new ${label}.`);
+      }
+      s.event('build', first ? `The first ${label} at ${s.camp.name} stands, home to ${owner.name}'s family.` : `A ${label} was finished for ${owner.name}'s family.`,
+        household.map((h) => h.id), b.x + 0.5, b.z + 0.5, first ? 3 : 1);
+    }
+  } else {
+    s.event('build', first ? `${p.name} and the others raised the camp's first ${label}.` : `A ${label} was finished.`, [p.id], b.x + 0.5, b.z + 0.5, first ? 3 : 1);
+  }
+}
+
+// keep tree ids referenced so bundlers don't drop the import used by tools
+void treeId;
