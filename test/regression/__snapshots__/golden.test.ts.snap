@@ -1,0 +1,179 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden histories > seed 1, five years on 1`] = `
+{
+  "bands": [
+    "Drathholt",
+  ],
+  "events": 31,
+  "everLived": 12,
+  "hash": "da5f1077",
+  "homes": 5,
+  "pop": 9,
+  "stats": {
+    "births": 2,
+    "deaths": 3,
+    "felled": 110,
+    "froze": 0,
+    "kills": 36,
+    "peak": 11,
+    "starved": 0,
+  },
+  "story": [
+    "The band of ten makes camp at Drathholt.",
+    "Gre brought down the band's first deer at Drathholt.",
+    "The first hut at Drathholt stands, home to Galia's family.",
+    "Dryjia and the others raised the camp's first storehouse.",
+    "A sickness spread through Drathholt.",
+    "Keul, 30, was taken by the sickness.",
+    "Dryjia, 20, died in an accident.",
+    "The sickness at Drathholt has passed. It took one.",
+    "A bitter winter sets in over Drathholt.",
+    "Gre discovered how to dry and smoke meat and fish.",
+    "Thead and the others raised the camp's first drying rack.",
+    "Thead, 25, died of fever.",
+    "A bitter winter sets in over Drathholt.",
+    "A bitter winter sets in over Drathholt.",
+  ],
+  "tick": 58895,
+}
+`;
+
+exports[`golden histories > seed 2, five years on 1`] = `
+{
+  "bands": [
+    "Brainford",
+  ],
+  "events": 26,
+  "everLived": 13,
+  "hash": "25ef161b",
+  "homes": 4,
+  "pop": 10,
+  "stats": {
+    "births": 3,
+    "deaths": 3,
+    "felled": 132,
+    "froze": 0,
+    "kills": 19,
+    "peak": 12,
+    "starved": 0,
+  },
+  "story": [
+    "The band of ten makes camp at Brainford.",
+    "The first hut at Brainford stands, home to Trandae's family.",
+    "Zoumith brought down the band's first deer at Brainford.",
+    "Trandae and the others raised the camp's first storehouse.",
+    "A year of plenty: the bushes are heavy with fruit and the water thick with fish.",
+    "Deys discovered how to dry and smoke meat and fish.",
+    "Troune and the others raised the camp's first drying rack.",
+    "A sickness spread through Brainford.",
+    "Greith, 7, was taken by the sickness.",
+    "The sickness at Brainford has passed. It took two.",
+    "Trandae, 60, died of old age.",
+    "The berry bushes are bare this summer: a late frost took the flowers.",
+    "A year of plenty: the bushes are heavy with fruit and the water thick with fish.",
+  ],
+  "tick": 58895,
+}
+`;
+
+exports[`golden histories > seed 3, five years on 1`] = `
+{
+  "bands": [
+    "Kekhollow",
+  ],
+  "events": 26,
+  "everLived": 14,
+  "hash": "a6edcef6",
+  "homes": 5,
+  "pop": 11,
+  "stats": {
+    "births": 4,
+    "deaths": 3,
+    "felled": 128,
+    "froze": 0,
+    "kills": 15,
+    "peak": 12,
+    "starved": 0,
+  },
+  "story": [
+    "The band of ten makes camp at Kekhollow.",
+    "Mean brought down the band's first deer at Kekhollow.",
+    "The first hut at Kekhollow stands, home to Shou's family.",
+    "Due and the others raised the camp's first storehouse.",
+    "Myur, 2, died in infancy.",
+    "Kekui was attacked by wolves and barely got away.",
+    "A bitter winter sets in over Kekhollow.",
+    "A sickness spread through Kekhollow.",
+    "Kekui discovered how to dry and smoke meat and fish.",
+    "Pea and the others raised the camp's first drying rack.",
+    "The sickness at Kekhollow has passed. Everyone lived.",
+    "Shou, 61, died of old age.",
+  ],
+  "tick": 58895,
+}
+`;
+
+exports[`golden worlds > seed 1 1`] = `
+{
+  "deep": 8557,
+  "forest": 1912,
+  "grass": 2353,
+  "hash": "3a2dfac179fefe67",
+  "lakes": 2,
+  "mountain": 1540,
+  "props": 6873,
+  "riverTiles": 325,
+  "sand": 614,
+  "shallow": 1035,
+  "stone": 373,
+}
+`;
+
+exports[`golden worlds > seed 2 1`] = `
+{
+  "deep": 8594,
+  "forest": 2644,
+  "grass": 2041,
+  "hash": "27db1ad289b4c5f8",
+  "lakes": 2,
+  "mountain": 1115,
+  "props": 7921,
+  "riverTiles": 367,
+  "sand": 596,
+  "shallow": 1083,
+  "stone": 311,
+}
+`;
+
+exports[`golden worlds > seed 3 1`] = `
+{
+  "deep": 8511,
+  "forest": 1770,
+  "grass": 2487,
+  "hash": "c3087fb7216eacbc",
+  "lakes": 2,
+  "mountain": 1581,
+  "props": 6442,
+  "riverTiles": 372,
+  "sand": 599,
+  "shallow": 1157,
+  "stone": 279,
+}
+`;
+
+exports[`golden worlds > seed 4471 1`] = `
+{
+  "deep": 8486,
+  "forest": 1909,
+  "grass": 2296,
+  "hash": "e22423ddf3048df1",
+  "lakes": 1,
+  "mountain": 1770,
+  "props": 6681,
+  "riverTiles": 393,
+  "sand": 569,
+  "shallow": 1114,
+  "stone": 240,
+}
+`;
