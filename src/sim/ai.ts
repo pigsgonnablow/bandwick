@@ -148,13 +148,15 @@ export function decide(s: Sim, p: Person) {
     const t = setup(s, p, o.kind);
     if (t) {
       // put down the old task properly (setup may already have reserved things for the new one)
-      const keep = p.carry === CARRY.Spear && (o.kind === 'hunt' || o.kind === 'fish');
+      // and whatever they carry for it, before picking up a spear for a hunt or a day's fishing
+      const spear = o.kind === 'hunt' || o.kind === 'fish';
+      const keep = spear && p.carry === CARRY.Spear;
       const prev = p.task;
       if (prev) {
         p.task = prev;
         abandon(s, p, keep);
       } else if (!keep && p.carry !== CARRY.None) abandon(s, p);
-      if (keep) p.carry = CARRY.Spear;
+      if (spear) p.carry = CARRY.Spear;
       p.task = t;
       p.path = null;
       p.indoors = false;
@@ -330,7 +332,6 @@ function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
       if (best < 0) return null;
       const d = s.deer[best];
       p.thought = 'Tracking deer.';
-      p.carry = CARRY.Spear;
       const t = newTask(s, kind, s.tileOf(d), d.x, d.z, d.id, true);
       // time to walk out there, plus time to stalk and chase
       t.deadline = s.tick + 110 + Math.round(hyp(d.x - p.x, d.z - p.z) / 0.3);
@@ -359,7 +360,6 @@ function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
       }
       if (best < 0) return null;
       p.thought = s.world.water[bestW] === WATER.Sea ? 'Fishing from the shore.' : 'Fishing at the water.';
-      p.carry = CARRY.Spear;
       const t = newTask(s, kind, best, (best % N) + 0.5, Math.floor(best / N) + 0.5, bestW);
       return t;
     }
@@ -404,6 +404,7 @@ function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
       c.stock.fish -= fromFish;
       c.stock.meat -= take - fromFish;
       t.amount = take;
+      t.fish = fromFish;
       p.thought = 'Drying meat and fish on the rack.';
       return t;
     }
@@ -441,7 +442,10 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
       if (p.carry === CARRY.Log) { p.carry = CARRY.None; p.carryAmt = 0; }
     }
     if (t.kind === 'preserve' && t.amount > 0) {
-      st.meat += t.amount;
+      // back as it came: fish to the fish, meat to the meat
+      const fish = Math.min(t.amount, t.fish ?? 0);
+      st.fish += fish;
+      st.meat += t.amount - fish;
       t.amount = 0;
       if (p.carry === CARRY.Meat) { p.carry = CARRY.None; p.carryAmt = 0; }
     }
@@ -461,11 +465,7 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
     // pile for someone to haul in later, and food is lost to the land
     const st = s.storeSpot(p.carry === CARRY.Log);
     if (hyp(p.x - st.x, p.z - st.z) <= 3) deposit(s, p);
-    else {
-      const kind = p.carry === CARRY.Berries ? 'berries' : p.carry === CARRY.Meat ? 'meat' : p.carry === CARRY.Fish ? 'fish' : '';
-      if (kind) s.book(`spoiled.${kind}`, p.carryAmt);
-      s.dropCarry(p);
-    }
+    else s.dropCarry(p);
   }
   s.releaseTask(p);
   p.task = null;
@@ -996,7 +996,18 @@ export function runTask(s: Sim, p: Person) {
           // once in a long while the whole herd is driven into the hunters' hands
           if (r.chance(0.02)) {
             const more = s.deer.filter((q) => q.alive && q.herd === d.herd && hyp(q.x - d.x, q.z - d.z) < 4).slice(0, 2);
-            for (const q of more) { q.alive = false; c.stock.meat += q.fawn ? 4 : 8; s.book('gathered.meat', q.fawn ? 4 : 8); s.stats.kills++; }
+            // the other hunters close by each shoulder a carcass; any nobody can carry is left to the land
+            const bearers = s.people.filter((q) => q !== p && q.alive && q.band === p.band && q.task?.kind === 'hunt' && q.task.stage === 0 && hyp(q.x - d.x, q.z - d.z) < 8);
+            for (const q of more) {
+              q.alive = false;
+              s.stats.kills++;
+              const h = bearers.shift();
+              if (!h) continue;
+              h.carry = CARRY.Meat;
+              h.carryAmt = q.fawn ? 4 : 8;
+              goStore(s, h, h.task!, 1);
+              h.thought = 'Carrying the kill home.';
+            }
             if (more.length) {
               s.event('great_hunt', `A great hunt: ${p.name} and the hunters of ${c.name} brought down ${more.length + 1} deer in one day.`, [p.id], p.x, p.z, 4);
               for (const q of s.members()) s.remember(q, 'feast', 15, 1, p.id, `Feasted after ${p.name}'s great hunt.`);
@@ -1065,8 +1076,10 @@ export function runTask(s: Sim, p: Person) {
     case 'supply': {
       const b = s.buildings.find((q) => q.id === t.ref);
       if (!b || b.built) {
-        c.stock.wood += t.amount;
-        return finish(s, p);
+        // the wood goes back to the store, logs in hand included (and only once)
+        abandon(s, p);
+        p.nextThink = s.tick;
+        return;
       }
       if (t.stage === 0) {
         if (moving(go(s, p, t))) return;
@@ -1141,8 +1154,9 @@ export function runTask(s: Sim, p: Person) {
     case 'preserve': {
       const rack = s.buildings.find((q) => q.id === t.ref);
       if (!rack) {
-        c.stock.meat += t.amount;
-        return finish(s, p);
+        abandon(s, p);
+        p.nextThink = s.tick;
+        return;
       }
       if (t.stage === 0) {
         if (moving(go(s, p, t))) return;

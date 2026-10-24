@@ -44,9 +44,9 @@ exports[`golden histories > seed 2, five years on 1`] = `
   "bands": [
     "Brainford",
   ],
-  "events": 26,
+  "events": 24,
   "everLived": 13,
-  "hash": "25ef161b",
+  "hash": "be0df77c",
   "homes": 4,
   "pop": 10,
   "stats": {
@@ -71,7 +71,6 @@ exports[`golden histories > seed 2, five years on 1`] = `
     "The sickness at Brainford has passed. It took two.",
     "Trandae, 60, died of old age.",
     "The berry bushes are bare this summer: a late frost took the flowers.",
-    "A year of plenty: the bushes are heavy with fruit and the water thick with fish.",
   ],
   "tick": 58895,
 }

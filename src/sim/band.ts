@@ -77,6 +77,8 @@ export interface Task {
   deadline?: number;
   /** tick the walk back to the stores began, while carrying goods home */
   homeAt?: number;
+  /** preserving: how much of `amount` was taken from the fish (the rest is meat) */
+  fish?: number;
 }
 
 export interface Memory {
