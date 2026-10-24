@@ -455,7 +455,17 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
     }
   }
   if (p.carry === CARRY.Spear || p.carry === CARRY.Body) p.carry = CARRY.None;
-  if (!keepCarry && p.carry !== CARRY.None) deposit(s, p);
+  if (!keepCarry && p.carry !== CARRY.None) {
+    // goods only reach the stores if they are carried there: further out, logs are left in a
+    // pile for someone to haul in later, and food is lost to the land
+    const st = s.storeSpot(p.carry === CARRY.Log);
+    if (hyp(p.x - st.x, p.z - st.z) <= 3) deposit(s, p);
+    else {
+      const kind = p.carry === CARRY.Berries ? 'berries' : p.carry === CARRY.Meat ? 'meat' : p.carry === CARRY.Fish ? 'fish' : '';
+      if (kind) s.book(`spoiled.${kind}`, p.carryAmt);
+      s.dropCarry(p);
+    }
+  }
   s.releaseTask(p);
   p.task = null;
   p.path = null;
@@ -559,6 +569,11 @@ export function deposit(s: Sim, p: Person) {
   p.carryAmt = 0;
 }
 
+/** On the way back to the stores with goods: they see the delivery through unless it's an emergency. */
+export function delivering(p: Person) {
+  return p.task?.homeAt !== undefined && p.carry !== CARRY.None;
+}
+
 function goStore(s: Sim, p: Person, t: Task, next: number) {
   const st = s.storeSpot(p.carry === CARRY.Log);
   t.goal = st.tile;
@@ -566,6 +581,7 @@ function goStore(s: Sim, p: Person, t: Task, next: number) {
   t.gz = st.z + (((p.look >>> 14) & 7) / 7 - 0.5) * 0.6;
   t.near = false;
   t.stage = next;
+  t.homeAt = s.tick;
   p.path = null;
 }
 
@@ -583,11 +599,18 @@ export function runTask(s: Sim, p: Person) {
   const t = p.task!;
   const c = s.camp;
   const r = s.rAi;
-  // anything left half-done for too long is abandoned
-  if (s.tick - t.started > 520 && t.kind !== 'sleep') {
+  // anything left half-done for too long is abandoned (the walk home with goods gets its own clock)
+  const home = delivering(p);
+  if (home ? s.tick - t.homeAt! > 1200 : s.tick - t.started > 520 && t.kind !== 'sleep') {
     abandon(s, p);
     p.nextThink = s.tick;
     return;
+  }
+  // starving on the way home with food: eat a little of it rather than drop it
+  if (home && p.food < 20 && p.carryAmt >= 1 && (p.carry === CARRY.Berries || p.carry === CARRY.Meat || p.carry === CARRY.Fish)) {
+    p.carryAmt -= 1;
+    p.food = clamp(p.food + 48);
+    p.thought = 'Ate some of what they were carrying home.';
   }
   const moving = (res: GoResult) => {
     if (res === 'fail') {
