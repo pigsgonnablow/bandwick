@@ -455,7 +455,7 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
     }
   }
   if (p.carry === CARRY.Spear || p.carry === CARRY.Body) p.carry = CARRY.None;
-  if (!keepCarry && p.carry !== CARRY.None) deposit(s, p);
+  if (!keepCarry && p.carry !== CARRY.None) putDown(s, p);
   s.releaseTask(p);
   p.task = null;
   p.path = null;
@@ -546,6 +546,24 @@ function face(p: Person, x: number, z: number) {
   p.fz = z;
 }
 
+const GATHER: TaskKind[] = ['forage', 'fell', 'deadwood', 'haul', 'hunt', 'fish'];
+
+/** On the way back to the stores with something gathered: they see it through unless something is urgent. */
+export function carryingHome(p: Person) {
+  const k = p.carry;
+  return !!p.task && GATHER.includes(p.task.kind) && (k === CARRY.Berries || k === CARRY.Meat || k === CARRY.Fish || k === CARRY.Log);
+}
+
+/**
+ * Made to stop on the way home: close to the stores they bring it in; further out logs are
+ * left in a pile where they stand (someone hauls them later) and food is lost.
+ */
+function putDown(s: Sim, p: Person) {
+  const st = s.storeSpot(p.carry === CARRY.Log);
+  if (hyp(p.x - st.x, p.z - st.z) <= 6) deposit(s, p);
+  else s.dropCarry(p);
+}
+
 /** Put whatever they carry into the camp stores. */
 export function deposit(s: Sim, p: Person) {
   const st = s.camp.stock;
@@ -566,6 +584,8 @@ function goStore(s: Sim, p: Person, t: Task, next: number) {
   t.gz = st.z + (((p.look >>> 14) & 7) / 7 - 0.5) * 0.6;
   t.near = false;
   t.stage = next;
+  // the walk home gets its own time: a long chase is no reason to drop the kill on the way back
+  t.started = s.tick;
   p.path = null;
 }
 
@@ -588,6 +608,11 @@ export function runTask(s: Sim, p: Person) {
     abandon(s, p);
     p.nextThink = s.tick;
     return;
+  }
+  // hungry on the way home with food in hand: eat a little of it and keep walking
+  if (p.food < 40 && p.carry !== CARRY.Log && p.carryAmt >= 1 && carryingHome(p)) {
+    p.carryAmt -= 1;
+    p.food = clamp(p.food + 48);
   }
   const moving = (res: GoResult) => {
     if (res === 'fail') {
