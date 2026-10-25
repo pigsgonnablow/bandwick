@@ -15,16 +15,19 @@ describe('walls', () => {
   });
 
   it('never raises stone before the band knows stonework, nor builds before every material is in', () => {
+    let other = 0;
     for (const seed of [2, 4]) {
       const s = runYears(sim(seed), 8);
       const built = s.buildings.filter((b) => b.built && (b.kind === 'hut' || b.kind === 'storehouse'));
-      expect(built.some((b) => b.walls && b.walls !== 'wood')).toBe(true);
+      // daub and stone are discoveries now: not every band finds them, but some do
+      other += built.filter((b) => b.walls && b.walls !== 'wood').length;
       for (const b of s.buildings) {
         // (knowledge, once a band has it, is never lost)
         if (b.walls === 'stone') expect(s.campById(b.band)!.knows).toContain('stonework');
         if (b.built && b.kind !== 'hearth' && b.kind !== 'stockpile') for (const m of MATERIALS) expect(b[m]).toBeGreaterThanOrEqual(specOf(b)[m] - 0.5);
       }
     }
+    expect(other).toBeGreaterThan(0);
   });
 
   it('picks wood when there is nothing else to hand', () => {

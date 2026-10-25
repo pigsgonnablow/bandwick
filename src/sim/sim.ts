@@ -419,7 +419,7 @@ export class Sim {
    * The best place for a camp: flat walkable grass near fresh water, wood and berries.
    * Optionally within a distance band of an origin, and clear of the other bands' camps.
    */
-  chooseSite(opts: { from?: { x: number; z: number }; min?: number; max?: number; avoid?: number; reachFrom?: number } = {}) {
+  chooseSite(opts: { from?: { x: number; z: number }; min?: number; max?: number; avoid?: number; reachFrom?: number; timber?: boolean } = {}) {
     const w = this.world, N = this.N;
     const berryTiles: number[] = [];
     const treeTiles: number[] = [];
@@ -472,7 +472,7 @@ export class Sim {
         if (fd > 6) continue;
         // a camp needs timber: a band burns a big tree every few days through winter
         const timber = near(treeTiles, x, z, 12);
-        if (opts.from && timber < 30) continue;
+        if ((opts.from || opts.timber) && timber < 30) continue;
         const score =
           -Math.abs(fd - 2.5) * 2 + Math.min(40, timber) * 0.25 + Math.min(10, near(berryTiles, x, z, 14)) * 0.9 +
           (w.fertility[i] / 255) * 3 - (w.level[i] - SEA) * 0.4 + (hash3(i, w.params.seed, 404 + this.camps.length) % 100) * 0.01;
@@ -577,7 +577,8 @@ export class Sim {
   /** The first band, or a band of strangers come from beyond the map: ten people, two families, an elder. */
   private foundBand(strangers = false) {
     const N = this.N, w = this.world;
-    let best = this.chooseSite({ avoid: strangers ? 24 : 0 });
+    // strangers, like a band that moves, look for woods enough to see them through the winters
+    let best = this.chooseSite({ avoid: strangers ? 24 : 0, timber: strangers });
     if (best < 0 && !strangers) {
       // fallback: any walkable grass tile nearest the centre
       for (let r = 0; r < N && best < 0; r++)
@@ -594,8 +595,9 @@ export class Sim {
     if (strangers) {
       const known = new Set(this.camps.flatMap((o) => o.knows));
       const share = Math.min(0.8, 0.2 + yearOf(this.tick) * 0.03);
+      // shelter, once anyone knows it, they all know: no band gets through many winters without it
       for (const d of DISCOVERIES)
-        if (known.has(d.key) && d.needs.every((k) => camp.knows.includes(k)) && this.rLife.chance(share)) camp.knows.push(d.key);
+        if (known.has(d.key) && d.needs.every((k) => camp.knows.includes(k)) && (d.key === 'huts' || this.rLife.chance(share))) camp.knows.push(d.key);
     }
     const r = this.rLife;
     const y = TICKS_PER_YEAR;
@@ -1508,7 +1510,8 @@ export class Sim {
         this.considerSplit(c);
       }
     }
-    if (dayOfYear === 20) this.considerStrangers();
+    // strangers come in spring, with a summer ahead to build and lay in stores before their first winter
+    if (dayOfYear === 6) this.considerStrangers();
     if (dayOfYear % 12 === 3 && season < 3) this.considerMatches();
   }
 
