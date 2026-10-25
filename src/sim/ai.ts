@@ -1,7 +1,7 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
-import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, STAGE_WORD, art, clamp } from './sim';
+import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, FIBER_PER_CORD, Material, FLASH, foodTotal, Building, specOf, labelOf } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, TICKS_PER_DAY } from './time';
 import { WATER, treeId } from './types';
@@ -1045,7 +1045,8 @@ export function runTask(s: Sim, p: Person) {
         const k = t.ref;
         const type = s.propType[k];
         const sp = Math.floor(type / 12);
-        const wood = WOOD_BY_STAGE[treeStage(type)];
+        // a big tree's bark is stripped too, for kindling
+        const wood = WOOD_BY_STAGE[treeStage(type)] + (treeStage(type) >= 2 ? BARK : 0);
         const stump = s.addProp(STUMP_BASE + sp, s.propX[k], s.propY[k], s.propZ[k], s.propRot[k], s.propScale[k]);
         const what = `${STAGE_WORD[treeStage(type)]} ${['pine', 'oak', 'birch'][sp]}`;
         s.propNote.set(stump, `${art(what) === 'an' ? 'An' : 'A'} ${what}, felled by ${p.name} in the ${s.when(s.tick)}.`);
@@ -1091,10 +1092,12 @@ export function runTask(s: Sim, p: Person) {
         s.deadwoodTaken.set(k, s.tick + TICKS_PER_DAY * 48);
         s.reserved.delete(k);
         p.carry = CARRY.Log;
-        p.carryAmt = DEADWOOD_BY_STAGE[treeStage(s.propType[k])];
+        // under a pine, a few cones go in with the branches
+        const cones = treeSpecies(s.propType[k]) === 0 && treeStage(s.propType[k]) >= 1 ? CONES : 0;
+        p.carryAmt = DEADWOOD_BY_STAGE[treeStage(s.propType[k])] + cones;
         skillUp(p, SK.wood, 0.02);
         goStore(s, p, t, 2);
-        p.thought = 'Bringing firewood back to camp.';
+        p.thought = cones ? 'Bringing branches and pine cones back to camp.' : 'Bringing firewood back to camp.';
       }
       if (t.stage === 2) {
         if (moving(go(s, p, t))) return;

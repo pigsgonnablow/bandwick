@@ -25,7 +25,15 @@ export const treeStage = (t: number) => Math.floor(t / TREE_VARIANTS) % STAGES;
 const WOOD_BY_STAGE = [2, 6, 14, 20];
 /** fallen branches a tree drops in a year, gathered without felling it */
 export const DEADWOOD_BY_STAGE = [0, 1, 2, 3];
+/** kindling: bark stripped from a felled mature or old tree, and the cones picked up with a pine's branches */
+export const BARK = 1;
+export const CONES = 1;
 export const STAGE_WORD = ['sapling', 'young', 'mature', 'old'];
+/** Damp firewood (autumn and winter, no roof over the woodpile) burns this much faster. */
+export const DAMP_BURN = 1.2;
+/** How far a fire's warmth reaches, and with a windbreak behind it. */
+export const WARM_RADIUS = 2.6;
+export const WARM_RADIUS_SHELTERED = 3.2;
 /** 'a' or 'an' for a word. */
 export const art = (w: string) => (/^[aeiou]/i.test(w) ? 'an' : 'a');
 const SEASON_WORD = ['spring', 'summer', 'autumn', 'winter'];
@@ -911,7 +919,9 @@ export class Sim {
     p.belonging -= 0.09;
     // cold
     const temp = this.tempAt(p);
-    const nearFire = this.hearthLit() && hyp(p.x - this.camp.x, p.z - this.camp.z) < 2.6;
+    // a windbreak behind the fire throws its heat back and keeps the wind off: a wider, warmer circle
+    const sheltered = this.hasBuilt('windbreak');
+    const nearFire = this.hearthLit() && hyp(p.x - this.camp.x, p.z - this.camp.z) < (sheltered ? WARM_RADIUS_SHELTERED : WARM_RADIUS);
     let shelter = 0;
     if (p.indoors && p.home >= 0) {
       const b = this.buildings.find((q) => q.id === p.home);
@@ -919,7 +929,7 @@ export class Sim {
     }
     if (temp < 15) p.warmth -= (15 - temp) * 0.018 * (1 - shelter) * (age < 3 || age > 60 ? 1.25 : 1);
     else p.warmth += 0.5;
-    if (nearFire) p.warmth += 1.3;
+    if (nearFire) p.warmth += sheltered ? 1.7 : 1.3;
     if (p.indoors && shelter > 0 && temp > -2) p.warmth += 0.15;
     // safety: dark without a fire or shelter is unsettling
     const dark = isDark(this.tick);
@@ -1038,12 +1048,26 @@ export class Sim {
 
   private burn(h: Building) {
     if (h.fuel > 0) {
-      // a big fire through winter nights; in warm weather just a cooking fire
-      const season = seasonOf(this.tick);
-      const k = season === 3 ? 1.35 : season === 1 ? 0.45 : 0.75;
-      h.fuel = Math.max(0, h.fuel - (isDark(this.tick) ? 0.34 : 0.19) * k);
+      h.fuel = Math.max(0, h.fuel - this.burnRate(h));
       if (h.fuel === 0) this.buildingsVersion++;
     }
+  }
+
+  /** Wood a fire eats each tick: a big fire through winter nights, in warm weather just a cooking fire; damp wood goes faster. */
+  burnRate(h: Building) {
+    const season = seasonOf(this.tick);
+    const k = season === 3 ? 1.35 : season === 1 ? 0.45 : 0.75;
+    return (isDark(this.tick) ? 0.34 : 0.19) * k * (this.dampWood(h.band) ? DAMP_BURN : 1);
+  }
+
+  /** Whether a band has finished building something of this kind. */
+  hasBuilt(kind: BuildKind, band = this.camp.id) {
+    return this.buildings.some((b) => b.band === band && b.kind === kind && b.built);
+  }
+
+  /** Firewood stacked in the open is damp through autumn and winter, unless the woodpile has a roof. */
+  dampWood(band = this.camp.id) {
+    return seasonOf(this.tick) >= 2 && !this.hasBuilt('woodshed', band);
   }
 
   private daily() {
@@ -1826,7 +1850,7 @@ export class Sim {
     const need = meals * (winterNow ? daysToWinterEnd + 2 : s >= 1.75 ? daysToWinterEnd : Math.min(daysToWinterEnd, 20));
     const foodP = clamp01(1.15 - (lasting / Math.max(1, need)) * 0.9, winterNow ? 0.3 : 0.1, 1.2);
     // the fire burns about 6 loads a day in winter: lay in enough before the cold comes
-    const fuelNeed = winterNow ? Math.max(14, daysToWinterEnd * 6.5) : s > 2.0 ? 80 : s > 1.4 ? 40 : 12;
+    const fuelNeed = (winterNow ? Math.max(14, daysToWinterEnd * 6.5) : s > 2.0 ? 80 : s > 1.4 ? 40 : 12) * (this.hasBuilt('woodshed') ? 1 : s > 1.6 ? DAMP_BURN : 1);
     const sites = mine.filter((b) => !b.built);
     // daub can't wait on frozen ground: a site still short of mud as winter comes is raised in wood
     if (s >= 2.75) for (const b of sites) this.fallBackToWood(b);
@@ -1892,6 +1916,22 @@ export class Sim {
         this.clearTile(tile);
         this.newBuilding('rack', tile, -1);
         c.plan.push('Build a drying rack');
+      }
+    }
+    // then the comforts of the fire, one at a time once the first hut stands: a roof over the woodpile
+    // to keep the firewood dry through autumn and winter, and a windbreak behind the fire
+    const now = this.bandBuildings();
+    const busy = now.some((b) => !b.built && b.kind !== 'hut' && b.kind !== 'leanto');
+    if (!busy && now.some((b) => b.kind === 'hut' && b.built)) {
+      const pile = now.find((b) => b.kind === 'stockpile');
+      const hearth = this.hearth();
+      if (pile && !now.some((b) => b.kind === 'woodshed')) {
+        const b = this.newBuilding('woodshed', pile.tile, -1);
+        b.rot = pile.rot;
+        c.plan.push('Put a roof over the woodpile to keep the firewood dry');
+      } else if (hearth && !now.some((b) => b.kind === 'windbreak') && (s >= 1.8 || pop >= 12)) {
+        this.newBuilding('windbreak', hearth.tile, -1);
+        c.plan.push('Build a windbreak behind the fire');
       }
     }
     // a second hut at once when the band is large
@@ -2412,11 +2452,14 @@ export class Sim {
         for (const p of workers) lines.push(L(p.task!.kind === 'build' ? 'Building' : fetching[p.task!.res ?? 'wood'], p.name, pref(p.id)));
       }
       if (b.kind === 'hearth') {
-        const hours = b.fuel / ((isDark(this.tick) ? 0.34 : 0.19) * (seasonOf(this.tick) === 3 ? 1.35 : seasonOf(this.tick) === 1 ? 0.45 : 0.75));
+        const hours = b.fuel / this.burnRate(b);
         lines.push(L('Fire', b.fuel > 0 ? `Burning, about ${Math.max(1, Math.round(hours))} hours of wood left` : 'Out'));
         lines.push(L('Wood in store', `${Math.floor(this.camp.stock.wood)} loads`));
-        const warm = this.people.filter((p) => p.alive && hyp(p.x - this.camp.x, p.z - this.camp.z) < 2.6 && !p.indoors);
+        const reach = this.hasBuilt('windbreak') ? WARM_RADIUS_SHELTERED : WARM_RADIUS;
+        const warm = this.people.filter((p) => p.alive && hyp(p.x - this.camp.x, p.z - this.camp.z) < reach && !p.indoors);
         if (warm.length) lines.push(L('By the fire', warm.map((p) => p.name).join(', ')));
+        if (this.dampWood()) lines.push(L('Firewood', 'Damp: it burns a fifth faster without a roof over the woodpile'));
+        if (this.hasBuilt('windbreak')) lines.push(L('Windbreak', 'Throws the heat back: a wider, warmer circle'));
         notes.push(`The heart of ${this.camp.name} since ${this.when(this.camp.founded)}. People eat and warm themselves here, and sleep beside it until they have a roof.`);
       }
       if (b.kind === 'hut' || b.kind === 'leanto') {
@@ -2455,6 +2498,8 @@ export class Sim {
         if (t.carried) notes.push(`${t.carried} went with those who left to found camps of their own.`);
         notes.push(inside ? 'Everyone brings wood here. Food goes into the storehouse.' : 'Everything gathered is brought here: wood stacked at the back, food on the mat. Food left out spoils fast in the warm months.');
       }
+      if (b.kind === 'windbreak' && b.built) notes.push('A screen of stakes and logs behind the fire. It keeps the wind off and throws the heat back, so the fire warms people faster and further out.');
+      if (b.kind === 'woodshed' && b.built) notes.push('A thatched roof over the stacked firewood. Wood left in the open is damp through autumn and winter and burns a fifth faster; under the roof it stays dry.');
       if (b.kind === 'rack') {
         lines.push(L('Dried food', `${Math.round(this.camp.stock.preserved)} meals`));
         notes.push('Meat and fish dried here keep for most of a year.');

@@ -615,7 +615,11 @@ export class Engine {
     }
     for (const b of band.getBuildings()) {
       const base = w.groundY[b.z * w.size + b.x];
-      const p = proj(b.x + 0.5, base + 0.22, b.z + 0.5);
+      // the windbreak stands in an arc behind the fire and the woodpile roof over the back of the stockpile,
+      // on the same tiles: point at what is drawn, so the fire and the pile can still be clicked
+      const back = b.kind === 'windbreak' ? 1.55 : b.kind === 'woodshed' ? 0.22 : 0;
+      const turn = (b.rot * Math.PI) / 2;
+      const p = proj(b.x + 0.5 - Math.sin(turn) * back, base + (b.kind === 'woodshed' ? 0.55 : 0.22), b.z + 0.5 - Math.cos(turn) * back);
       const d = Math.hypot(p.x - cx, p.y - cy);
       if (d < 30) {
         const owner = this.names.get(b.owner);
