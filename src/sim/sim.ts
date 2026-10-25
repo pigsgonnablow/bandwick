@@ -965,8 +965,11 @@ export class Sim {
     // the infant of a mother who dies may not survive either: handled by the fostering rule
   }
 
+  /** Put down whatever they carry where they stand: logs stay as a pile, food is lost (and booked as spoiled). */
   dropCarry(p: Person) {
     const k = p.carry;
+    const food = k === CARRY.Berries ? 'berries' : k === CARRY.Meat ? 'meat' : k === CARRY.Fish ? 'fish' : '';
+    if (food && p.carryAmt > 0) this.book(`spoiled.${food}`, p.carryAmt);
     if (k === CARRY.Log && p.carryAmt > 0) {
       const lp = this.addProp(LOGS, p.x, this.world.groundY[this.tileOf(p)], p.z, 0, 0.8);
       this.propVal[lp] = p.carryAmt;
@@ -1368,13 +1371,17 @@ export class Sim {
 
   /** Move people into another band: they set off for its camp and leave their old roof behind. */
   private join(people: Person[], to: Camp) {
+    const prev = this.camp;
     for (const p of people) {
+      // whatever they had set aside or carried goes back to their own band's stores, not the current camp's
+      this.camp = this.campOf(p);
       abandon(this, p);
       p.band = to.id;
       p.home = -1;
       p.indoors = false;
       sendHome(this, p, to);
     }
+    this.camp = prev;
     this.buildingsVersion++;
   }
 
@@ -1479,6 +1486,8 @@ export class Sim {
     if (site < 0) return false;
     const adults = ms.filter((p) => this.age(p) >= 16).sort((a, b) => a.birth - b.birth || a.id - b.id);
     const lead = this.byId.get(c.leader)?.alive && this.byId.get(c.leader)!.band === c.id ? this.byId.get(c.leader)! : adults[0] ?? ms[0];
+    // wood and food set aside for a job (or carried in) go back to the stores before they are packed up
+    for (const p of ms) abandon(this, p);
     const stock = { ...c.stock };
     for (const k of Object.keys(stock) as (keyof Stock)[]) stock[k] *= 0.8; // not everything can be carried
     const nc = this.foundCamp(site, stock, c.id, lead.id);
