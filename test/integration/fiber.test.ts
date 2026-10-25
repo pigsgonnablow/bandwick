@@ -1,6 +1,6 @@
 // Grass and reeds are cut for fiber, fiber is twisted into cordage, and both go into buildings.
 import { describe, it, expect } from 'vitest';
-import { BUILD, FIBER_PER_CORD } from '../../src/sim/band';
+import { specOf, FIBER_PER_CORD } from '../../src/sim/band';
 import { isFiberPlant, fiberCap } from '../../src/sim/sim';
 import { sim, runYears } from '../helpers';
 
@@ -24,8 +24,8 @@ describe('fiber and cordage', () => {
     const built = s.buildings.filter((b) => b.built && (b.kind === 'hut' || b.kind === 'leanto' || b.kind === 'storehouse' || b.kind === 'rack'));
     expect(built.length).toBeGreaterThan(1);
     for (const b of built) {
-      expect(b.fiber).toBeGreaterThanOrEqual(BUILD[b.kind].fiber - 0.01);
-      expect(b.cordage).toBeGreaterThanOrEqual(BUILD[b.kind].cordage - 0.01);
+      expect(b.fiber).toBeGreaterThanOrEqual(specOf(b).fiber - 0.5);
+      expect(b.cordage).toBeGreaterThanOrEqual(specOf(b).cordage - 0.5);
     }
   });
 

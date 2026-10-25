@@ -8,7 +8,7 @@ import {
 } from './types';
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
-  Person, Building, BuildKind, BUILD, FIBER_PER_CORD, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
+  Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, TASK_KINDS, Ref, Card, CardLine,
 } from './band';
 import {
@@ -86,6 +86,8 @@ export interface Camp {
   graveyard: number; // tile
   founded: number;
   knowsPreserving: boolean;
+  /** how to raise drystone walls (absent in older saves: not yet) */
+  knowsStonework?: boolean;
   famine: boolean;
   hungryWinters: number;
   /** job weights from the planner, refreshed each morning */
@@ -141,6 +143,10 @@ export class Sim {
   fish: Float32Array;
   fishCap: Float32Array;
   fishingSpots: number[] = [];
+  /** dry land where mud can be dug: riverbank clay, and the banks of rivers and lakes */
+  mudSpots: number[] = [];
+  /** walkable ground at the foot of (or on) rock that holds stone: where stone can be quarried */
+  quarryTiles: number[] = [];
   /** per tile: how many standing trees */
   treesOnTile: Uint8Array;
   stats = { births: 0, deaths: 0, peak: 0, starved: 0, froze: 0, kills: 0, felled: 0 };
@@ -196,6 +202,30 @@ export class Sim {
           break;
         }
       }
+    }
+    for (let i = 0; i < NN; i++) {
+      if (world.water[i] !== WATER.None || !this.grid.walkable(i)) continue;
+      if (world.clay[i]) { this.mudSpots.push(i); continue; }
+      const x = i % this.N, z = (i / this.N) | 0;
+      for (const [dx, dz] of DIRS4) {
+        const nx = x + dx, nz = z + dz;
+        if (nx < 0 || nz < 0 || nx >= this.N || nz >= this.N) continue;
+        const wt = world.water[nz * this.N + nx];
+        if (wt === WATER.River || wt === WATER.Lake) {
+          this.mudSpots.push(i);
+          break;
+        }
+      }
+    }
+    for (let i = 0; i < NN; i++) {
+      if (world.water[i] !== WATER.None || !this.grid.walkable(i)) continue;
+      const x = i % this.N, z = (i / this.N) | 0;
+      let rock = world.stone[i] > 0;
+      for (const [dx, dz] of DIRS4) {
+        const nx = x + dx, nz = z + dz;
+        if (nx >= 0 && nz >= 0 && nx < this.N && nz < this.N && world.stone[nz * this.N + nx] > 0) rock = true;
+      }
+      if (rock) this.quarryTiles.push(i);
     }
     if (save) {
       this.restore(save);
@@ -300,7 +330,7 @@ export class Sim {
     }
     for (const c of this.camps) if (!c.color) { c.color = this.distinctColor(); c.origin ??= c.parent < 0 ? 'first' : 'amicable'; }
     // saves from before fiber and cordage
-    for (const c of [...this.camps, this.camp]) { c.stock.fiber ??= 0; c.stock.cordage ??= 0; }
+    for (const c of [...this.camps, this.camp]) { c.stock.fiber ??= 0; c.stock.cordage ??= 0; c.stock.mud ??= 0; c.stock.stone ??= 0; }
     this.events = d.events;
     this.people = d.people.map((p) => ({
       ...p, skills: Float32Array.from(p.skills), rel: new Map(p.rel), path: p.path !== null ? new Int32Array(unb64(p.path).buffer as ArrayBuffer) : null,
@@ -308,7 +338,7 @@ export class Sim {
     for (const p of this.people) p.band ??= this.camp.id;
     this.byId = new Map(this.people.map((p) => [p.id, p]));
     this.buildings = d.buildings as Building[];
-    for (const b of this.buildings) { b.band ??= this.camp.id; b.fiber ??= 0; b.cordage ??= 0; }
+    for (const b of this.buildings) { b.band ??= this.camp.id; b.fiber ??= 0; b.cordage ??= 0; b.mud ??= 0; b.stone ??= 0; }
     this.deer = d.deer as Deer[];
     this.herds = d.herds as Herd[];
     this.propsVersion++;
@@ -440,6 +470,7 @@ export class Sim {
       id, name: this.tongue.place(), gone: 0, parent, leader, settled: this.tick,
       hearth: -1, x: (tile % N) + 0.5, z: Math.floor(tile / N) + 0.5, tile,
       stock, graveyard: -1, founded: this.tick, knowsPreserving: prev ? prev.knowsPreserving && parent === prev.id : false,
+      knowsStonework: prev ? !!prev.knowsStonework && parent === prev.id : false,
       famine: false, hungryWinters: 0, jobs: {}, plan: [],
     };
     c.color = this.distinctColor();
@@ -531,7 +562,7 @@ export class Sim {
     }
     if (best < 0) return null;
     const cx = best % N, cz = (best / N) | 0;
-    const camp = this.foundCamp(best, { berries: 14, meat: 14, fish: 0, preserved: 0, wood: 8, fiber: 4, cordage: 2 }, -1, -1);
+    const camp = this.foundCamp(best, { berries: 14, meat: 14, fish: 0, preserved: 0, wood: 8, fiber: 4, cordage: 2, mud: 0, stone: 0 }, -1, -1);
     camp.origin = strangers ? 'strangers' : 'first';
     const r = this.rLife;
     const y = TICKS_PER_YEAR;
@@ -770,7 +801,7 @@ export class Sim {
     const N = this.N;
     const b: Building = {
       id: this.nextId++, band: this.camp ? this.camp.id : 0, kind, tile, x: tile % N, z: Math.floor(tile / N),
-      rot: hash3(tile, this.world.params.seed, 7) & 3, wood: 0, fiber: 0, cordage: 0, work: 0, built: false, owner,
+      rot: hash3(tile, this.world.params.seed, 7) & 3, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, work: 0, built: false, owner,
       fuel: 0, started: this.tick, finished: 0, builders: [],
     };
     this.buildings.push(b);
@@ -884,7 +915,7 @@ export class Sim {
     let shelter = 0;
     if (p.indoors && p.home >= 0) {
       const b = this.buildings.find((q) => q.id === p.home);
-      if (b) shelter = BUILD[b.kind].shelter;
+      if (b) shelter = specOf(b).shelter;
     }
     if (temp < 15) p.warmth -= (15 - temp) * 0.018 * (1 - shelter) * (age < 3 || age > 60 ? 1.25 : 1);
     else p.warmth += 0.5;
@@ -1064,7 +1095,8 @@ export class Sim {
   }
   private spoilNow(s: Stock) {
     const cold = seasonOf(this.tick) === 3 ? 0.4 : seasonOf(this.tick) === 0 || seasonOf(this.tick) === 2 ? 0.75 : 1;
-    const store = this.buildings.some((b) => b.band === this.camp.id && b.kind === 'storehouse' && b.built) ? 0.6 : 1;
+    const house = this.buildings.find((b) => b.band === this.camp.id && b.kind === 'storehouse' && b.built);
+    const store = house ? specOf(house).keep : 1;
     s.berries *= 1 - 0.06 * cold * store;
     s.fish *= 1 - 0.05 * cold * store;
     s.meat *= 1 - 0.035 * cold * store;
@@ -1303,6 +1335,23 @@ export class Sim {
         }
       }
     }
+    // learning to raise drystone walls: only where there is stone to hand, and sooner by the settled
+    if (!this.camp.knowsStonework && this.stoneNear(this.camp, 14) > 0) {
+      const years = (this.tick - this.camp.founded) / TICKS_PER_YEAR;
+      for (const p of still) {
+        if (this.age(p) < 16) continue;
+        let c = 0.0006 + Math.min(4, years) * 0.0003;
+        if (this.has(p, 'curious')) c *= 2.2;
+        if (this.has(p, 'industrious')) c *= 1.4;
+        c *= 0.8 + Math.min(20, p.skills[SK.build]) * 0.05;
+        if (r.next() < c) {
+          this.camp.knowsStonework = true;
+          this.remember(p, 'discovery', 30, 5, -1, 'Worked out how to raise walls of stacked stone.');
+          this.event('discovery', `${p.name} worked out how to raise walls of stacked stone.`, [p.id], p.x, p.z, 5);
+          break;
+        }
+      }
+    }
   }
 
   private birth(mother: Person) {
@@ -1452,7 +1501,7 @@ export class Sim {
     if (site < 0) return false;
     // they take a fair share of the stores with them
     const share = (group.length / ms.length) * 0.85;
-    const take: Stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0 };
+    const take: Stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
     for (const k of Object.keys(take) as (keyof Stock)[]) { take[k] = c.stock[k] * share; c.stock[k] -= take[k]; }
     // and the wood to get a fire going and a first roof up
     const wood = Math.min(c.stock.wood * 0.5, Math.max(0, 16 - take.wood));
@@ -1513,12 +1562,13 @@ export class Sim {
     for (const k of Object.keys(stock) as (keyof Stock)[]) stock[k] *= 0.8; // not everything can be carried
     const nc = this.foundCamp(site, stock, c.id, lead.id);
     nc.knowsPreserving = c.knowsPreserving;
+    nc.knowsStonework = c.knowsStonework;
     // the same people, the same colour
     nc.color = c.color ?? nc.color;
     nc.origin = 'moved';
     this.join(ms, nc);
     c.gone = this.tick;
-    c.stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0 };
+    c.stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
     this.hearth(c).fuel = 0;
     nc.settled = this.tick;
     for (const p of ms) this.remember(p, 'moved_camp', poorWood ? 4 : 10, 2, -1, `Left ${c.name} behind for ${nc.name}.`);
@@ -1707,7 +1757,7 @@ export class Sim {
       this.event('death_quarrel', `${att.name} killed ${vic.name} in a quarrel. There was nowhere to send ${att.sex ? 'him' : 'her'}.`, [att.id, vic.id], att.x, att.z, 4);
       return;
     }
-    const take: Stock = { berries: 0, meat: Math.min(6, c.stock.meat), fish: 0, preserved: 0, wood: Math.min(6, c.stock.wood), fiber: 0, cordage: 0 };
+    const take: Stock = { berries: 0, meat: Math.min(6, c.stock.meat), fish: 0, preserved: 0, wood: Math.min(6, c.stock.wood), fiber: 0, cordage: 0, mud: 0, stone: 0 };
     c.stock.meat -= take.meat;
     c.stock.wood -= take.wood;
     this.book('carried', take.meat + take.wood, c);
@@ -1778,10 +1828,14 @@ export class Sim {
     // the fire burns about 6 loads a day in winter: lay in enough before the cold comes
     const fuelNeed = winterNow ? Math.max(14, daysToWinterEnd * 6.5) : s > 2.0 ? 80 : s > 1.4 ? 40 : 12;
     const sites = mine.filter((b) => !b.built);
-    const siteWood = sites.reduce((a, b) => a + Math.max(0, BUILD[b.kind].wood - b.wood), 0);
+    // daub can't wait on frozen ground: a site still short of mud as winter comes is raised in wood
+    if (s >= 2.75) for (const b of sites) this.fallBackToWood(b);
+    const owed = (m: 'wood' | 'fiber' | 'cordage' | 'mud' | 'stone') => sites.reduce((a, b) => a + Math.max(0, specOf(b)[m] - b[m]), 0);
+    const siteWood = owed('wood');
     // thatch and cordage still owed to the sites, counted as fiber; and a little kept in hand for the next roof
-    const siteCord = sites.reduce((a, b) => a + Math.max(0, BUILD[b.kind].cordage - b.cordage), 0);
-    const siteFiber = sites.reduce((a, b) => a + Math.max(0, BUILD[b.kind].fiber - b.fiber), 0) + siteCord * FIBER_PER_CORD;
+    const siteCord = owed('cordage');
+    const siteFiber = owed('fiber') + siteCord * FIBER_PER_CORD;
+    const siteMud = owed('mud'), siteStone = owed('stone');
     const fiberHave = c.stock.fiber + c.stock.cordage * FIBER_PER_CORD;
     const fiberWant = siteFiber + 8;
     const woodP = clamp01((fuelNeed + siteWood - c.stock.wood) / (fuelNeed + siteWood + 1) * 1.15, 0.08, 1.0);
@@ -1795,6 +1849,9 @@ export class Sim {
       fiber: fiberHave < fiberWant ? clamp01((fiberWant - fiberHave) / (fiberWant + 2) * 1.1 + (siteFiber > fiberHave ? 0.25 : 0), 0.1, 0.9) : 0,
       // twisting cordage: what the sites need first, then a few lengths put by
       twist: c.stock.fiber >= FIBER_PER_CORD ? (siteCord > c.stock.cordage ? 0.8 : c.stock.cordage < 4 ? 0.3 : 0) : 0,
+      // mud and stone are fetched only for a site that needs them (mud can't be dug from frozen ground)
+      dig: siteMud > c.stock.mud && !winterNow ? 0.75 : 0,
+      quarry: siteStone > c.stock.stone ? 0.75 : 0,
       bury: this.people.some((p) => !p.alive && !p.buried && p.band === c.id) ? 1 : 0,
     };
     c.plan = [];
@@ -1813,8 +1870,9 @@ export class Sim {
         const tile = this.siteFor(kind, head);
         if (tile >= 0) {
           this.clearTile(tile);
-          this.newBuilding(kind, tile, head.id);
-          c.plan.push(`Build a ${BUILD[kind].label.toLowerCase()} for ${head.name}'s household`);
+          const b = this.newBuilding(kind, tile, head.id);
+          const why = this.chooseWalls(b, homeless.some((h) => this.household(h).some((q) => this.age(q) < 4)));
+          c.plan.push(`Build a ${labelOf(b).toLowerCase()} for ${head.name}'s household${why ? ` (${why})` : ''}`);
         }
       }
     }
@@ -1823,8 +1881,9 @@ export class Sim {
       const tile = this.siteFor('storehouse', null);
       if (tile >= 0) {
         this.clearTile(tile);
-        this.newBuilding('storehouse', tile, -1);
-        c.plan.push('Build a storehouse');
+        const b = this.newBuilding('storehouse', tile, -1);
+        const why = this.chooseWalls(b, false);
+        c.plan.push(`Build a ${labelOf(b).toLowerCase()}${why ? ` (${why})` : ''}`);
       }
     }
     if (c.knowsPreserving && !mine.some((b) => b.kind === 'rack')) {
@@ -1841,9 +1900,96 @@ export class Sim {
       const tile = this.siteFor('hut', head);
       if (tile >= 0) {
         this.clearTile(tile);
-        this.newBuilding('hut', tile, head.id);
+        this.chooseWalls(this.newBuilding('hut', tile, head.id), false);
       }
     }
+  }
+
+  /** Places to quarry stone within `r` tiles of a camp. */
+  stoneNear(c: Camp, r: number) {
+    let n = 0;
+    for (const i of this.quarryTiles) if (hyp((i % this.N) + 0.5 - c.x, Math.floor(i / this.N) + 0.5 - c.z) < r) n++;
+    return n;
+  }
+  private mudNear(c: Camp, r: number) {
+    let n = 0;
+    for (const i of this.mudSpots) if (hyp((i % this.N) + 0.5 - c.x, Math.floor(i / this.N) + 0.5 - c.z) < r) n++;
+    return n;
+  }
+
+  /**
+   * What a new hut or storehouse is made of. Every kind of wall the band can raise is weighed on what
+   * the land around camp offers, the cold, how hurried the band is, how long it has stayed, what it
+   * built before, and its leader. Returns a few words on why, when the walls are not wood.
+   */
+  chooseWalls(b: Building, hurry: boolean): string {
+    const c = this.camp;
+    const options = wallsFor(b.kind);
+    if (options.length < 2) return '';
+    const s = seasonPos(this.tick);
+    const trees = this.treesNear(c, 20);
+    const mud = this.mudNear(c, 20);
+    const stone = this.stoneNear(c, 18);
+    // winters up here: how cold the camp's own ground gets at midwinter
+    const midwinter = Math.floor(this.tick / TICKS_PER_YEAR) * TICKS_PER_YEAR + Math.round(3.5 * (TICKS_PER_YEAR / 4));
+    const cold = clamp01((2 - temperature(midwinter, 0, Math.max(0, this.world.level[c.tile] - SEA - 1))) / 12, 0, 1);
+    const years = (this.tick - c.founded) / TICKS_PER_YEAR;
+    const settled = clamp01(years / 6) * (this.treesNear(c, 26) < 12 ? 0.4 : 1);
+    const workers = this.members(c).filter((p) => this.age(p) >= 14 && this.age(p) < 60).length;
+    // the hurry is to have a roof before the snow, or for the very young
+    const rush = hurry || (s >= 2.2 && s < 3) ? 1 : s >= 3 ? 0.7 : 0.15;
+    const last = this.bandBuildings(c).filter((q) => q.built && (q.kind === 'hut' || q.kind === 'storehouse')).sort((a, q) => q.finished - a.finished)[0];
+    const lead = this.byId.get(c.leader);
+    const base = specOf({ kind: b.kind });
+    let best: Walls = 'wood', bestS = -Infinity;
+    const scores: Partial<Record<Walls, number>> = {};
+    for (const wall of options) {
+      const sp = specOf({ kind: b.kind, walls: wall });
+      let supply: number;
+      if (wall === 'wood') supply = clamp01(trees / 40, 0.15, 1.2) + (c.stock.wood >= sp.wood + 10 ? 0.15 : 0);
+      else if (wall === 'daub') {
+        // digging needs thawed ground: not with winter at the door
+        if (!mud || s >= 2.5) continue;
+        supply = clamp01(0.55 + mud / 30, 0, 1.15) + (c.stock.mud >= sp.mud ? 0.15 : 0);
+      } else {
+        if (!c.knowsStonework || !stone) continue;
+        supply = clamp01(0.5 + stone / 40, 0, 1.2) + (c.stock.stone >= sp.stone ? 0.15 : 0);
+      }
+      const durable = wall === 'stone' ? 2 : wall === 'daub' ? 1 : 0;
+      let sc = Math.log(supply + 1e-3);
+      sc += Math.log(sp.shelter > 0 ? sp.shelter / base.shelter : base.keep / sp.keep) * (1 + cold * 5);
+      sc -= Math.log(sp.work / base.work) * (0.4 + rush * 2.2) * (workers < 5 ? 1.5 : 1);
+      sc += durable * settled * 0.12;
+      if (last && (last.walls ?? 'wood') === wall) sc += lead && this.has(lead, 'cautious') ? 0.15 : 0.08;
+      if (lead && this.has(lead, 'ambitious') && wall === 'stone') sc += 0.2;
+      if (lead && this.has(lead, 'lazy') && wall === 'wood') sc += 0.15;
+      scores[wall] = sc;
+      if (sc > bestS) { bestS = sc; best = wall; }
+    }
+    b.walls = best;
+    this.buildingsVersion++;
+    if (best === 'wood') return '';
+    if (trees < 16) return 'the woods are thin here';
+    if (cold > 0.5) return 'the winters are hard here';
+    if (best === 'stone' && settled > 0.5) return 'they mean to stay';
+    return best === 'stone' ? 'there is good stone close by' : 'there is good mud by the water';
+  }
+
+  /** A site whose daub can't be finished before the ground freezes is raised in wood instead; what was brought goes back to the store. */
+  private fallBackToWood(b: Building) {
+    if (b.walls !== 'daub') return;
+    const sp = specOf(b), st = this.camp.stock;
+    if (b.mud >= sp.mud - 0.5 || st.mud >= sp.mud - b.mud) return;
+    st.mud += b.mud;
+    st.stone += b.stone;
+    b.mud = 0;
+    b.stone = 0;
+    // the wood, thatch and cordage already there stay, as far as a wooden one needs them
+    const wood = BUILD[b.kind];
+    for (const m of ['wood', 'fiber', 'cordage'] as const) if (b[m] > wood[m]) { st[m] += b[m] - wood[m]; b[m] = wood[m]; }
+    b.work = Math.min(b.work, wood.work * 0.9);
+    b.walls = 'wood';
+    this.buildingsVersion++;
   }
 
   /** Built homes nobody lives in any more, huts first. */
@@ -1908,7 +2054,7 @@ export class Sim {
           household.push(ch);
       }
     for (const q of this.members()) if (household.some((h) => h.id === q.carer) && this.age(q) < 14 && !household.includes(q)) household.push(q);
-    const label = BUILD[b.kind].label.toLowerCase();
+    const label = labelOf(b).toLowerCase();
     for (const h of household) {
       h.home = b.id;
       this.remember(h, 'home', 12, 2, b.id, `Moved into ${prev && prev.id !== head.id ? `${prev.name}'s old ${label}` : `an empty ${label}`}.`);
@@ -1950,7 +2096,7 @@ export class Sim {
       if (home >= 0) {
         const theirs = owns(p.id, home) || (partner ? owns(partner.id, home) : false);
         const b = this.buildings.find((q) => q.id === home);
-        const crowd = b ? living.filter((q) => q.home === home).length > BUILD[b.kind].cap : false;
+        const crowd = b ? living.filter((q) => q.home === home).length > specOf(b).cap : false;
         if (theirs || (!partner && !crowd)) continue;
       }
       // single young adults stay with a parent who has a home
@@ -2128,7 +2274,8 @@ export class Sim {
     return this.buildings.map((b) => ({
       empty: b.built && (b.kind === 'hut' || b.kind === 'leanto') && !living.some((p) => p.home === b.id),
       id: b.id, band: b.band, kind: b.kind, x: b.x, z: b.z, rot: b.rot, built: b.built,
-      progress: b.built ? 1 : Math.min(0.98, (b.work / Math.max(1, BUILD[b.kind].work)) * 0.85 + (b.wood / Math.max(1, BUILD[b.kind].wood)) * 0.15),
+      progress: b.built ? 1 : Math.min(0.98, (b.work / Math.max(1, specOf(b).work)) * 0.85 + (b.wood / Math.max(1, specOf(b).wood)) * 0.15),
+      walls: b.walls ?? 'wood',
       fuel: b.fuel, owner: b.owner,
     }));
   }
@@ -2136,7 +2283,7 @@ export class Sim {
   packPiles() {
     return this.buildings.filter((b) => b.kind === 'stockpile').map((b) => {
       const c = this.campById(b.band);
-      const st = c && !c.gone ? c.stock : { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0 };
+      const st = c && !c.gone ? c.stock : { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
       const inside = this.buildings.some((q) => q.band === b.band && q.kind === 'storehouse' && q.built);
       return { id: b.id, wood: st.wood, berries: inside ? 0 : st.berries, meat: inside ? 0 : st.meat, fish: inside ? 0 : st.fish, preserved: inside ? 0 : st.preserved };
     });
@@ -2189,10 +2336,11 @@ export class Sim {
       stock: { ...c.stock },
       fuel: this.hearth(c).fuel,
       homes: mine.filter((b) => (b.kind === 'hut' || b.kind === 'leanto') && b.built).length,
-      building: mine.filter((b) => !b.built).map((b) => BUILD[b.kind].label),
+      building: mine.filter((b) => !b.built).map((b) => labelOf(b)),
       plan: c.plan.slice(),
       famine: c.famine,
       knowsPreserving: c.knowsPreserving,
+      knowsStonework: !!c.knowsStonework,
       deer: this.deer.filter((d) => d.alive).length,
       stats: { ...this.stats },
       temp: temperature(this.tick, this.anomaly, Math.max(0, this.world.level[c.tile] - SEA - 1)),
@@ -2247,7 +2395,8 @@ export class Sim {
     const pref = (id: number): Ref => ({ kind: 'person', id });
     const L = (label: string, value: string, ref?: Ref): CardLine => ({ label, value, ref });
     {
-      const spec = BUILD[b.kind];
+      const spec = specOf(b);
+      const label = labelOf(b);
       const owner = this.byId.get(b.owner);
       const lines: CardLine[] = [];
       const notes: string[] = [];
@@ -2255,9 +2404,11 @@ export class Sim {
         lines.push(L('Wood', `${Math.floor(b.wood)} of ${spec.wood} loads delivered`));
         if (spec.fiber) lines.push(L('Thatch', `${Math.floor(b.fiber)} of ${spec.fiber} bundles of grass and reeds`));
         if (spec.cordage) lines.push(L('Cordage', `${Math.floor(b.cordage)} of ${spec.cordage} lengths`));
+        if (spec.mud) lines.push(L('Mud', `${Math.floor(b.mud)} of ${spec.mud} loads for the daub`));
+        if (spec.stone) lines.push(L('Stone', `${Math.floor(b.stone)} of ${spec.stone} loads for the walls`));
         lines.push(L('Work', `${Math.round((b.work / spec.work) * 100)}% done`));
         const workers = this.people.filter((p) => p.alive && (p.task?.kind === 'build' || p.task?.kind === 'supply') && p.task.ref === b.id);
-        const fetching = { wood: 'Fetching wood', fiber: 'Fetching thatch', cordage: 'Fetching cordage' };
+        const fetching = { wood: 'Fetching wood', fiber: 'Fetching thatch', cordage: 'Fetching cordage', mud: 'Fetching mud', stone: 'Fetching stone' };
         for (const p of workers) lines.push(L(p.task!.kind === 'build' ? 'Building' : fetching[p.task!.res ?? 'wood'], p.name, pref(p.id)));
       }
       if (b.kind === 'hearth') {
@@ -2276,13 +2427,16 @@ export class Sim {
       if (b.kind === 'storehouse') {
         const st = this.camp.stock;
         lines.push(L('Holding', `${Math.round(foodTotal(st))} meals: ${Math.round(st.berries)} berries, ${Math.round(st.meat)} meat, ${Math.round(st.fish)} fish, ${Math.round(st.preserved)} dried`));
-        notes.push('Raised off the ground, it slows spoilage: food keeps 40% longer. Firewood stays stacked at the stockpile.');
+        const walls = b.walls === 'stone' ? 'Its stone walls keep out damp and vermin' : b.walls === 'daub' ? 'Its daubed walls keep it dry' : 'Raised off the ground, it keeps food dry';
+        notes.push(`${walls}: food inside spoils ${Math.round((1 - spec.keep) * 100)}% slower. Firewood stays stacked at the stockpile.`);
       }
       if (b.kind === 'stockpile') {
         const st = this.camp.stock;
         const inside = this.buildings.some((q) => q.band === b.band && q.kind === 'storehouse' && q.built);
         lines.push(L('Wood', `${Math.floor(st.wood)} loads`));
         if (st.fiber >= 0.5 || st.cordage >= 0.5) lines.push(L('Fiber', `${Math.floor(st.fiber)} bundles of grass and reeds, ${Math.floor(st.cordage)} lengths of cordage`));
+        if (st.mud >= 0.5) lines.push(L('Mud', `${Math.floor(st.mud)} loads`));
+        if (st.stone >= 0.5) lines.push(L('Stone', `${Math.floor(st.stone)} loads`));
         if (inside) lines.push(L('Food', `${Math.round(foodTotal(st))} meals, kept in the storehouse`));
         else {
           lines.push(L('Berries', `${Math.round(st.berries)} handfuls`));
@@ -2312,7 +2466,7 @@ export class Sim {
       if (empty && owner) notes.unshift(`Empty now. It was the home of ${owner.name}'s family${owner.alive ? '' : `; ${owner.name} died ${this.when(owner.death)}`}.`);
       if (this.camp.gone) notes.unshift(`Abandoned: no one has lived at ${this.camp.name} since ${this.when(this.camp.gone)}.`);
       return {
-        ref, title: empty ? `Empty ${spec.label.toLowerCase()}` : owner && home ? `${spec.label} of ${owner.name}'s family` : spec.label,
+        ref, title: empty ? `Empty ${label.toLowerCase()}` : owner && home ? `${label} of ${owner.name}'s family` : label,
         subtitle: b.built ? (b.kind === 'hearth' ? `${this.camp.gone ? 'Cold hearth' : 'Camp fire'} of ${this.camp.name}` : `${this.camp.name} · built ${this.when(b.finished)}`) : 'Under construction',
         lines, notes, x: b.x + 0.5, z: b.z + 0.5,
       };
@@ -2438,7 +2592,7 @@ export class Sim {
     const living = this.living();
     const n = Math.max(1, living.length);
     // stores across every band
-    const st: Stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0 };
+    const st: Stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
     for (const c of this.liveCamps()) for (const k of Object.keys(st) as (keyof Stock)[]) st[k] += c.stock[k];
     this.history.push({
       tick: this.tick,
@@ -2539,7 +2693,7 @@ export class Sim {
       memories: p.memories
         .map((m) => ({ text: m.text, tick: m.tick, weight: m.weight, now: this.memoryNow(m) }))
         .sort((a, b) => b.tick - a.tick),
-      home: home ? BUILD[home.kind].label : null,
+      home: home ? labelOf(home) : null,
       kills: p.kills,
       carry: p.carry,
       carryAmt: p.carryAmt,

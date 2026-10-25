@@ -23,13 +23,13 @@ const PHRASE: Record<string, string> = {
   forage: 'is picking berries', fell: 'is felling a tree', haul: 'is hauling logs home', hunt: 'is hunting deer',
   fish: 'is fishing', build: 'is building', supply: 'is carrying materials to a building site', fuel: 'is feeding the fire',
   preserve: 'is drying meat and fish', bury: 'is burying the dead', explore: 'is exploring', deadwood: 'is gathering fallen branches', swim: 'is swimming to cool off',
-  reap: 'is cutting grass and reeds', twist: 'is twisting cordage by the fire',
+  reap: 'is cutting grass and reeds', twist: 'is twisting cordage by the fire', dig: 'is digging mud by the water', quarry: 'is quarrying stone',
 };
 /** How much a viewer would want to see each task. */
 const INTEREST: Record<string, number> = {
   hunt: 6, bury: 6.5, mourn: 4.5, build: 3.5, fell: 3.2, fish: 2.8, haul: 2, supply: 2, forage: 2.2, preserve: 2.2,
   socialize: 1.8, play: 2.2, eat: 1.4, fuel: 1.6, eatwild: 1.6, warm: 1.2, idle: 0.6, sleep: 0.1, explore: 2, deadwood: 1.8, swim: 3.4,
-  reap: 1.8, twist: 1.2,
+  reap: 1.8, twist: 1.2, dig: 2, quarry: 2.4,
 };
 
 export class Director {

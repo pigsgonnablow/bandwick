@@ -16,6 +16,8 @@ const SWIM = 19, TREAD = 20;
 const FISH_TASK = TASK_KINDS.indexOf('fish') + 1;
 /** Drawn in a woodcutter's hands while they chop (the simulation doesn't track tools). */
 const AXE = 99;
+/** How walls that are not wood colour a building (multiplied over its own colours). */
+const WALL_TINT: Record<string, [number, number, number]> = { daub: [1.0, 0.86, 0.68], stone: [0.8, 0.82, 0.86] };
 /** A flying chip of wood or a drop of water. */
 interface Bit { x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number; life: number; size: number; r: number; g: number; b: number; floor: number }
 /** Water deeper than this share of someone's height means swimming rather than wading. */
@@ -52,7 +54,7 @@ function baseArm(carry: number, act: number): [number, number, number] {
   if (carry === CARRY.Spear) return act === ACT.Hunt ? [-2.35, -0.35, 0.28] : act === ACT.Fish ? [-2.2, -0.35, 0.28] : [-0.45, -0.75, 0.05];
   if (carry === CARRY.Log || carry === CARRY.Meat) return [-1.55, -1.95, 0.05];
   if (carry === CARRY.Body) return [-1.25, -1.35, 0.05];
-  if (carry === CARRY.Berries || carry === CARRY.Fiber) return [-0.15, -0.55, 0.05];
+  if (carry === CARRY.Berries || carry === CARRY.Fiber || carry === CARRY.Mud || carry === CARRY.Stone) return [-0.15, -0.55, 0.05];
   return [-0.1, -0.5, 0.05];
 }
 /** Where the right hand is (person space) for given arm angles and lean, as the shader bends the body. */
@@ -155,7 +157,7 @@ export class BandLayer {
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
       [CARRY.Spear, 'spear'], [CARRY.Body, 'body'], [CARRY.Baby, 'baby'], [AXE, 'axe'],
       // cut grass and cordage go home in a basket like berries
-      [CARRY.Fiber, 'berries'],
+      [CARRY.Fiber, 'berries'], [CARRY.Mud, 'berries'], [CARRY.Stone, 'berries'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
@@ -1060,7 +1062,7 @@ export class BandLayer {
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), scl = new THREE.Vector3(1, 1, 1);
     const up = new THREE.Vector3(0, 1, 0);
     const tint = new THREE.Color();
-    const put = (kind: string, x: number, z: number, rot: number, progress: number, s = 1, band = -1) => {
+    const put = (kind: string, x: number, z: number, rot: number, progress: number, s = 1, band = -1, walls = 'wood') => {
       const m = this.buildingMeshes.get(kind);
       if (!m) return;
       const k = counts.get(kind) ?? 0;
@@ -1068,7 +1070,10 @@ export class BandLayer {
       // in colour mode a building takes on its band's colour; otherwise it is as built
       if (!m.instanceColor) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3).fill(1), 3);
       const bc = this.colorMode && band >= 0 ? this.bandColors.get(band) : undefined;
-      tint.setRGB(1, 1, 1);
+      // daubed walls take on the colour of dried mud, stone ones go grey
+      const wt = WALL_TINT[walls];
+      if (wt) tint.setRGB(wt[0], wt[1], wt[2]);
+      else tint.setRGB(1, 1, 1);
       if (bc) tint.lerp(bc.light, bc.gone ? 0.25 : 0.65);
       m.setColorAt(k, tint);
       pos.set(x, this.world.groundY[Math.floor(z) * this.world.size + Math.floor(x)], z);
@@ -1085,7 +1090,7 @@ export class BandLayer {
       const cx = b.x + 0.5, cz = b.z + 0.5;
       const rot = (b.rot * Math.PI) / 2;
       const kind = b.kind === 'hut' ? (b.id % 2 ? 'hut1' : 'hut0') : b.kind;
-      put(kind, cx, cz, rot, b.built ? 1 : Math.max(0.02, b.progress), 1, b.band);
+      put(kind, cx, cz, rot, b.built ? 1 : Math.max(0.02, b.progress), 1, b.band, b.walls);
       const bc = this.colorMode ? this.bandColors.get(b.band) : undefined;
       if (bc) this.auraList.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, r: b.kind === 'hearth' ? 3 : 2.2, c: bc.color, k: bc.gone ? 0.12 : 0.42 });
       // the band's range: a wide wash around a lived-in camp's hearth, wider the more people there are
@@ -1266,7 +1271,7 @@ function carryOffset(kind: number, act: number) {
   const p = new THREE.Vector3();
   switch (kind) {
     case CARRY.Log: p.set(0.06, 0.3, 0); e.set(0, Math.PI / 2, 0.15); break;
-    case CARRY.Berries: case CARRY.Fiber: p.set(0.075, 0.16, 0.04); break;
+    case CARRY.Berries: case CARRY.Fiber: case CARRY.Mud: case CARRY.Stone: p.set(0.075, 0.16, 0.04); break;
     case CARRY.Meat: p.set(0, 0.3, -0.03); e.set(0, Math.PI / 2, 0); break;
     case CARRY.Fish: p.set(0.078, 0.15, 0.02); e.set(0, Math.PI / 2, -1.2); break;
     case CARRY.Spear:

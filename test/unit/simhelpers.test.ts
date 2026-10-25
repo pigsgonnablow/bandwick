@@ -37,7 +37,7 @@ describe('small helpers', () => {
   });
 
   it('adds up food but not wood or fiber', () => {
-    expect(foodTotal({ berries: 1, meat: 2, fish: 3, preserved: 4, wood: 100, fiber: 7, cordage: 5 })).toBe(10);
+    expect(foodTotal({ berries: 1, meat: 2, fish: 3, preserved: 4, wood: 100, fiber: 7, cordage: 5, mud: 9, stone: 11 })).toBe(10);
   });
 });
 

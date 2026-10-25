@@ -43,6 +43,15 @@ bundles to a length (the crafting skill). Buildings need both: a lean-to takes 4
 a hut 14 wood, 6 thatch and 3 cordage, a storehouse 10 wood, 4 thatch and 2 cordage, a drying rack
 5 wood and 2 cordage. Work on a site starts once everything has been carried to it.
 
+**Mud and stone.** Huts and storehouses can also have walls of wattle-and-daub (a few poles, woven
+reeds and mud dug on the banks of rivers and lakes or from riverbank clay) or drystone (quarried
+from rock near camp, once someone in the band has worked out stonework). Daub and stone are warmer
+and keep food better but take longer to raise. Each morning the band weighs what is near camp, how
+hard its winters are, how close the cold is, how long it has stayed, what it built before and what
+its leader is like, and says why in its plan ("Build a stone hut for Arn's household (the woods
+are thin here)"). Mud can't be dug from frozen ground: a daub site still short of mud as winter
+comes is finished in wood. Daubed walls show the colour of dried mud, stone ones go grey.
+
 **Fortune.** Most years are ordinary. Some are not: a sickness that runs through a camp, a feud
 that ends in a killing and an exile, wolves or a bear on someone out alone after dark, a drowning,
 a summer the berries fail, a murrain among the deer; or a year of plenty, a great hunt that brings
