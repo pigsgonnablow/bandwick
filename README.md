@@ -36,6 +36,13 @@ in and went out (gathered, eaten, spoiled, dried, burned, built with, carried aw
 left): click the stockpile for this year, last year and since the founding; the band panel shows
 this year at a glance, and the Chronicle's annals give each year's totals.
 
+**Fiber and cordage.** Grass tussocks and reed beds are cut for fiber, and they grow back through
+spring and summer (reeds faster, not at all in winter). Older children help cut it. Fiber is
+stacked at the stockpile, and in the evenings people sit by the fire twisting it into cordage, three
+bundles to a length (the crafting skill). Buildings need both: a lean-to takes 4 wood and 3 thatch,
+a hut 14 wood, 6 thatch and 3 cordage, a storehouse 10 wood, 4 thatch and 2 cordage, a drying rack
+5 wood and 2 cordage. Work on a site starts once everything has been carried to it.
+
 **Fortune.** Most years are ordinary. Some are not: a sickness that runs through a camp, a feud
 that ends in a killing and an exile, wolves or a bear on someone out alone after dark, a drowning,
 a summer the berries fail, a murrain among the deer; or a year of plenty, a great hunt that brings

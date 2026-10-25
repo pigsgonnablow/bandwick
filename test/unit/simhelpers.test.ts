@@ -36,8 +36,8 @@ describe('small helpers', () => {
     expect(hyp(3, 4)).toBe(5);
   });
 
-  it('adds up food but not wood', () => {
-    expect(foodTotal({ berries: 1, meat: 2, fish: 3, preserved: 4, wood: 100 })).toBe(10);
+  it('adds up food but not wood or fiber', () => {
+    expect(foodTotal({ berries: 1, meat: 2, fish: 3, preserved: 4, wood: 100, fiber: 7, cordage: 5 })).toBe(10);
   });
 });
 

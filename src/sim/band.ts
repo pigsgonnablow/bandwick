@@ -23,18 +23,18 @@ export const FLASH = { Thrust: 1, Stab: 2 } as const;
 export const ACT_NAMES = Object.keys(ACT);
 
 /** What a person is carrying. */
-export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7 } as const;
+export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8 } as const;
 
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
-  | 'deadwood' | 'swim' | 'migrate';
+  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'twist';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
-  'deadwood', 'swim', 'migrate',
+  'deadwood', 'swim', 'migrate', 'reap', 'twist',
 ];
 
 /** Anything in the world that can be clicked. */
@@ -79,6 +79,8 @@ export interface Task {
   homeAt?: number;
   /** preserving: how much of `amount` was taken from the fish (the rest is meat) */
   fish?: number;
+  /** supplying a building site: what is carried there (absent: wood) */
+  res?: Material;
 }
 
 export interface Memory {
@@ -153,13 +155,18 @@ export interface Person {
 
 export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
-export const BUILD: Record<BuildKind, { wood: number; work: number; cap: number; shelter: number; label: string }> = {
-  hearth: { wood: 0, work: 0, cap: 0, shelter: 0, label: 'Hearth' },
-  leanto: { wood: 4, work: 40, cap: 2, shelter: 0.5, label: 'Lean-to' },
-  hut: { wood: 14, work: 150, cap: 6, shelter: 0.78, label: 'Hut' },
-  storehouse: { wood: 10, work: 110, cap: 0, shelter: 0, label: 'Storehouse' },
-  rack: { wood: 5, work: 45, cap: 0, shelter: 0, label: 'Drying rack' },
-  stockpile: { wood: 0, work: 0, cap: 0, shelter: 0, label: 'Stockpile' },
+/** What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it together. */
+export const MATERIALS = ['wood', 'fiber', 'cordage'] as const;
+export type Material = (typeof MATERIALS)[number];
+/** Fiber twisted into one length of cordage. */
+export const FIBER_PER_CORD = 3;
+export const BUILD: Record<BuildKind, { wood: number; fiber: number; cordage: number; work: number; cap: number; shelter: number; label: string }> = {
+  hearth: { wood: 0, fiber: 0, cordage: 0, work: 0, cap: 0, shelter: 0, label: 'Hearth' },
+  leanto: { wood: 4, fiber: 3, cordage: 0, work: 40, cap: 2, shelter: 0.5, label: 'Lean-to' },
+  hut: { wood: 14, fiber: 6, cordage: 3, work: 150, cap: 6, shelter: 0.78, label: 'Hut' },
+  storehouse: { wood: 10, fiber: 4, cordage: 2, work: 110, cap: 0, shelter: 0, label: 'Storehouse' },
+  rack: { wood: 5, fiber: 0, cordage: 2, work: 45, cap: 0, shelter: 0, label: 'Drying rack' },
+  stockpile: { wood: 0, fiber: 0, cordage: 0, work: 0, cap: 0, shelter: 0, label: 'Stockpile' },
 };
 
 export interface Building {
@@ -172,6 +179,9 @@ export interface Building {
   z: number;
   rot: number; // quarter turns
   wood: number; // delivered
+  /** thatch and cordage delivered (absent in older saves until restored) */
+  fiber: number;
+  cordage: number;
   work: number; // done
   built: boolean;
   owner: number; // person id of the household head
@@ -212,6 +222,9 @@ export interface Stock {
   fish: number;
   preserved: number;
   wood: number;
+  /** cut grass and reeds, and the cordage twisted from them (absent in older saves until restored) */
+  fiber: number;
+  cordage: number;
 }
 
 export interface SimEvent {

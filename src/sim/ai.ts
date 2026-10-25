@@ -1,8 +1,8 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
-import { isBerry, isTreeType, treeStage, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, STAGE_WORD, art, clamp } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, BUILD, FLASH, foodTotal, Building } from './band';
+import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, STAGE_WORD, art, clamp } from './sim';
+import { Person, Task, TaskKind, SK, ACT, CARRY, BUILD, MATERIALS, FIBER_PER_CORD, Material, FLASH, foodTotal, Building } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, TICKS_PER_DAY } from './time';
 import { WATER, treeId } from './types';
 
@@ -108,6 +108,10 @@ export function decide(s: Sim, p: Person) {
       add('hunt', food * fit(p, SK.hunt) * nerve * 0.95 * crowd('hunt'));
     }
     if (age >= 11) add('fish', food * fit(p, SK.fish) * 0.85 * crowd('fish'));
+    // grass and reeds for thatch and cordage: work the older children can do too
+    if (age >= 9) add('reap', (j.fiber ?? 0) * drive * night * fit(p, SK.forage) * (child ? 1.15 : 1) * crowd('reap'));
+    // twisting cordage is sitting work, done by the fire into the evening
+    if (age >= 10) add('twist', (j.twist ?? 0) * drive * (dark ? (s.hearthLit() ? 0.4 : 0.06) : 0.85) * fit(p, SK.craft) * crowd('twist'));
     if (age >= 13) {
       const wood = (j.wood ?? 0.3) * drive * night * fit(p, SK.wood);
       add(s.countProps(LOGS) > 0 ? 'haul' : 'fell', wood * crowd('fell') * crowd('haul'));
@@ -287,6 +291,22 @@ function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
       p.thought = 'Picking berries.';
       return newTask(s, kind, s.propTile[k], s.propX[k] + 0.3, s.propZ[k] + 0.22, k);
     }
+    case 'reap': {
+      const k = nextClump(s, c.x, c.z, 26);
+      if (k < 0) return null;
+      s.reserved.set(k, p.id);
+      p.thought = isReeds(s.propType[k]) ? 'Cutting reeds by the water.' : 'Cutting grass for thatch.';
+      return newTask(s, kind, s.propTile[k], s.propX[k] + 0.28, s.propZ[k] + 0.2, k);
+    }
+    case 'twist': {
+      if (c.stock.fiber < FIBER_PER_CORD) return null;
+      const st = seat(s, p, 1.45);
+      const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z);
+      t.amount = FIBER_PER_CORD;
+      c.stock.fiber -= t.amount; // set aside now so others don't count it twice
+      p.thought = s.hearthLit() ? 'Twisting grass into cordage by the fire.' : 'Twisting grass into cordage.';
+      return t;
+    }
     case 'fell': {
       // the nearest good timber first; as the woods around camp thin out, go further or take younger trees
       const score = (k: number, d: number) => treeStage(s.propType[k]) * 3 - d - hyp(s.propX[k] - p.x, s.propZ[k] - p.z) * 0.4 + (s.chopped.has(k) ? 8 : 0);
@@ -365,25 +385,37 @@ function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
     }
     case 'build': {
       const sites = s.buildings.filter((b) => !b.built && b.band === p.band).sort((a, b) => a.started - b.started);
+      let short: Material | null = null;
       for (const b of sites) {
-        const need = BUILD[b.kind].wood - b.wood - inTransit(s, b.id);
-        if (need > 0.5) {
-          if (c.stock.wood < 1) continue;
+        const spec = BUILD[b.kind];
+        let ready = true;
+        for (const m of MATERIALS) {
+          const need = spec[m] - b[m] - inTransit(s, b.id, m);
+          if (need <= 0.5) continue;
+          ready = false;
+          if (c.stock[m] < 1) {
+            short ??= m;
+            continue;
+          }
           const st = s.storeSpot(true);
-          p.thought = `Carrying wood to the ${BUILD[b.kind].label.toLowerCase()}.`;
+          p.thought = `Carrying ${m === 'wood' ? 'wood' : m === 'fiber' ? 'thatch' : 'cordage'} to the ${spec.label.toLowerCase()}.`;
           const t = newTask(s, 'supply', st.tile, st.x, st.z, b.id);
-          t.amount = Math.min(6, need, c.stock.wood);
-          c.stock.wood -= t.amount; // set aside now so others don't count it twice
+          t.amount = Math.min(m === 'wood' ? 6 : 8, need, c.stock[m]);
+          if (m !== 'wood') t.res = m;
+          c.stock[m] -= t.amount; // set aside now so others don't count it twice
           return t;
         }
-        if (b.wood >= BUILD[b.kind].wood - 0.01) {
+        if (ready && MATERIALS.every((m) => b[m] >= spec[m] - 0.01)) {
           const owner = s.byId.get(b.owner);
-          p.thought = owner && owner.alive ? `Building a ${BUILD[b.kind].label.toLowerCase()} for ${owner.id === p.id ? 'their family' : owner.name + "'s family"}.` : `Building the ${BUILD[b.kind].label.toLowerCase()}.`;
+          p.thought = owner && owner.alive ? `Building a ${spec.label.toLowerCase()} for ${owner.id === p.id ? 'their family' : owner.name + "'s family"}.` : `Building the ${spec.label.toLowerCase()}.`;
           return newTask(s, 'build', b.tile, b.x + 0.5, b.z + 0.5, b.id, true);
         }
       }
-      // no wood for any site: go get some
-      return c.stock.wood < 1 ? setup(s, p, s.countProps(LOGS) > 0 ? 'haul' : 'fell') : null;
+      // nothing in the stores for any site: go and get what is missing
+      if (short === 'wood') return setup(s, p, s.countProps(LOGS) > 0 ? 'haul' : 'fell');
+      if (short === 'cordage' && c.stock.fiber >= FIBER_PER_CORD) return setup(s, p, 'twist');
+      if (short) return setup(s, p, 'reap');
+      return null;
     }
     case 'fuel': {
       if (c.stock.wood < 1) return null;
@@ -437,9 +469,13 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
   const st = s.camp.stock;
   if (t) {
     if ((t.kind === 'supply' || t.kind === 'fuel') && t.amount > 0) {
-      st.wood += t.amount;
+      st[t.res ?? 'wood'] += t.amount;
       t.amount = 0;
-      if (p.carry === CARRY.Log) { p.carry = CARRY.None; p.carryAmt = 0; }
+      if (p.carry === CARRY.Log || p.carry === CARRY.Fiber) { p.carry = CARRY.None; p.carryAmt = 0; }
+    }
+    if (t.kind === 'twist' && t.amount > 0) {
+      st.fiber += t.amount;
+      t.amount = 0;
     }
     if (t.kind === 'preserve' && t.amount > 0) {
       // back as it came: fish to the fish, meat to the meat
@@ -463,7 +499,7 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
   if (!keepCarry && p.carry !== CARRY.None) {
     // goods only reach the stores if they are carried there: further out, logs are left in a
     // pile for someone to haul in later, and food is lost to the land
-    const st = s.storeSpot(p.carry === CARRY.Log);
+    const st = s.storeSpot(p.carry === CARRY.Log || p.carry === CARRY.Fiber);
     if (hyp(p.x - st.x, p.z - st.z) <= 3) deposit(s, p);
     else s.dropCarry(p);
   }
@@ -473,10 +509,15 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
   p.indoors = false;
 }
 
-function inTransit(s: Sim, buildingId: number) {
+function inTransit(s: Sim, buildingId: number, m: Material) {
   let n = 0;
-  for (const q of s.people) if (q.alive && q.task?.kind === 'supply' && q.task.ref === buildingId) n += q.task.amount;
+  for (const q of s.people) if (q.alive && q.task?.kind === 'supply' && q.task.ref === buildingId && (q.task.res ?? 'wood') === m) n += q.task.amount;
   return n;
+}
+
+/** The best stand of grass or reeds to cut near a spot: fullest and nearest first. */
+function nextClump(s: Sim, x: number, z: number, radius: number) {
+  return s.nearestProp(x, z, radius, (k) => isFiberPlant(s.propType[k]) && s.propVal[k] >= 1, (k, d) => s.propVal[k] / (d + 4));
 }
 
 // ---------------------------------------------------------------- movement
@@ -561,7 +602,7 @@ function face(p: Person, x: number, z: number) {
 export function deposit(s: Sim, p: Person) {
   const st = s.camp.stock;
   const a = p.carryAmt;
-  const kind = p.carry === CARRY.Berries ? 'berries' : p.carry === CARRY.Meat ? 'meat' : p.carry === CARRY.Fish ? 'fish' : p.carry === CARRY.Log ? 'wood' : '';
+  const kind = p.carry === CARRY.Berries ? 'berries' : p.carry === CARRY.Meat ? 'meat' : p.carry === CARRY.Fish ? 'fish' : p.carry === CARRY.Log ? 'wood' : p.carry === CARRY.Fiber ? 'fiber' : '';
   if (kind) {
     st[kind] += a;
     s.book(`gathered.${kind}`, a);
@@ -576,7 +617,7 @@ export function delivering(p: Person) {
 }
 
 function goStore(s: Sim, p: Person, t: Task, next: number) {
-  const st = s.storeSpot(p.carry === CARRY.Log);
+  const st = s.storeSpot(p.carry === CARRY.Log || p.carry === CARRY.Fiber);
   t.goal = st.tile;
   t.gx = st.x + (((p.look >>> 11) & 7) / 7 - 0.5) * 0.6;
   t.gz = st.z + (((p.look >>> 14) & 7) / 7 - 0.5) * 0.6;
@@ -616,7 +657,7 @@ export function runTask(s: Sim, p: Person) {
   const moving = (res: GoResult) => {
     if (res === 'fail') {
       // nobody tries this target again for a while (it is across a river, up a cliff...)
-      const propTask = t.kind === 'forage' || t.kind === 'fell' || t.kind === 'haul' || t.kind === 'eatwild' || t.kind === 'deadwood';
+      const propTask = t.kind === 'forage' || t.kind === 'fell' || t.kind === 'haul' || t.kind === 'eatwild' || t.kind === 'deadwood' || t.kind === 'reap';
       if (propTask && t.ref >= 0) s.unreachable.set(t.ref, s.tick + 2 * TICKS_PER_DAY);
       if (t.kind === 'fish') s.unreachable.set(-(t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
       abandon(s, p);
@@ -860,6 +901,68 @@ export function runTask(s: Sim, p: Person) {
       }
       return;
     }
+    case 'reap': {
+      if (t.stage === 0) {
+        if (!s.propAlive[t.ref] || s.propVal[t.ref] < 0.5) {
+          // someone cut it first: take what is in hand home
+          if (p.carry === CARRY.Fiber) goStore(s, p, t, 2);
+          else return finish(s, p);
+        } else {
+          if (moving(go(s, p, t))) return;
+          t.stage = 1;
+          t.timer = Math.max(8, Math.round(14 * (1.2 - p.skills[SK.forage] * 0.02)));
+        }
+      }
+      if (t.stage === 1) {
+        p.act = ACT.Gather;
+        face(p, s.propX[t.ref], s.propZ[t.ref]);
+        if (--t.timer > 0) return;
+        const take = Math.min(s.propVal[t.ref], 2 + p.skills[SK.forage] * 0.08);
+        s.propVal[t.ref] -= take;
+        s.propsVersion++;
+        s.reserved.delete(t.ref);
+        p.carry = CARRY.Fiber;
+        p.carryAmt += take;
+        skillUp(p, SK.forage, 0.03);
+        // an armful is more than one tussock: cut the next one close by before walking back
+        const next = p.carryAmt < 5 ? nextClump(s, p.x, p.z, 2.5) : -1;
+        if (next >= 0 && !s.reserved.has(next)) {
+          s.reserved.set(next, p.id);
+          t.ref = next;
+          t.goal = s.propTile[next];
+          t.gx = s.propX[next] + 0.28;
+          t.gz = s.propZ[next] + 0.2;
+          t.stage = 0;
+          p.path = null;
+          return;
+        }
+        goStore(s, p, t, 2);
+        p.thought = 'Bringing an armful of grass back to camp.';
+      }
+      if (t.stage === 2) {
+        if (moving(go(s, p, t))) return;
+        deposit(s, p);
+        finish(s, p);
+      }
+      return;
+    }
+    case 'twist': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = Math.max(16, Math.round(36 * (1.2 - p.skills[SK.craft] * 0.025)));
+      }
+      p.act = ACT.Sit;
+      face(p, c.x, c.z);
+      if (--t.timer > 0) return;
+      c.stock.cordage += 1;
+      s.book('twisted', t.amount);
+      t.amount = 0;
+      skillUp(p, SK.craft, 0.06);
+      p.thought = 'Twisted a length of cordage.';
+      finish(s, p);
+      return;
+    }
     case 'fell': {
       if (t.stage === 0) {
         if (!s.propAlive[t.ref]) return finish(s, p);
@@ -1083,7 +1186,7 @@ export function runTask(s: Sim, p: Person) {
       }
       if (t.stage === 0) {
         if (moving(go(s, p, t))) return;
-        p.carry = CARRY.Log;
+        p.carry = t.res ? CARRY.Fiber : CARRY.Log;
         p.carryAmt = t.amount;
         t.stage = 1;
         t.goal = b.tile;
@@ -1093,8 +1196,9 @@ export function runTask(s: Sim, p: Person) {
         p.path = null;
       }
       if (moving(go(s, p, t))) return;
-      b.wood += t.amount;
-      s.book('built', t.amount);
+      const m = t.res ?? 'wood';
+      b[m] += t.amount;
+      s.book(m === 'wood' ? 'built' : `built.${m}`, t.amount);
       p.carry = CARRY.None;
       p.carryAmt = 0;
       t.amount = 0;

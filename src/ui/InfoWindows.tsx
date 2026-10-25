@@ -14,12 +14,13 @@ const DOING: Record<string, string> = {
   eat: 'Eating by the fire', eatwild: 'Eating berries off the bush', sleep: 'Asleep', warm: 'Warming up by the fire',
   socialize: 'Visiting someone', play: 'Playing', idle: 'Resting', mourn: 'Mourning', forage: 'Picking berries',
   fell: 'Felling a tree', haul: 'Hauling logs home', hunt: 'Hunting deer', fish: 'Fishing', build: 'Building',
-  supply: 'Carrying wood to a building site', fuel: 'Feeding the fire', preserve: 'Drying meat and fish',
+  supply: 'Carrying materials to a building site', fuel: 'Feeding the fire', preserve: 'Drying meat and fish',
   bury: 'Burying the dead', explore: 'Exploring', deadwood: 'Gathering fallen branches', swim: 'Swimming to cool off',
+  reap: 'Cutting grass and reeds', twist: 'Twisting cordage',
 };
 const CARRYING: Record<number, string> = {
   [CARRY.Log]: 'a log', [CARRY.Berries]: 'berries', [CARRY.Meat]: 'meat', [CARRY.Fish]: 'fish',
-  [CARRY.Body]: 'the body of the dead', [CARRY.Spear]: 'a spear', [CARRY.Baby]: 'a baby',
+  [CARRY.Body]: 'the body of the dead', [CARRY.Spear]: 'a spear', [CARRY.Baby]: 'a baby', [CARRY.Fiber]: 'grass and cordage',
 };
 const NEEDS: [keyof PersonDetail['needs'], string][] = [['food', 'Food'], ['rest', 'Rest'], ['warmth', 'Warmth'], ['belonging', 'Company'], ['safety', 'Safety']];
 const SKILL_WORDS: Record<string, string> = {

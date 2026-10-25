@@ -52,7 +52,7 @@ function baseArm(carry: number, act: number): [number, number, number] {
   if (carry === CARRY.Spear) return act === ACT.Hunt ? [-2.35, -0.35, 0.28] : act === ACT.Fish ? [-2.2, -0.35, 0.28] : [-0.45, -0.75, 0.05];
   if (carry === CARRY.Log || carry === CARRY.Meat) return [-1.55, -1.95, 0.05];
   if (carry === CARRY.Body) return [-1.25, -1.35, 0.05];
-  if (carry === CARRY.Berries) return [-0.15, -0.55, 0.05];
+  if (carry === CARRY.Berries || carry === CARRY.Fiber) return [-0.15, -0.55, 0.05];
   return [-0.1, -0.5, 0.05];
 }
 /** Where the right hand is (person space) for given arm angles and lean, as the shader bends the body. */
@@ -154,6 +154,8 @@ export class BandLayer {
     const carryNames: [number, string][] = [
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
       [CARRY.Spear, 'spear'], [CARRY.Body, 'body'], [CARRY.Baby, 'baby'], [AXE, 'axe'],
+      // cut grass and cordage go home in a basket like berries
+      [CARRY.Fiber, 'berries'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
@@ -1264,7 +1266,7 @@ function carryOffset(kind: number, act: number) {
   const p = new THREE.Vector3();
   switch (kind) {
     case CARRY.Log: p.set(0.06, 0.3, 0); e.set(0, Math.PI / 2, 0.15); break;
-    case CARRY.Berries: p.set(0.075, 0.16, 0.04); break;
+    case CARRY.Berries: case CARRY.Fiber: p.set(0.075, 0.16, 0.04); break;
     case CARRY.Meat: p.set(0, 0.3, -0.03); e.set(0, Math.PI / 2, 0); break;
     case CARRY.Fish: p.set(0.078, 0.15, 0.02); e.set(0, Math.PI / 2, -1.2); break;
     case CARRY.Spear:
@@ -1486,9 +1488,9 @@ void poseVertex(vec3 pos, out vec3 v, out mat3 R) {
   if (p.lie < 0.5 && carry > 0.5) {
     if (carry < 1.5 || (carry > 2.5 && carry < 3.5)) { p.shR = -1.55; p.elR = -1.95; }            // log, meat: on the right shoulder
     else if (carry > 4.5 && carry < 5.5) { p.shL = p.shR = -1.25; p.elL = p.elR = -1.35; }         // a body, in both arms
-    else if (carry > 6.5) { p.shL = p.shR = -0.75; p.elL = p.elR = -1.45; }                         // a baby, cradled
+    else if (carry > 6.5 && carry < 7.5) { p.shL = p.shR = -0.75; p.elL = p.elR = -1.45; }                         // a baby, cradled
     else if (carry > 5.5 && iAnim.x < 12.5) { p.shR = -0.45; p.elR = -0.75; }                      // a spear, held low
-    else if (carry > 1.5 && carry < 2.5) { p.shR = -0.15; p.elR = -0.55; }                         // a basket of berries
+    else if ((carry > 1.5 && carry < 2.5) || carry > 7.5) { p.shR = -0.15; p.elR = -0.55; }        // a basket of berries or grass
   }
   // a one-off move (picking up, setting down, a thrust, a stab) plays over all of that
   if (iAnim3.x > 0.5 && p.lie < 0.5) {
