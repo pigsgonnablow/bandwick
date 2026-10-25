@@ -113,9 +113,15 @@ export class InvariantChecker {
     } else idleAdults.set(-1, 0);
     // buildings
     const tiles = new Set<number>();
+    // (a windbreak stands at the fire and a woodpile roof over the stockpile, on their tiles)
+    const host = { windbreak: 'hearth', woodshed: 'stockpile' } as Record<string, string>;
     for (const b of sim.buildings) {
-      if (tiles.has(b.tile)) flag('two buildings on one tile', `${at} tile ${b.tile}`);
-      tiles.add(b.tile);
+      if (host[b.kind]) {
+        if (!sim.buildings.some((q) => q.band === b.band && q.kind === host[b.kind] && q.tile === b.tile)) flag(`${b.kind} away from its ${host[b.kind]}`, `${at} ${b.kind} ${b.id}`);
+      } else {
+        if (tiles.has(b.tile)) flag('two buildings on one tile', `${at} tile ${b.tile}`);
+        tiles.add(b.tile);
+      }
       for (const m of MATERIALS) if (b[m] > specOf(b)[m] + 6) flag('building over-supplied', `${at} ${b.kind} ${m} ${b[m]}`);
       if (!b.built && sim.tick - b.started > 2 * TICKS_PER_YEAR) flag('building unfinished for 2 years', `${at} ${b.kind}`);
     }

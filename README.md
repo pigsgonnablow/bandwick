@@ -52,6 +52,13 @@ its leader is like, and says why in its plan ("Build a stone hut for Arn's house
 are thin here)"). Mud can't be dug from frozen ground: a daub site still short of mud as winter
 comes is finished in wood. Daubed walls show the colour of dried mud, stone ones go grey.
 
+**The fire's comforts.** Firewood stacked in the open is damp through autumn and winter and burns a
+fifth faster, so once the first hut stands the band puts a thatched roof over the woodpile (4 wood,
+4 thatch, 2 cordage). Then, before the cold or once the band has grown, it raises a windbreak of
+stakes and rails in an arc behind the fire (6 wood, 2 cordage): it throws the heat back, so people
+at the fire warm faster and further out. Bark stripped from big felled trees, and pine cones picked
+up with fallen branches, go on the woodpile too. The fire's card says when the wood is damp.
+
 **Fortune.** Most years are ordinary. Some are not: a sickness that runs through a camp, a feud
 that ends in a killing and an exile, wolves or a bear on someone out alone after dark, a drowning,
 a summer the berries fail, a murrain among the deer; or a year of plenty, a great hunt that brings

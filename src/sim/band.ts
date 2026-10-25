@@ -153,7 +153,7 @@ export interface Person {
   carer: number;
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -184,6 +184,9 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   storehouse: spec({ wood: 10, fiber: 4, cordage: 2, work: 110, keep: 0.6, label: 'Storehouse' }),
   rack: spec({ wood: 5, cordage: 2, work: 45, label: 'Drying rack' }),
   stockpile: spec({ label: 'Stockpile' }),
+  // built onto the camp fire and the stockpile, on their tiles
+  windbreak: spec({ wood: 6, cordage: 2, work: 30, label: 'Windbreak' }),
+  woodshed: spec({ wood: 4, fiber: 4, cordage: 2, work: 40, label: 'Woodpile roof' }),
 };
 
 /** What a building's walls are made of. Huts and storehouses can be raised in any of these. */
