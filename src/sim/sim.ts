@@ -16,6 +16,7 @@ import {
   isDark, temperature, berriesRipe, freshFrozen, seasonPos, seasonOf, ageYears, yearOf, dayOf,
 } from './time';
 import { decide, runTask, abandon, sendHome, delivering } from './ai';
+import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor } from './know';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 const TREE_TYPES = SPECIES.length * STAGES * TREE_VARIANTS;
@@ -93,9 +94,12 @@ export interface Camp {
   stock: Stock;
   graveyard: number; // tile
   founded: number;
-  knowsPreserving: boolean;
-  /** how to raise drystone walls (absent in older saves: not yet) */
-  knowsStonework?: boolean;
+  /** what the band has discovered (keys of DISCOVERIES), in the order it learned them */
+  knows: string[];
+  /** experience built up toward each thing it doesn't know yet */
+  practice: Record<string, number>;
+  /** what a newcomer who married in will teach the band, and when */
+  learning?: { k: string; at: number; by: number }[];
   famine: boolean;
   hungryWinters: number;
   /** job weights from the planner, refreshed each morning */
@@ -347,6 +351,19 @@ export class Sim {
     this.byId = new Map(this.people.map((p) => [p.id, p]));
     this.buildings = d.buildings as Building[];
     for (const b of this.buildings) { b.band ??= this.camp.id; b.fiber ??= 0; b.cordage ??= 0; b.mud ??= 0; b.stone ??= 0; }
+    // saves from before discovery: a band knows what it already knew (everything but drying and stonework
+    // was known to all then), and everything it has built or begun
+    for (const c of this.camps) {
+      if (c.knows) continue;
+      const old = c as Camp & { knowsPreserving?: boolean; knowsStonework?: boolean };
+      const knew = new Set(this.buildings.filter((b) => b.band === c.id).flatMap(knowHowFor));
+      if (old.knowsPreserving) knew.add('preserving');
+      if (old.knowsStonework) knew.add('stonework');
+      c.knows = DISCOVERIES.filter((d) => knew.has(d.key) || (d.key !== 'preserving' && d.key !== 'stonework')).map((d) => d.key);
+      c.practice = {};
+      delete old.knowsPreserving;
+      delete old.knowsStonework;
+    }
     this.deer = d.deer as Deer[];
     this.herds = d.herds as Herd[];
     this.propsVersion++;
@@ -402,7 +419,7 @@ export class Sim {
    * The best place for a camp: flat walkable grass near fresh water, wood and berries.
    * Optionally within a distance band of an origin, and clear of the other bands' camps.
    */
-  chooseSite(opts: { from?: { x: number; z: number }; min?: number; max?: number; avoid?: number; reachFrom?: number } = {}) {
+  chooseSite(opts: { from?: { x: number; z: number }; min?: number; max?: number; avoid?: number; reachFrom?: number; timber?: boolean } = {}) {
     const w = this.world, N = this.N;
     const berryTiles: number[] = [];
     const treeTiles: number[] = [];
@@ -455,7 +472,7 @@ export class Sim {
         if (fd > 6) continue;
         // a camp needs timber: a band burns a big tree every few days through winter
         const timber = near(treeTiles, x, z, 12);
-        if (opts.from && timber < 30) continue;
+        if ((opts.from || opts.timber) && timber < 30) continue;
         const score =
           -Math.abs(fd - 2.5) * 2 + Math.min(40, timber) * 0.25 + Math.min(10, near(berryTiles, x, z, 14)) * 0.9 +
           (w.fertility[i] / 255) * 3 - (w.level[i] - SEA) * 0.4 + (hash3(i, w.params.seed, 404 + this.camps.length) % 100) * 0.01;
@@ -477,8 +494,9 @@ export class Sim {
     const c: Camp = {
       id, name: this.tongue.place(), gone: 0, parent, leader, settled: this.tick,
       hearth: -1, x: (tile % N) + 0.5, z: Math.floor(tile / N) + 0.5, tile,
-      stock, graveyard: -1, founded: this.tick, knowsPreserving: prev ? prev.knowsPreserving && parent === prev.id : false,
-      knowsStonework: prev ? !!prev.knowsStonework && parent === prev.id : false,
+      stock, graveyard: -1, founded: this.tick,
+      // a daughter band knows all its parent did
+      knows: prev && parent === prev.id ? prev.knows.slice() : [], practice: {},
       famine: false, hungryWinters: 0, jobs: {}, plan: [],
     };
     c.color = this.distinctColor();
@@ -559,7 +577,8 @@ export class Sim {
   /** The first band, or a band of strangers come from beyond the map: ten people, two families, an elder. */
   private foundBand(strangers = false) {
     const N = this.N, w = this.world;
-    let best = this.chooseSite({ avoid: strangers ? 24 : 0 });
+    // strangers, like a band that moves, look for woods enough to see them through the winters
+    let best = this.chooseSite({ avoid: strangers ? 24 : 0, timber: strangers });
     if (best < 0 && !strangers) {
       // fallback: any walkable grass tile nearest the centre
       for (let r = 0; r < N && best < 0; r++)
@@ -572,6 +591,14 @@ export class Sim {
     const cx = best % N, cz = (best / N) | 0;
     const camp = this.foundCamp(best, { berries: 14, meat: 14, fish: 0, preserved: 0, wood: 8, fiber: 4, cordage: 2, mud: 0, stone: 0 }, -1, -1);
     camp.origin = strangers ? 'strangers' : 'first';
+    // strangers bring some of what is known in the world by now, more the later they come
+    if (strangers) {
+      const known = new Set(this.camps.flatMap((o) => o.knows));
+      const share = Math.min(0.8, 0.2 + yearOf(this.tick) * 0.03);
+      // shelter, once anyone knows it, they all know: no band gets through many winters without it
+      for (const d of DISCOVERIES)
+        if (known.has(d.key) && d.needs.every((k) => camp.knows.includes(k)) && (d.key === 'huts' || this.rLife.chance(share))) camp.knows.push(d.key);
+    }
     const r = this.rLife;
     const y = TICKS_PER_YEAR;
     const band: Person[] = [];
@@ -1070,6 +1097,78 @@ export class Sim {
     return seasonOf(this.tick) >= 2 && !this.hasBuilt('woodshed', band);
   }
 
+  /** Whether a band has discovered something. */
+  knows(k: string, c = this.camp) {
+    return c.knows.includes(k);
+  }
+
+  /**
+   * Someone did a piece of work: it adds to their band's experience toward each discovery it leads
+   * to, and they may have the idea. The chance grows with the experience, so it is near nothing at
+   * first; curious people, the industrious and the skilled see it sooner, and so does a band in need.
+   */
+  practise(p: Person, what: Practice, amount = 1) {
+    if (this.age(p) < 14) return;
+    const c = this.campById(p.band);
+    if (!c || c.gone) return;
+    for (const d of DISCOVERIES) {
+      const w = d.practice[what];
+      if (!w || c.knows.includes(d.key) || !d.needs.every((k) => c.knows.includes(k))) continue;
+      if (d.near && !this.nearCamp(c, d.near)) continue;
+      const add = w * amount;
+      const exp = (c.practice[d.key] ?? 0) + add;
+      c.practice[d.key] = exp;
+      let chance = (add * 2 * exp) / (d.need * d.need);
+      if (this.has(p, 'curious')) chance *= 2;
+      if (this.has(p, 'industrious')) chance *= 1.3;
+      chance *= 0.8 + Math.min(20, p.skills[d.skill]) * 0.03;
+      chance *= d.hurry?.(this, c) ?? 1;
+      if (this.rAi.next() < chance) this.discover(c, d, p);
+    }
+  }
+
+  private discover(c: Camp, d: Discovery, p: Person) {
+    c.knows.push(d.key);
+    delete c.practice[d.key];
+    this.remember(p, 'discovery', 30, 5, -1, d.memory);
+    this.event('discovery', `${p.name} ${d.found}.`, [p.id], p.x, p.z, 5);
+  }
+
+  /** Mud or stone within reach of a camp (a camp never moves, so this is asked once). */
+  private nearCache = new Map<string, boolean>();
+  private nearCamp(c: Camp, what: 'mud' | 'stone') {
+    const key = `${c.id}:${what}`;
+    let v = this.nearCache.get(key);
+    if (v === undefined) {
+      v = what === 'mud' ? this.mudNear(c, 20) > 0 : this.stoneNear(c, 14) > 0;
+      this.nearCache.set(key, v);
+    }
+    return v;
+  }
+
+  /** Someone who married in teaches their new band what their old one knew, a season after they come. */
+  private teach() {
+    const c = this.camp;
+    if (!c.learning?.length) return;
+    const due = c.learning.filter((l) => l.at <= this.tick);
+    if (!due.length) return;
+    c.learning = c.learning.filter((l) => l.at > this.tick);
+    for (const l of due) {
+      const d = DISCOVERY.get(l.k);
+      const by = this.byId.get(l.by);
+      if (!d || c.knows.includes(l.k) || !by || !by.alive || by.band !== c.id) continue;
+      c.knows.push(l.k);
+      delete c.practice[l.k];
+      this.remember(by, 'taught', 12, 2, -1, `Taught the people of ${c.name} to ${d.taught}.`);
+      this.event('discovery', `${by.name} taught the people of ${c.name} to ${d.taught}.`, [by.id], by.x, by.z, 3);
+    }
+  }
+
+  /** What one band knows that another doesn't, in the order it should be learned. */
+  private unknownTo(from: Camp, to: Camp) {
+    return DISCOVERIES.filter((d) => from.knows.includes(d.key) && !to.knows.includes(d.key)).map((d) => d.key);
+  }
+
   private daily() {
     const t = this.tick;
     const day = dayOf(t);
@@ -1342,40 +1441,15 @@ export class Sim {
       this.camp.famine = false;
       this.event('famine_end', `The hunger at ${this.camp.name} eases.`, [], this.camp.x, this.camp.z, 2);
     }
-    // discovering how to dry and smoke food, after hunger has taught its lesson
-    if (!this.camp.knowsPreserving) {
-      const s = seasonPos(this.tick);
-      for (const p of still) {
-        if (this.age(p) < 14) continue;
-        let c = 0.0012;
-        if (this.camp.hungryWinters > 0 || p.memories.some((m) => m.kind === 'famine')) c = 0.015;
-        if (this.has(p, 'curious')) c *= 2.2;
-        if (s > 1.5 && s < 3) c *= 1.5;
-        if (r.next() < c) {
-          this.camp.knowsPreserving = true;
-          this.remember(p, 'discovery', 30, 5, -1, 'Discovered how to dry and smoke meat.');
-          this.event('discovery', `${p.name} discovered how to dry and smoke meat and fish.`, [p.id], p.x, p.z, 5);
-          break;
-        }
-      }
+    // last night: who slept under a lean-to or out in the open, and who sat by the fire in the evening
+    const lit = this.hearth().fuel > 0;
+    for (const p of still) {
+      if (this.age(p) < 14) continue;
+      const home = p.home >= 0 ? this.buildings.find((b) => b.id === p.home) : undefined;
+      if (!home || !home.built || home.kind === 'leanto') this.practise(p, 'night_out');
+      if (lit) this.practise(p, 'evening_fire');
     }
-    // learning to raise drystone walls: only where there is stone to hand, and sooner by the settled
-    if (!this.camp.knowsStonework && this.stoneNear(this.camp, 14) > 0) {
-      const years = (this.tick - this.camp.founded) / TICKS_PER_YEAR;
-      for (const p of still) {
-        if (this.age(p) < 16) continue;
-        let c = 0.0006 + Math.min(4, years) * 0.0003;
-        if (this.has(p, 'curious')) c *= 2.2;
-        if (this.has(p, 'industrious')) c *= 1.4;
-        c *= 0.8 + Math.min(20, p.skills[SK.build]) * 0.05;
-        if (r.next() < c) {
-          this.camp.knowsStonework = true;
-          this.remember(p, 'discovery', 30, 5, -1, 'Worked out how to raise walls of stacked stone.');
-          this.event('discovery', `${p.name} worked out how to raise walls of stacked stone.`, [p.id], p.x, p.z, 5);
-          break;
-        }
-      }
-    }
+    this.teach();
   }
 
   private birth(mother: Person) {
@@ -1436,7 +1510,8 @@ export class Sim {
         this.considerSplit(c);
       }
     }
-    if (dayOfYear === 20) this.considerStrangers();
+    // strangers come in spring, with a summer ahead to build and lay in stores before their first winter
+    if (dayOfYear === 6) this.considerStrangers();
     if (dayOfYear % 12 === 3 && season < 3) this.considerMatches();
   }
 
@@ -1585,8 +1660,9 @@ export class Sim {
     const stock = { ...c.stock };
     for (const k of Object.keys(stock) as (keyof Stock)[]) stock[k] *= 0.8; // not everything can be carried
     const nc = this.foundCamp(site, stock, c.id, lead.id);
-    nc.knowsPreserving = c.knowsPreserving;
-    nc.knowsStonework = c.knowsStonework;
+    nc.knows = c.knows.slice();
+    nc.practice = { ...c.practice };
+    nc.learning = c.learning?.slice();
     // the same people, the same colour
     nc.color = c.color ?? nc.color;
     nc.origin = 'moved';
@@ -1609,11 +1685,22 @@ export class Sim {
     const to = this.liveCamps().filter((o) => o !== c).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
     if (!to || !ms.length) return false;
     this.join(ms, to);
+    // the band they join learns everything they knew
+    const learned = this.unknownTo(c, to);
+    if (learned.length) {
+      to.knows.push(...learned);
+      for (const k of learned) delete to.practice[k];
+    }
     c.gone = this.tick;
     this.hearth(c).fuel = 0;
     for (const p of ms) this.remember(p, 'moved_camp', -8, 2, -1, `Left ${c.name}, too few to go on, for ${to.name}.`);
     this.event('merge', `${ms.length === 1 ? `${ms[0].name}, the last of the people of ${c.name},` : `The last ${num(ms.length)} of the people of ${c.name}`} went to live at ${to.name}.`,
       ms.map((p) => p.id), c.x, c.z, 4);
+    if (learned.length) {
+      const what = learned.map((k) => DISCOVERY.get(k)!.taught);
+      this.event('discovery', `The newcomers from ${c.name} showed the people of ${to.name} how to ${what.length > 1 ? `${what.slice(0, -1).join(', ')} and ${what[what.length - 1]}` : what[0]}.`,
+        ms.map((p) => p.id), to.x, to.z, 3);
+    }
     return true;
   }
 
@@ -1667,6 +1754,11 @@ export class Sim {
         this.adjust(q, p, 45);
         this.pair(p, q, false);
         this.join([goer], home);
+        // an adult brings what their old band knew, and teaches it after a season
+        for (const k of this.unknownTo(from, home)) {
+          if (home.learning?.some((l) => l.k === k)) continue;
+          (home.learning ??= []).push({ k, at: this.tick + TICKS_PER_DAY * DAYS_PER_YEAR / 4, by: goer.id });
+        }
         for (const m of this.members(home)) if (m !== goer) { this.adjust(goer, m, 12); this.adjust(m, goer, 10); }
         this.remember(goer, 'married_out', 15, 3, stay.id, `Left ${from.name} to live with ${stay.name} at ${home.name}.`);
         this.event('pairing', `${goer.name} of ${from.name} and ${stay.name} of ${home.name} became partners. ${goer.name} went to live at ${home.name}.`,
@@ -1869,7 +1961,7 @@ export class Sim {
       wood: woodP + (logsLying > 0 ? 0.1 : 0),
       build: sites.length ? 0.85 : 0,
       fuel: this.hearth().fuel < 5 ? 0.9 : 0.15,
-      preserve: c.knowsPreserving && mine.some((b) => b.kind === 'rack' && b.built) && c.stock.meat + c.stock.fish > 6 ? 0.7 : 0,
+      preserve: this.knows('preserving') && mine.some((b) => b.kind === 'rack' && b.built) && c.stock.meat + c.stock.fish > 6 ? 0.7 : 0,
       fiber: fiberHave < fiberWant ? clamp01((fiberWant - fiberHave) / (fiberWant + 2) * 1.1 + (siteFiber > fiberHave ? 0.25 : 0), 0.1, 0.9) : 0,
       // twisting cordage: what the sites need first, then a few lengths put by
       twist: c.stock.fiber >= FIBER_PER_CORD ? (siteCord > c.stock.cordage ? 0.8 : c.stock.cordage < 4 ? 0.3 : 0) : 0,
@@ -1890,7 +1982,7 @@ export class Sim {
       const homeless = this.householdsWithoutHome();
       if (homeless.length) {
         const head = homeless[0];
-        const kind: BuildKind = c.stock.wood >= 6 || s < 2.6 ? 'hut' : 'leanto';
+        const kind: BuildKind = this.knows('huts') && (c.stock.wood >= 6 || s < 2.6) ? 'hut' : 'leanto';
         const tile = this.siteFor(kind, head);
         if (tile >= 0) {
           this.clearTile(tile);
@@ -1900,8 +1992,24 @@ export class Sim {
         }
       }
     }
+    // once huts are known, families still under a lean-to get one, one at a time, outside the dead of winter
+    if (this.knows('huts') && !winterNow && !this.bandBuildings().some((b) => !b.built && (b.kind === 'hut' || b.kind === 'leanto'))) {
+      const head = this.bandBuildings()
+        .filter((b) => b.built && b.kind === 'leanto')
+        .map((b) => [b, this.byId.get(b.owner)] as const)
+        .filter(([b, q]) => q && q.alive && q.band === c.id && q.home === b.id)
+        .map(([, q]) => q!)
+        .sort((a, b) => b.children.length - a.children.length || a.id - b.id)[0];
+      const tile = head ? this.siteFor('hut', head) : -1;
+      if (head && tile >= 0) {
+        this.clearTile(tile);
+        const b = this.newBuilding('hut', tile, head.id);
+        const why = this.chooseWalls(b, false);
+        c.plan.push(`Build a ${labelOf(b).toLowerCase()} for ${head.name}'s household, to leave their lean-to${why ? ` (${why})` : ''}`);
+      }
+    }
     const day = dayOf(this.tick) - dayOf(c.founded);
-    if (!mine.some((b) => b.kind === 'storehouse') && day > 10 && pop >= 9 && mine.some((b) => b.kind === 'hut' && b.built)) {
+    if (this.knows('storehouse') && !mine.some((b) => b.kind === 'storehouse') && day > 10 && pop >= 9 && mine.some((b) => b.kind === 'hut' && b.built)) {
       const tile = this.siteFor('storehouse', null);
       if (tile >= 0) {
         this.clearTile(tile);
@@ -1910,7 +2018,7 @@ export class Sim {
         c.plan.push(`Build a ${labelOf(b).toLowerCase()}${why ? ` (${why})` : ''}`);
       }
     }
-    if (c.knowsPreserving && !mine.some((b) => b.kind === 'rack')) {
+    if (this.knows('preserving') && !mine.some((b) => b.kind === 'rack')) {
       const tile = this.siteFor('rack', null);
       if (tile >= 0) {
         this.clearTile(tile);
@@ -1925,17 +2033,17 @@ export class Sim {
     if (!busy && now.some((b) => b.kind === 'hut' && b.built)) {
       const pile = now.find((b) => b.kind === 'stockpile');
       const hearth = this.hearth();
-      if (pile && !now.some((b) => b.kind === 'woodshed')) {
+      if (pile && this.knows('woodshed') && !now.some((b) => b.kind === 'woodshed')) {
         const b = this.newBuilding('woodshed', pile.tile, -1);
         b.rot = pile.rot;
         c.plan.push('Put a roof over the woodpile to keep the firewood dry');
-      } else if (hearth && !now.some((b) => b.kind === 'windbreak') && (s >= 1.8 || pop >= 12)) {
+      } else if (hearth && this.knows('windbreak') && !now.some((b) => b.kind === 'windbreak') && (s >= 1.8 || pop >= 12)) {
         this.newBuilding('windbreak', hearth.tile, -1);
         c.plan.push('Build a windbreak behind the fire');
       }
     }
     // a second hut at once when the band is large
-    if (pop > 10 && sites.filter((b) => b.kind === 'hut').length < 2 && this.householdsWithoutHome().length > 1) {
+    if (this.knows('huts') && pop > 10 && sites.filter((b) => b.kind === 'hut').length < 2 && this.householdsWithoutHome().length > 1) {
       const head = this.householdsWithoutHome()[1];
       const tile = this.siteFor('hut', head);
       if (tile >= 0) {
@@ -1989,10 +2097,10 @@ export class Sim {
       if (wall === 'wood') supply = clamp01(trees / 40, 0.15, 1.2) + (c.stock.wood >= sp.wood + 10 ? 0.15 : 0);
       else if (wall === 'daub') {
         // digging needs thawed ground: not with winter at the door
-        if (!mud || s >= 2.5) continue;
+        if (!mud || s >= 2.5 || !this.knows('daub')) continue;
         supply = clamp01(0.55 + mud / 30, 0, 1.15) + (c.stock.mud >= sp.mud ? 0.15 : 0);
       } else {
-        if (!c.knowsStonework || !stone) continue;
+        if (!this.knows('stonework') || !stone) continue;
         supply = clamp01(0.5 + stone / 40, 0, 1.2) + (c.stock.stone >= sp.stone ? 0.15 : 0);
       }
       const durable = wall === 'stone' ? 2 : wall === 'daub' ? 1 : 0;
@@ -2379,8 +2487,7 @@ export class Sim {
       building: mine.filter((b) => !b.built).map((b) => labelOf(b)),
       plan: c.plan.slice(),
       famine: c.famine,
-      knowsPreserving: c.knowsPreserving,
-      knowsStonework: !!c.knowsStonework,
+      knows: c.knows.map((k) => DISCOVERY.get(k)?.label ?? k),
       deer: this.deer.filter((d) => d.alive).length,
       stats: { ...this.stats },
       temp: temperature(this.tick, this.anomaly, Math.max(0, this.world.level[c.tile] - SEA - 1)),

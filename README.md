@@ -59,6 +59,19 @@ stakes and rails in an arc behind the fire (6 wood, 2 cordage): it throws the he
 at the fire warm faster and further out. Bark stripped from big felled trees, and pine cones picked
 up with fallen branches, go on the woodpile too. The fire's card says when the wood is damp.
 
+**Discovery.** A band starts with only the old ways: fire, the chopper and spear, cordage, the
+lean-to, gathering and burial. Everything else is found by doing the work that leads to it. Nights
+under a lean-to lead to huts, evenings at the fire to a windbreak, feeding the fire damp wood to a
+roof over the woodpile, handling meat and fish to drying racks, storing food to a storehouse,
+thatching and building near mud to wattle-and-daub, and building near stone to stonework. Each
+piece of that work adds to the band's experience, and whoever did it may have the idea, more likely
+the more experience there is, for the curious, the industrious and the skilled, and in hardship.
+Some discoveries need others first. A daughter band or a band that moves keeps all it knew; someone
+who marries in teaches their old band's ways a season later; a dwindling band that merges teaches
+the band it joins; and strangers bring some of what is known in the world, more the later they come.
+The band panel lists what a band knows. Every discovery is one row in `src/sim/know.ts`, and
+`npx tsx tools/discoveries.ts` shows when each seed's first band found each one.
+
 **Fortune.** Most years are ordinary. Some are not: a sickness that runs through a camp, a feud
 that ends in a killing and an exile, wolves or a bear on someone out alone after dark, a drowning,
 a summer the berries fail, a murrain among the deer; or a year of plenty, a great hunt that brings
@@ -175,7 +188,7 @@ If the simulation ever hits a bug it stops and says so, with the seed and tick, 
 
 ## Layout
 - `src/sim/` — world generation and the band simulation (deterministic: seeded PRNG, no browser-dependent math)
-  - `sim.ts` people, life and death, the camp planner, deer; `ai.ts` decisions and tasks; `path.ts` pathfinding
+  - `sim.ts` people, life and death, the camp planner, deer; `ai.ts` decisions and tasks; `know.ts` the discoveries; `path.ts` pathfinding
 - `src/render/` — three.js renderer: terrain, water shader, instanced props, lighting, seasons, camera
 - `src/ui/` — Preact interface (`InfoWindows.tsx` is the floating inspector, `Chronicle.tsx` the history browser)
 - `src/saves.ts` — save storage (IndexedDB, gzip, export/import)

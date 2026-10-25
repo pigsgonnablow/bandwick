@@ -5,6 +5,7 @@ import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, yearOf } from '../../src/sim/time';
 import { CARRY, MATERIALS, specOf, foodTotal } from '../../src/sim/band';
+import { knowHowFor } from '../../src/sim/know';
 
 export interface Problem {
   count: number;
@@ -39,6 +40,10 @@ export class InvariantChecker {
     // (a camp is closed at the next morning's count after its last person dies)
     for (const c of sim.liveCamps()) if (!sim.members(c).length && sim.tick - (c.lastDeath ?? 0) > TICKS_PER_DAY) flag('living camp with nobody in it', `${at} ${c.name}`);
     for (const b of sim.buildings) if (!sim.campById(b.band)) flag('building of an unknown band', `${at} ${b.kind} ${b.id}`);
+    for (const b of sim.buildings) {
+      const c = sim.campById(b.band);
+      for (const k of c ? knowHowFor(b) : []) if (!c!.knows.includes(k)) flag("building what the band doesn't know", `${at} ${c!.name}: ${b.kind} needs ${k}`);
+    }
     for (const p of sim.people) {
       if (!Number.isFinite(p.x) || !Number.isFinite(p.z)) flag('position NaN', `${at} ${p.name}`);
       if (p.x < 0 || p.z < 0 || p.x >= N || p.z >= N) flag('position off map', `${at} ${p.name} ${p.x},${p.z}`);
