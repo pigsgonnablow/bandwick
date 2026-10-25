@@ -32,7 +32,7 @@ describe('fiber and cordage', () => {
   it('reads saves from before fiber, with empty fiber stores', () => {
     const s = runYears(sim(3), 1);
     const save = s.serialize();
-    for (const c of save.camps) { delete (c.stock as any).fiber; delete (c.stock as any).cordage; }
+    for (const c of save.camps ?? []) { delete (c.stock as any).fiber; delete (c.stock as any).cordage; }
     delete (save.camp.stock as any).fiber;
     for (const b of save.buildings) { delete (b as any).fiber; delete (b as any).cordage; }
     const t = new (s.constructor as any)(s.world, save);
