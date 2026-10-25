@@ -4,8 +4,8 @@
 import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, yearOf } from '../../src/sim/time';
-import { CARRY, MATERIALS, specOf, foodTotal } from '../../src/sim/band';
-import { knowHowFor, ITEM_KNOWS } from '../../src/sim/know';
+import { CARRY, MATERIALS, specOf, foodTotal, RECIPES } from '../../src/sim/band';
+import { knowHowFor } from '../../src/sim/know';
 
 export interface Problem {
   count: number;
@@ -44,7 +44,7 @@ export class InvariantChecker {
       const c = sim.campById(it.band);
       if (!c) { flag('tool of an unknown band', `${at} ${it.kind} ${it.id}`); continue; }
       if (!(it.wear >= 0 && it.wear < 1)) flag('tool worn past breaking', `${at} ${it.kind} ${it.id} ${it.wear}`);
-      const need = ITEM_KNOWS[it.kind];
+      const need = RECIPES[it.kind].knows;
       if (need && !c.knows.includes(need)) flag("tool the band doesn't know how to make", `${at} ${c.name}: ${it.kind}`);
       if (it.holder >= 0) {
         const h = sim.byId.get(it.holder);

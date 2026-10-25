@@ -4,7 +4,7 @@
 // experience toward the idea, and the person who did it may have it, the likelier the more there is.
 // Adding a feature that has to be discovered means adding a row here.
 import type { Sim, Camp } from './sim';
-import { SK, BuildKind, Walls, ItemKind } from './band';
+import { SK, BuildKind, Walls } from './band';
 import { seasonOf } from './time';
 
 /** The kinds of work (and of living) that lead to discoveries. */
@@ -74,7 +74,7 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'make stone axes', memory: 'Made the first stone axe.',
   },
   {
-    key: 'preserving', label: 'Drying and smoking', needs: [], skill: SK.craft, need: 1600,
+    key: 'preserving', label: 'Drying and smoking', needs: [], skill: SK.hide, need: 1600,
     practice: { store_meat: 1 },
     hurry: (_s, c) => (c.hungryWinters > 0 || c.famine ? 2.5 : 1),
     found: 'discovered how to dry and smoke meat and fish',
@@ -114,6 +114,3 @@ export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   if (b.walls === 'stone') out.push('stonework');
   return out;
 }
-
-/** What a band has to know to make a thing. */
-export const ITEM_KNOWS: Partial<Record<ItemKind, string>> = { axe: 'axe' };

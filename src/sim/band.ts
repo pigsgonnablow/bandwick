@@ -7,9 +7,12 @@ export const TRAITS = [
 export type Trait = (typeof TRAITS)[number];
 export const OPPOSED: [Trait, Trait][] = [['industrious', 'lazy'], ['brave', 'cautious'], ['kind', 'cruel']];
 
-export const SKILLS = ['foraging', 'woodcutting', 'building', 'hunting', 'fishing', 'crafting'] as const;
+// Crafting is four skills, so people grow into the band's toolmaker, weaver, potter or hideworker.
+export const SKILLS = ['foraging', 'woodcutting', 'building', 'hunting', 'fishing', 'toolmaking', 'weaving', 'pottery', 'hidework'] as const;
 export type Skill = (typeof SKILLS)[number];
-export const SK = { forage: 0, wood: 1, build: 2, hunt: 3, fish: 4, craft: 5 } as const;
+export const SK = { forage: 0, wood: 1, build: 2, hunt: 3, fish: 4, tool: 5, weave: 6, pot: 7, hide: 8 } as const;
+/** What a person is known as when they are clearly the band's best at a craft. */
+export const CRAFT_TITLES: Partial<Record<number, string>> = { [SK.tool]: 'toolmaker', [SK.weave]: 'weaver', [SK.pot]: 'potter', [SK.hide]: 'hideworker' };
 
 /** What a person's body is doing (drives animation). */
 export const ACT = {
@@ -28,13 +31,13 @@ export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, S
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
-  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'twist' | 'dig' | 'quarry' | 'knap';
+  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
-  'deadwood', 'swim', 'migrate', 'reap', 'twist', 'dig', 'quarry', 'knap',
+  'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry',
 ];
 
 /** Things a band makes and keeps: for now, the tools for felling. */
@@ -42,19 +45,55 @@ export const ITEM_KINDS = ['chopper', 'axe'] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 export interface ItemSpec {
   label: string;
-  wood: number;
-  stone: number;
-  cordage: number;
-  /** ticks of work at the fire, before skill */
-  work: number;
   /** how many trees it fells before it is worn out */
   uses: number;
 }
 export const ITEMS: Record<ItemKind, ItemSpec> = {
   // a stone knapped to an edge, held in the fist: saplings and young trees only, and slowly
-  chopper: { label: 'Hand chopper', wood: 0, stone: 1, cordage: 0, work: 24, uses: 10 },
+  chopper: { label: 'Hand chopper', uses: 10 },
   // the same head lashed to a wooden haft: any tree
-  axe: { label: 'Stone axe', wood: 2, stone: 1, cordage: 1, work: 60, uses: 25 },
+  axe: { label: 'Stone axe', uses: 25 },
+};
+
+/**
+ * Everything made sitting by the fire is one job, crafting, with a recipe for each thing. The morning
+ * plan says what the band is short of; each crafter takes the recipe they are best at among those.
+ */
+/** Fiber twisted into one length of cordage. */
+export const FIBER_PER_CORD = 3;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe'] as const;
+export type RecipeKey = (typeof RECIPE_KEYS)[number];
+export interface Recipe {
+  /** what it makes: a length of cordage into the stores, or an item onto the pile */
+  makes: 'cordage' | ItemKind;
+  /** what it uses from the stores */
+  uses: Partial<Record<'wood' | 'fiber' | 'cordage' | 'stone', number>>;
+  /** ticks of work at the fire, before skill */
+  work: number;
+  skill: number;
+  /** how much the skill grows each time */
+  grow: number;
+  /** what the band has to know first */
+  knows?: string;
+  /** the person card: "Twisting cordage" */
+  doing: string;
+  /** the person's thought while at it, and when done */
+  thought: string;
+  done: string;
+}
+export const RECIPES: Record<RecipeKey, Recipe> = {
+  cordage: {
+    makes: 'cordage', uses: { fiber: FIBER_PER_CORD }, work: 36, skill: SK.weave, grow: 0.06, doing: 'Twisting cordage',
+    thought: 'Twisting grass into cordage.', done: 'Twisted a length of cordage.',
+  },
+  chopper: {
+    makes: 'chopper', uses: { stone: 1 }, work: 24, skill: SK.tool, grow: 0.08, doing: 'Knapping a hand chopper',
+    thought: 'Knapping a stone to an edge for a chopper.', done: 'Knapped a chopper and laid it on the pile.',
+  },
+  axe: {
+    makes: 'axe', uses: { wood: 2, stone: 1, cordage: 1 }, work: 60, skill: SK.tool, grow: 0.08, knows: 'axe', doing: 'Making a stone axe',
+    thought: 'Lashing a stone head to a haft for an axe.', done: 'Made a stone axe and laid it on the pile.',
+  },
 };
 /** One made thing. It lies on its band's stockpile unless someone holds it. */
 export interface Item {
@@ -162,6 +201,8 @@ export interface Person {
   sick: number; // days of fever left
   traits: Trait[];
   skills: Float32Array;
+  /** the craft they are known for in their band (a skill index), when clearly its best at it */
+  known?: number;
   carry: number;
   carryAmt: number;
   home: number;
@@ -195,8 +236,6 @@ export type BuildKind = (typeof BUILD_KINDS)[number];
  */
 export const MATERIALS = ['wood', 'fiber', 'cordage', 'mud', 'stone'] as const;
 export type Material = (typeof MATERIALS)[number];
-/** Fiber twisted into one length of cordage. */
-export const FIBER_PER_CORD = 3;
 export interface BuildSpec {
   wood: number;
   fiber: number;

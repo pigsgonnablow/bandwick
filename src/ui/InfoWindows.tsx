@@ -16,7 +16,7 @@ const DOING: Record<string, string> = {
   fell: 'Felling a tree', haul: 'Hauling logs home', hunt: 'Hunting deer', fish: 'Fishing', build: 'Building',
   supply: 'Carrying materials to a building site', fuel: 'Feeding the fire', preserve: 'Drying meat and fish',
   bury: 'Burying the dead', explore: 'Exploring', deadwood: 'Gathering fallen branches', swim: 'Swimming to cool off',
-  reap: 'Cutting grass and reeds', twist: 'Twisting cordage', dig: 'Digging mud', quarry: 'Quarrying stone', knap: 'Making tools',
+  reap: 'Cutting grass and reeds', craft: 'Making things by the fire', dig: 'Digging mud', quarry: 'Quarrying stone',
 };
 const CARRYING: Record<number, string> = {
   [CARRY.Log]: 'a log', [CARRY.Berries]: 'berries', [CARRY.Meat]: 'meat', [CARRY.Fish]: 'fish',
@@ -24,7 +24,8 @@ const CARRYING: Record<number, string> = {
 };
 const NEEDS: [keyof PersonDetail['needs'], string][] = [['food', 'Food'], ['rest', 'Rest'], ['warmth', 'Warmth'], ['belonging', 'Company'], ['safety', 'Safety']];
 const SKILL_WORDS: Record<string, string> = {
-  foraging: 'Foraging', woodcutting: 'Woodcutting', building: 'Building', hunting: 'Hunting', fishing: 'Fishing', crafting: 'Crafting',
+  foraging: 'Foraging', woodcutting: 'Woodcutting', building: 'Building', hunting: 'Hunting', fishing: 'Fishing',
+  toolmaking: 'Toolmaking', weaving: 'Weaving', pottery: 'Pottery', hidework: 'Hidework',
 };
 const KIND_WORD: Record<string, string> = { person: 'Person', deer: 'Animal', building: 'Building', prop: 'Thing', tile: 'Land' };
 
@@ -61,7 +62,7 @@ function Win({ w, s, engine, focus }: { w: InfoWin; s: Snapshot; engine: Engine;
   const p = w.ref.kind === 'person' ? w.person : null;
   const c = w.ref.kind !== 'person' ? w.card : null;
   const gone = w.loaded && !p && !c;
-  const title = p ? p.name : c ? c.title : gone ? 'Gone' : 'Looking closer…';
+  const title = p ? p.titled : c ? c.title : gone ? 'Gone' : 'Looking closer…';
   const onDown = (e: PointerEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
     engine.focusWin(w.key);
@@ -164,7 +165,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
             <p class="thought">“{p.thought}”</p>
             <dl class="rows compact">
               <dt>Doing</dt>
-              <dd>{p.task ? DOING[p.task] ?? p.task : 'Nothing much'}{p.indoors ? ', indoors' : ''}</dd>
+              <dd>{p.doing ?? (p.task ? DOING[p.task] ?? p.task : 'Nothing much')}{p.indoors ? ', indoors' : ''}</dd>
               {p.carry > 0 && CARRYING[p.carry] && (<><dt>Carrying</dt><dd>{CARRYING[p.carry]}{p.carryAmt > 1 ? ` (${Math.round(p.carryAmt)})` : ''}</dd></>)}
               {p.tool && (<><dt>In hand</dt><dd>A {p.tool}</dd></>)}
               <dt>Where</dt>
@@ -197,7 +198,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
         {tab === 'skills' && (
           <>
             <div class="needs">
-              {SKILLS.map((k, i) => (
+              {SKILLS.map((k, i) => p.shownSkills.includes(i) && (
                 <div key={k} class="need"><span>{SKILL_WORDS[k]}</span><Bar v={p.skills[i]} max={20} warn={-1} /><b>{p.skills[i].toFixed(1)}</b></div>
               ))}
             </div>

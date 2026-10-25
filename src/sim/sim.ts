@@ -8,7 +8,7 @@ import {
 } from './types';
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
-  Item, ItemKind, ITEMS, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
+  Item, ItemKind, ITEMS, ITEM_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, TASK_KINDS, Ref, Card, CardLine,
 } from './band';
 import {
@@ -16,7 +16,7 @@ import {
   isDark, temperature, berriesRipe, freshFrozen, seasonPos, seasonOf, ageYears, yearOf, dayOf,
 } from './time';
 import { decide, runTask, abandon, sendHome, delivering } from './ai';
-import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, ITEM_KNOWS } from './know';
+import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor } from './know';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 const TREE_TYPES = SPECIES.length * STAGES * TREE_VARIANTS;
@@ -354,7 +354,20 @@ export class Sim {
     this.people = d.people.map((p) => ({
       ...p, skills: Float32Array.from(p.skills), rel: new Map(p.rel), path: p.path !== null ? new Int32Array(unb64(p.path).buffer as ArrayBuffer) : null,
     })) as Person[];
-    for (const p of this.people) p.band ??= this.camp.id;
+    for (const p of this.people) {
+      p.band ??= this.camp.id;
+      // saves from before crafting split into four: the old crafting level goes to toolmaking and weaving
+      if (p.skills.length < SKILLS.length) {
+        const old = p.skills;
+        p.skills = new Float32Array(SKILLS.length);
+        p.skills.set(old);
+        p.skills[SK.weave] = old[SK.tool];
+      }
+      // and from before the one crafting job: twisting and knapping are recipes now
+      const t = p.task as { kind: string; ref: number; amount: number } | null;
+      if (t?.kind === 'twist') { t.kind = 'craft'; t.ref = RECIPE_KEYS.indexOf('cordage'); t.amount = t.amount > 0 ? 1 : 0; }
+      if (t?.kind === 'knap') { t.kind = 'craft'; t.ref = RECIPE_KEYS.indexOf(ITEM_KINDS[t.ref]); }
+    }
     this.byId = new Map(this.people.map((p) => [p.id, p]));
     this.buildings = d.buildings as Building[];
     for (const b of this.buildings) { b.band ??= this.camp.id; b.fiber ??= 0; b.cordage ??= 0; b.mud ??= 0; b.stone ??= 0; }
@@ -760,8 +773,8 @@ export class Sim {
       traits.push(t);
     }
     const age = ageYears(this.tick, birth);
-    const skills = new Float32Array(6);
-    for (let k = 0; k < 6; k++) skills[k] = age < 8 ? 0 : Math.min(14, r.range(1, 4) + Math.max(0, age - 10) * r.range(0.1, 0.35));
+    const skills = new Float32Array(SKILLS.length);
+    for (let k = 0; k < SKILLS.length; k++) skills[k] = age < 8 ? 0 : Math.min(14, r.range(1, 4) + Math.max(0, age - 10) * r.range(0.1, 0.35));
     const p: Person = {
       id: this.nextId++, band: this.camp ? this.camp.id : 0, name: this.uniqueName(sex), sex, birth, mother, father, partner: -1,
       samesex: r.chance(0.08), alive: true, death: 0, cause: '', buried: false,
@@ -956,7 +969,7 @@ export class Sim {
     // except wood runs in the cold when the store is low: coming home empty-handed means a cold night
     const emergency = (k === 'fell' || k === 'haul' || k === 'deadwood') && (this.hearth().fuel < 2 || this.camp.stock.wood < 20) && this.tempAt(p) < 12;
     // (a burial, once begun, is seen through: a body far out on the land is not left another night)
-    if (k && !emergency && p.task!.stage === 0 && isDark(this.tick) && !['sleep', 'warm', 'eat', 'fuel', 'socialize', 'idle', 'bury', 'twist'].includes(k)) return true;
+    if (k && !emergency && p.task!.stage === 0 && isDark(this.tick) && !['sleep', 'warm', 'eat', 'fuel', 'socialize', 'idle', 'bury', 'craft'].includes(k)) return true;
     return false;
   }
 
@@ -1189,11 +1202,47 @@ export class Sim {
       return `${of.length} ${of.length === 1 ? name : `${name}s`}${worn ? ` (${worn} well worn)` : ''}`;
     }).filter(Boolean).join(', ');
   }
-  /** Whether a band could make a thing from its stores right now. */
-  canMake(kind: ItemKind, c = this.camp) {
-    const sp = ITEMS[kind], st = c.stock;
-    const need = ITEM_KNOWS[kind];
-    return (!need || this.knows(need, c)) && st.wood >= sp.wood && st.stone >= sp.stone && st.cordage >= sp.cordage;
+  /** Whether a band could make a thing by the fire from its stores right now. */
+  canCraft(key: RecipeKey, c = this.camp) {
+    const rc = RECIPES[key];
+    return (!rc.knows || this.knows(rc.knows, c)) && Object.entries(rc.uses).every(([m, n]) => c.stock[m as keyof typeof rc.uses] >= n);
+  }
+  /** The crafts a person's card shows: the everyday ones, and the rest once the band has a use for them. */
+  shownSkills(c = this.camp) {
+    return SKILLS.map((_, k) => k).filter((k) => k <= SK.weave || DISCOVERIES.some((d) => d.skill === k && this.knows(d.key, c)));
+  }
+  /**
+   * Whoever is clearly the band's best at a craft gets known for it ("Ada, the toolmaker"); someone who
+   * is overtaken, or leaves, loses the name.
+   */
+  private craftNames(c: Camp) {
+    const adults = this.members(c).filter((p) => this.age(p) >= 16);
+    const shown = this.shownSkills(c);
+    const names = new Map<number, { k: number; lead: number }>();
+    for (const k of Object.keys(CRAFT_TITLES).map(Number)) {
+      if (!shown.includes(k)) continue;
+      const [best, next] = [...adults].sort((a, b) => b.skills[k] - a.skills[k] || a.id - b.id);
+      if (!best || best.skills[k] < 8 || (next && best.skills[k] < next.skills[k] + 2)) continue;
+      // one name each: the craft they stand out at most
+      const lead = best.skills[k] - (next?.skills[k] ?? 0);
+      if (lead > (names.get(best.id)?.lead ?? -1)) names.set(best.id, { k, lead });
+    }
+    for (const p of this.people) {
+      if (p.band !== c.id || !p.alive) continue;
+      const k = names.get(p.id)?.k;
+      if (k === p.known) continue;
+      if (k === undefined) { delete p.known; continue; }
+      p.known = k;
+      const title = CRAFT_TITLES[k]!;
+      // a band just come here brings its names with it: no news in that
+      if (this.tick - c.founded < 2 * TICKS_PER_DAY) continue;
+      this.event('known', `${p.name} is known now as the ${title} of ${c.name}.`, [p.id], p.x, p.z, 1.5);
+      this.remember(p, 'known', 10, 6, -1, `Became known as the band's ${title}.`);
+    }
+  }
+  /** "Ada, the toolmaker", or just "Ada". */
+  titled(p: Person) {
+    return p.known !== undefined && CRAFT_TITLES[p.known] ? `${p.name}, the ${CRAFT_TITLES[p.known]}` : p.name;
   }
 
   /**
@@ -2069,13 +2118,15 @@ export class Sim {
       fuel: this.hearth().fuel < 5 ? 0.9 : 0.15,
       preserve: this.knows('preserving') && mine.some((b) => b.kind === 'rack' && b.built) && c.stock.meat + c.stock.fish > 6 ? 0.7 : 0,
       fiber: fiberHave < fiberWant ? clamp01((fiberWant - fiberHave) / (fiberWant + 2) * 1.1 + (siteFiber > fiberHave ? 0.25 : 0), 0.1, 0.9) : 0,
-      // twisting cordage: what the sites need first, then a few lengths put by
-      twist: c.stock.fiber >= FIBER_PER_CORD ? (siteCord > c.stock.cordage || (make === 'axe' && c.stock.cordage < 1) ? 0.8 : c.stock.cordage < 4 ? 0.3 : 0) : 0,
+      // crafting by the fire, in a fixed order: cordage a building site is waiting on (or an axe needs),
+      // then the tools today's work is missing, then a few lengths of cordage put by
+      'craft.cordage': siteCord > c.stock.cordage || (make === 'axe' && c.stock.cordage < 1) ? 0.8 : c.stock.cordage < 4 ? 0.3 : 0,
+      'craft.chopper': make === 'chopper' ? 0.6 : 0,
+      'craft.axe': make === 'axe' ? 0.6 : 0,
       // mud and stone are fetched only for a site that needs them (mud can't be dug from frozen ground)
       dig: siteMud > c.stock.mud && !winterNow ? 0.75 : 0,
       // stone for walls, and a lump or two for knapping tools
-      quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < ITEMS[make].stone ? 0.5 : 0,
-      knap: make && this.canMake(make) ? 0.6 : 0,
+      quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < (RECIPES[make].uses.stone ?? 0) ? 0.5 : 0,
       bury: this.people.some((p) => !p.alive && !p.buried && p.band === c.id) ? 1 : 0,
     };
     c.plan = [];
@@ -2083,6 +2134,8 @@ export class Sim {
     if (woodP > 0.5) c.plan.push(s > 2.0 && !winterNow ? 'Lay in firewood for the winter' : 'Gather wood');
     if (siteFiber > fiberHave) c.plan.push('Cut grass and reeds for thatch and cordage');
     if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : 'Knap a hand chopper');
+
+    this.craftNames(c);
 
     if (!mine.some((b) => b.kind === 'stockpile')) this.markStockpile(c);
     // shelter: first fill homes that stand empty (their families died or moved), then build
@@ -2949,8 +3002,12 @@ export class Sim {
       health: p.health, mood: p.mood, sick: p.sick > 0, pregnant: p.pregnantUntil > 0,
       traits: p.traits.slice(),
       skills: Array.from(p.skills),
+      /** which skills the card shows (the band's crafts it has no use for yet are left out) */
+      shownSkills: this.shownSkills(this.campOf(p)),
+      titled: this.titled(p),
       thought: p.thought,
       task: p.task?.kind ?? null,
+      doing: p.task?.kind === 'craft' ? RECIPES[RECIPE_KEYS[p.task.ref]]?.doing ?? null : null,
       partner: p.partner >= 0 ? { id: p.partner, name: name(p.partner) } : null,
       mother: p.mother >= 0 ? { id: p.mother, name: name(p.mother), alive: this.byId.get(p.mother)?.alive ?? false } : null,
       father: p.father >= 0 ? { id: p.father, name: name(p.father), alive: this.byId.get(p.father)?.alive ?? false } : null,

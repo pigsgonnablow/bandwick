@@ -2,7 +2,7 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
 import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, FIBER_PER_CORD, Material, FLASH, foodTotal, Building, specOf, labelOf, ITEMS, ITEM_KINDS } from './band';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, TICKS_PER_DAY } from './time';
 import { WATER, treeId } from './types';
 
@@ -47,6 +47,21 @@ function workDrive(s: Sim, p: Person) {
   return d;
 }
 const fit = (p: Person, k: number) => 0.7 + Math.min(20, p.skills[k]) * 0.03;
+
+/**
+ * What this person would sit down to make: of the recipes the morning plan wants and the stores allow,
+ * the one most wanted, weighed by how good they are at it.
+ */
+function craftFor(s: Sim, p: Person): { key: RecipeKey; score: number } | null {
+  let best: { key: RecipeKey; score: number } | null = null;
+  for (const key of RECIPE_KEYS) {
+    const w = s.camp.jobs[`craft.${key}`] ?? 0;
+    if (w <= 0 || !s.canCraft(key)) continue;
+    const score = w * fit(p, RECIPES[key].skill);
+    if (!best || score > best.score) best = { key, score };
+  }
+  return best;
+}
 
 function busyWith(s: Sim, kind: TaskKind) {
   let n = 0;
@@ -110,20 +125,21 @@ export function decide(s: Sim, p: Person) {
     if (age >= 11) add('fish', food * fit(p, SK.fish) * 0.85 * crowd('fish'));
     // grass and reeds for thatch and cordage: work the older children can do too
     if (age >= 9) add('reap', (j.fiber ?? 0) * drive * night * fit(p, SK.forage) * (child ? 1.15 : 1) * crowd('reap'));
-    // twisting cordage is sitting work, done by the fire into the evening
     // mud for daub, stone for walls: heavy work, for a site that needs it
     if (age >= 13) add('dig', (j.dig ?? 0) * drive * night * fit(p, SK.build) * crowd('dig'));
     if (age >= 16 && age < 56) add('quarry', (j.quarry ?? 0) * drive * night * fit(p, SK.build) * crowd('quarry'));
-    if (age >= 10) add('twist', (j.twist ?? 0) * drive * (dark ? (s.hearthLit() ? 0.4 : 0.06) : 0.85) * fit(p, SK.craft) * crowd('twist'));
-    // knapping and hafting tools: sitting work by the fire too
-    if (age >= 13) add('knap', (j.knap ?? 0) * drive * (dark ? (s.hearthLit() ? 0.4 : 0.06) : 0.85) * fit(p, SK.craft) * crowd('knap'));
+    // crafting (cordage, tools): sitting work by the fire, the thing they'd make best among what's wanted
+    if (age >= 10) {
+      const pick = craftFor(s, p);
+      if (pick) add('craft', pick.score * drive * (dark ? (s.hearthLit() ? 0.4 : 0.06) : 0.85) * crowd('craft'));
+    }
     if (age >= 13) {
       const wood = (j.wood ?? 0.3) * drive * night * fit(p, SK.wood);
       add(s.countProps(LOGS) > 0 ? 'haul' : 'fell', wood * crowd('fell') * crowd('haul'));
       // fallen branches near camp: a little wood at a time, and no tree has to come down
       add('deadwood', wood * 0.8 * crowd('deadwood'));
       add('build', (j.build ?? 0) * drive * night * fit(p, SK.build) * crowd('build') * 1.05);
-      add('preserve', (j.preserve ?? 0) * drive * night * fit(p, SK.craft) * crowd('preserve'));
+      add('preserve', (j.preserve ?? 0) * drive * night * fit(p, SK.hide) * crowd('preserve'));
     }
     if ((j.fuel ?? 0) > 0.5 && c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', j.fuel * (dark ? 1.1 : 1));
     // a dying fire in the cold is everyone's problem: a few go for wood whatever the hour
@@ -180,7 +196,7 @@ export function decide(s: Sim, p: Person) {
 }
 
 // ---------------------------------------------------------------- task setup
-function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
+function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | null {
   const c = s.camp;
   const N = s.N;
   const ti = (x: number, z: number) => Math.floor(z) * N + Math.floor(x);
@@ -319,27 +335,16 @@ function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
       p.thought = 'Prising stone from the rocks.';
       return newTask(s, kind, i, (i % N) + 0.5, Math.floor(i / N) + 0.5, -1, true);
     }
-    case 'twist': {
-      if (c.stock.fiber < FIBER_PER_CORD) return null;
+    case 'craft': {
+      const key = recipe ?? craftFor(s, p)?.key;
+      if (!key || !s.canCraft(key)) return null;
+      const rc = RECIPES[key];
       const st = seat(s, p, 1.45);
-      const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z);
-      t.amount = FIBER_PER_CORD;
-      c.stock.fiber -= t.amount; // set aside now so others don't count it twice
-      p.thought = s.hearthLit() ? 'Twisting grass into cordage by the fire.' : 'Twisting grass into cordage.';
-      return t;
-    }
-    case 'knap': {
-      const make = s.toolToMake();
-      if (!make || !s.canMake(make)) return null;
-      const sp = ITEMS[make];
-      const st = seat(s, p, 1.45);
-      const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, ITEM_KINDS.indexOf(make));
+      const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, RECIPE_KEYS.indexOf(key));
       // set aside now so others don't count it twice
-      c.stock.wood -= sp.wood;
-      c.stock.stone -= sp.stone;
-      c.stock.cordage -= sp.cordage;
+      for (const [m, n] of Object.entries(rc.uses) as [keyof typeof rc.uses, number][]) c.stock[m] -= n;
       t.amount = 1;
-      p.thought = make === 'axe' ? 'Lashing a stone head to a haft for an axe.' : 'Knapping a stone to an edge for a chopper.';
+      p.thought = rc.thought;
       return t;
     }
     case 'fell': {
@@ -466,7 +471,7 @@ function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
       }
       // nothing in the stores for any site: go and get what is missing
       if (short === 'wood') return setup(s, p, s.countProps(LOGS) > 0 ? 'haul' : 'fell');
-      if (short === 'cordage' && c.stock.fiber >= FIBER_PER_CORD) return setup(s, p, 'twist');
+      if (short === 'cordage' && s.canCraft('cordage')) return setup(s, p, 'craft', 'cordage');
       if (short === 'mud') return setup(s, p, 'dig');
       if (short === 'stone') return setup(s, p, 'quarry');
       if (short) return setup(s, p, 'reap');
@@ -528,15 +533,9 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
       t.amount = 0;
       if (p.carry === CARRY.Log || p.carry === CARRY.Fiber || p.carry === CARRY.Mud || p.carry === CARRY.Stone) { p.carry = CARRY.None; p.carryAmt = 0; }
     }
-    if (t.kind === 'twist' && t.amount > 0) {
-      st.fiber += t.amount;
-      t.amount = 0;
-    }
-    if (t.kind === 'knap' && t.amount > 0) {
-      const sp = ITEMS[ITEM_KINDS[t.ref]];
-      st.wood += sp.wood;
-      st.stone += sp.stone;
-      st.cordage += sp.cordage;
+    if (t.kind === 'craft' && t.amount > 0) {
+      const uses = RECIPES[RECIPE_KEYS[t.ref]].uses;
+      for (const [m, n] of Object.entries(uses) as [keyof typeof uses, number][]) st[m] += n;
       t.amount = 0;
     }
     if (t.kind === 'preserve' && t.amount > 0) {
@@ -1054,38 +1053,27 @@ export function runTask(s: Sim, p: Person) {
       finish(s, p);
       return;
     }
-    case 'twist': {
+    case 'craft': {
+      const key = RECIPE_KEYS[t.ref], rc = RECIPES[key];
       if (t.stage === 0) {
         if (moving(go(s, p, t))) return;
         t.stage = 1;
-        t.timer = Math.max(16, Math.round(36 * (1.2 - p.skills[SK.craft] * 0.025)));
+        t.timer = Math.max(Math.round(rc.work * 0.42), Math.round(rc.work * (1.2 - p.skills[rc.skill] * 0.025)));
+        if (s.hearthLit()) p.thought = rc.thought.replace(/\.$/, ' by the fire.');
       }
       p.act = ACT.Sit;
       face(p, c.x, c.z);
       if (--t.timer > 0) return;
-      c.stock.cordage += 1;
-      s.book('twisted', t.amount);
-      t.amount = 0;
-      skillUp(p, SK.craft, 0.06);
-      p.thought = 'Twisted a length of cordage.';
-      finish(s, p);
-      return;
-    }
-    case 'knap': {
-      const kind = ITEM_KINDS[t.ref];
-      if (t.stage === 0) {
-        if (moving(go(s, p, t))) return;
-        t.stage = 1;
-        t.timer = Math.max(10, Math.round(ITEMS[kind].work * (1.2 - p.skills[SK.craft] * 0.025)));
+      if (rc.makes === 'cordage') {
+        c.stock.cordage += 1;
+        s.book('twisted', rc.uses.fiber ?? 0);
+      } else {
+        s.items.push({ id: s.newId(), kind: rc.makes, band: p.band, holder: -1, wear: 0, made: s.tick, maker: p.id });
+        s.book(`made.${rc.makes}`, 1);
       }
-      p.act = ACT.Sit;
-      face(p, c.x, c.z);
-      if (--t.timer > 0) return;
-      s.items.push({ id: s.newId(), kind, band: p.band, holder: -1, wear: 0, made: s.tick, maker: p.id });
-      s.book(`made.${kind}`, 1);
       t.amount = 0;
-      skillUp(p, SK.craft, 0.08);
-      p.thought = kind === 'axe' ? 'Made a stone axe and laid it on the pile.' : 'Knapped a chopper and laid it on the pile.';
+      skillUp(p, rc.skill, rc.grow);
+      p.thought = rc.done;
       finish(s, p);
       return;
     }
@@ -1443,7 +1431,7 @@ export function runTask(s: Sim, p: Person) {
       c.stock.preserved += t.amount * 0.9;
       s.book('dried', t.amount);
       t.amount = 0;
-      skillUp(p, SK.craft, 0.1);
+      skillUp(p, SK.hide, 0.1);
       finish(s, p);
       return;
     }
