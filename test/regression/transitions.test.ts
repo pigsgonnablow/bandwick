@@ -145,7 +145,7 @@ describe('leaving a band', () => {
     p.task = task('forage', { stage: 2, homeAt: s.tick });
     const berries = home.stock.berries;
     // a second band, far off; the sim's attention is on it when p goes to join it
-    const other = s.foundCamp(home.tile + 30, { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0 }, -1, -1);
+    const other = s.foundCamp(home.tile + 30, { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 }, -1, -1);
     s.camp = other;
     (s as any).join([p], other);
     expect(home.stock.berries).toBeCloseTo(berries + 4);

@@ -4,7 +4,7 @@
 import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, yearOf } from '../../src/sim/time';
-import { CARRY, BUILD, foodTotal } from '../../src/sim/band';
+import { CARRY, MATERIALS, specOf, foodTotal } from '../../src/sim/band';
 
 export interface Problem {
   count: number;
@@ -116,7 +116,7 @@ export class InvariantChecker {
     for (const b of sim.buildings) {
       if (tiles.has(b.tile)) flag('two buildings on one tile', `${at} tile ${b.tile}`);
       tiles.add(b.tile);
-      if (b.wood > BUILD[b.kind].wood + 6) flag('building over-supplied', `${at} ${b.kind} ${b.wood}`);
+      for (const m of MATERIALS) if (b[m] > specOf(b)[m] + 6) flag('building over-supplied', `${at} ${b.kind} ${m} ${b[m]}`);
       if (!b.built && sim.tick - b.started > 2 * TICKS_PER_YEAR) flag('building unfinished for 2 years', `${at} ${b.kind}`);
     }
     // trees on the tile counter agree with props

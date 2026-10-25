@@ -23,18 +23,18 @@ export const FLASH = { Thrust: 1, Stab: 2 } as const;
 export const ACT_NAMES = Object.keys(ACT);
 
 /** What a person is carrying. */
-export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8 } as const;
+export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10 } as const;
 
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
-  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'twist';
+  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'twist' | 'dig' | 'quarry';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
-  'deadwood', 'swim', 'migrate', 'reap', 'twist',
+  'deadwood', 'swim', 'migrate', 'reap', 'twist', 'dig', 'quarry',
 ];
 
 /** Anything in the world that can be clicked. */
@@ -155,19 +155,68 @@ export interface Person {
 
 export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
-/** What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it together. */
-export const MATERIALS = ['wood', 'fiber', 'cordage'] as const;
+/**
+ * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
+ * together, and for walls that are not wood, mud for daub or stone.
+ */
+export const MATERIALS = ['wood', 'fiber', 'cordage', 'mud', 'stone'] as const;
 export type Material = (typeof MATERIALS)[number];
 /** Fiber twisted into one length of cordage. */
 export const FIBER_PER_CORD = 3;
-export const BUILD: Record<BuildKind, { wood: number; fiber: number; cordage: number; work: number; cap: number; shelter: number; label: string }> = {
-  hearth: { wood: 0, fiber: 0, cordage: 0, work: 0, cap: 0, shelter: 0, label: 'Hearth' },
-  leanto: { wood: 4, fiber: 3, cordage: 0, work: 40, cap: 2, shelter: 0.5, label: 'Lean-to' },
-  hut: { wood: 14, fiber: 6, cordage: 3, work: 150, cap: 6, shelter: 0.78, label: 'Hut' },
-  storehouse: { wood: 10, fiber: 4, cordage: 2, work: 110, cap: 0, shelter: 0, label: 'Storehouse' },
-  rack: { wood: 5, fiber: 0, cordage: 2, work: 45, cap: 0, shelter: 0, label: 'Drying rack' },
-  stockpile: { wood: 0, fiber: 0, cordage: 0, work: 0, cap: 0, shelter: 0, label: 'Stockpile' },
+export interface BuildSpec {
+  wood: number;
+  fiber: number;
+  cordage: number;
+  mud: number;
+  stone: number;
+  work: number;
+  cap: number;
+  shelter: number;
+  /** storehouses: how much of the usual spoilage still happens to food kept inside */
+  keep: number;
+  label: string;
+}
+const spec = (s: Partial<BuildSpec> & { label: string }): BuildSpec => ({ wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, work: 0, cap: 0, shelter: 0, keep: 1, ...s });
+export const BUILD: Record<BuildKind, BuildSpec> = {
+  hearth: spec({ label: 'Hearth' }),
+  leanto: spec({ wood: 4, fiber: 3, work: 40, cap: 2, shelter: 0.5, label: 'Lean-to' }),
+  hut: spec({ wood: 14, fiber: 6, cordage: 3, work: 150, cap: 6, shelter: 0.78, label: 'Hut' }),
+  storehouse: spec({ wood: 10, fiber: 4, cordage: 2, work: 110, keep: 0.6, label: 'Storehouse' }),
+  rack: spec({ wood: 5, cordage: 2, work: 45, label: 'Drying rack' }),
+  stockpile: spec({ label: 'Stockpile' }),
 };
+
+/** What a building's walls are made of. Huts and storehouses can be raised in any of these. */
+export const WALLS = ['wood', 'daub', 'stone'] as const;
+export type Walls = (typeof WALLS)[number];
+export const WALL_NAMES: Record<Walls, string> = { wood: 'wood', daub: 'wattle-and-daub', stone: 'stone' };
+/**
+ * The same buildings in other walls: wattle-and-daub (a few poles, woven reeds, mud) and drystone
+ * (stone, with wood only for the roof). Warmer and slower to raise; stone needs the knowledge of stonework.
+ */
+const WALL_SPECS: Partial<Record<BuildKind, Partial<Record<Walls, BuildSpec>>>> = {
+  hut: {
+    daub: spec({ wood: 5, fiber: 10, cordage: 3, mud: 10, work: 200, cap: 6, shelter: 0.85, label: 'Hut' }),
+    stone: spec({ wood: 5, fiber: 6, cordage: 3, stone: 18, work: 330, cap: 6, shelter: 0.92, label: 'Hut' }),
+  },
+  storehouse: {
+    daub: spec({ wood: 4, fiber: 7, cordage: 2, mud: 8, work: 145, keep: 0.5, label: 'Storehouse' }),
+    stone: spec({ wood: 4, fiber: 4, cordage: 2, stone: 14, work: 250, keep: 0.4, label: 'Storehouse' }),
+  },
+};
+/** Which walls a kind of building can have. */
+export const wallsFor = (kind: BuildKind): Walls[] => ['wood', ...(Object.keys(WALL_SPECS[kind] ?? {}) as Walls[])];
+/** What a building (or a kind, in given walls) takes, and what it gives. */
+export function specOf(b: { kind: BuildKind; walls?: Walls }): BuildSpec {
+  return (b.walls && b.walls !== 'wood' && WALL_SPECS[b.kind]?.[b.walls]) || BUILD[b.kind];
+}
+/** "Hut", "Stone hut", "Wattle-and-daub storehouse". */
+export function labelOf(b: { kind: BuildKind; walls?: Walls }) {
+  const l = BUILD[b.kind].label;
+  if (!b.walls || b.walls === 'wood') return l;
+  const w = WALL_NAMES[b.walls];
+  return `${w[0].toUpperCase()}${w.slice(1)} ${l.toLowerCase()}`;
+}
 
 export interface Building {
   id: number;
@@ -182,6 +231,11 @@ export interface Building {
   /** thatch and cordage delivered (absent in older saves until restored) */
   fiber: number;
   cordage: number;
+  /** mud and stone delivered for walls that are not wood (absent in older saves until restored) */
+  mud: number;
+  stone: number;
+  /** what the walls are made of (absent in older saves: wood) */
+  walls?: Walls;
   work: number; // done
   built: boolean;
   owner: number; // person id of the household head
@@ -225,6 +279,9 @@ export interface Stock {
   /** cut grass and reeds, and the cordage twisted from them (absent in older saves until restored) */
   fiber: number;
   cordage: number;
+  /** dug mud and quarried stone, for walls (absent in older saves until restored) */
+  mud: number;
+  stone: number;
 }
 
 export interface SimEvent {
