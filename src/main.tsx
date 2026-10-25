@@ -99,7 +99,7 @@ const STAGE_WORDS = ['Sapling', 'Young', 'Mature', 'Old'];
 const PHRASE: Record<string, string> = {
   eat: 'eating', eatwild: 'eating berries', sleep: 'asleep', warm: 'warming up', socialize: 'visiting', play: 'playing',
   idle: 'resting', mourn: 'mourning', forage: 'picking berries', fell: 'felling a tree', haul: 'hauling logs', hunt: 'hunting',
-  fish: 'fishing', build: 'building', supply: 'carrying wood', fuel: 'feeding the fire', preserve: 'drying food', bury: 'burying the dead', explore: 'exploring', deadwood: 'gathering firewood', swim: 'swimming',
+  fish: 'fishing', build: 'building', supply: 'carrying wood', fuel: 'feeding the fire', preserve: 'drying food', bury: 'burying the dead', explore: 'exploring', deadwood: 'gathering firewood', swim: 'swimming', knap: 'making tools',
 };
 
 /** Talks to the simulation, wherever it runs. */

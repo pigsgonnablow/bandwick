@@ -2,7 +2,7 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
 import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, FIBER_PER_CORD, Material, FLASH, foodTotal, Building, specOf, labelOf } from './band';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, FIBER_PER_CORD, Material, FLASH, foodTotal, Building, specOf, labelOf, ITEMS, ITEM_KINDS } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, TICKS_PER_DAY } from './time';
 import { WATER, treeId } from './types';
 
@@ -115,6 +115,8 @@ export function decide(s: Sim, p: Person) {
     if (age >= 13) add('dig', (j.dig ?? 0) * drive * night * fit(p, SK.build) * crowd('dig'));
     if (age >= 16 && age < 56) add('quarry', (j.quarry ?? 0) * drive * night * fit(p, SK.build) * crowd('quarry'));
     if (age >= 10) add('twist', (j.twist ?? 0) * drive * (dark ? (s.hearthLit() ? 0.4 : 0.06) : 0.85) * fit(p, SK.craft) * crowd('twist'));
+    // knapping and hafting tools: sitting work by the fire too
+    if (age >= 13) add('knap', (j.knap ?? 0) * drive * (dark ? (s.hearthLit() ? 0.4 : 0.06) : 0.85) * fit(p, SK.craft) * crowd('knap'));
     if (age >= 13) {
       const wood = (j.wood ?? 0.3) * drive * night * fit(p, SK.wood);
       add(s.countProps(LOGS) > 0 ? 'haul' : 'fell', wood * crowd('fell') * crowd('haul'));
@@ -310,7 +312,9 @@ function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
       return newTask(s, kind, i, (i % N) + 0.5, Math.floor(i / N) + 0.5, -1);
     }
     case 'quarry': {
-      const i = nearestTile(s, s.quarryTiles, 22, -2);
+      // a lump of stone for a tool is worth a longer walk than a load for walls
+      const forTools = !!s.toolToMake() && c.stock.stone < 1;
+      const i = nearestTile(s, s.quarryTiles, forTools ? 36 : 22, -2);
       if (i < 0) return null;
       p.thought = 'Prising stone from the rocks.';
       return newTask(s, kind, i, (i % N) + 0.5, Math.floor(i / N) + 0.5, -1, true);
@@ -324,10 +328,28 @@ function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
       p.thought = s.hearthLit() ? 'Twisting grass into cordage by the fire.' : 'Twisting grass into cordage.';
       return t;
     }
+    case 'knap': {
+      const make = s.toolToMake();
+      if (!make || !s.canMake(make)) return null;
+      const sp = ITEMS[make];
+      const st = seat(s, p, 1.45);
+      const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, ITEM_KINDS.indexOf(make));
+      // set aside now so others don't count it twice
+      c.stock.wood -= sp.wood;
+      c.stock.stone -= sp.stone;
+      c.stock.cordage -= sp.cordage;
+      t.amount = 1;
+      p.thought = make === 'axe' ? 'Lashing a stone head to a haft for an axe.' : 'Knapping a stone to an edge for a chopper.';
+      return t;
+    }
     case 'fell': {
+      // an axe fells any tree; a hand chopper only saplings and young ones; without either, no felling
+      const tool = s.toolFor(p, ['axe', 'chopper']);
+      if (!tool) return null;
+      const maxStage = tool.kind === 'axe' ? 3 : 1;
       // the nearest good timber first; as the woods around camp thin out, go further or take younger trees
       const score = (k: number, d: number) => treeStage(s.propType[k]) * 3 - d - hyp(s.propX[k] - p.x, s.propZ[k] - p.z) * 0.4 + (s.chopped.has(k) ? 8 : 0);
-      const tree = (min: number) => (k: number) => isTreeType(s.propType[k]) && treeStage(s.propType[k]) >= min;
+      const tree = (min: number) => (k: number) => isTreeType(s.propType[k]) && treeStage(s.propType[k]) >= min && treeStage(s.propType[k]) <= maxStage;
       // a dying fire in the cold: the nearest usable wood, young trees included, beats a long walk
       const desperate = s.hearth().fuel < 2 && s.tempAt(p) < 9 && c.stock.wood < 3;
       let k = desperate ? s.nearestProp(c.x, c.z, 18, tree(1), (k, d) => -d + (s.chopped.has(k) ? 6 : 0) + treeStage(s.propType[k])) : -1;
@@ -338,8 +360,20 @@ function setup(s: Sim, p: Person, kind: TaskKind): Task | null {
       if (k < 0) return null;
       s.reserved.set(k, p.id);
       const kindName = ['pine', 'oak', 'birch'][Math.floor(s.propType[k] / 12)];
-      p.thought = treeStage(s.propType[k]) === 3 ? `Felling an old ${kindName}.` : `Felling a ${kindName} for wood.`;
-      return newTask(s, kind, s.propTile[k], s.propX[k] + 0.34, s.propZ[k] + 0.18, k);
+      const t = newTask(s, kind, s.propTile[k], s.propX[k] + 0.34, s.propZ[k] + 0.18, k);
+      // a tool from the pile is fetched first, unless they are standing by it
+      const pile = s.storeSpot(true);
+      if (tool.holder !== p.id && hyp(p.x - pile.x, p.z - pile.z) > 3.5) {
+        t.stage = -1;
+        t.goal = pile.tile;
+        t.gx = pile.x;
+        t.gz = pile.z;
+        p.thought = `Fetching ${tool.kind === 'axe' ? 'an axe' : 'a chopper'} from the stockpile to fell a ${kindName}.`;
+      } else {
+        p.thought = treeStage(s.propType[k]) === 3 ? `Felling an old ${kindName}.` : tool.kind === 'chopper' ? `Hacking at a young ${kindName} with a chopper.` : `Felling a ${kindName} for wood.`;
+      }
+      s.takeTool(p, tool);
+      return t;
     }
     case 'deadwood': {
       const k = s.nearestProp(c.x, c.z, 26, (k) => isTreeType(s.propType[k]) && treeStage(s.propType[k]) >= 1 && !s.deadwoodTaken.has(k),
@@ -496,6 +530,13 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
     }
     if (t.kind === 'twist' && t.amount > 0) {
       st.fiber += t.amount;
+      t.amount = 0;
+    }
+    if (t.kind === 'knap' && t.amount > 0) {
+      const sp = ITEMS[ITEM_KINDS[t.ref]];
+      st.wood += sp.wood;
+      st.stone += sp.stone;
+      st.cordage += sp.cordage;
       t.amount = 0;
     }
     if (t.kind === 'preserve' && t.amount > 0) {
@@ -1030,14 +1071,47 @@ export function runTask(s: Sim, p: Person) {
       finish(s, p);
       return;
     }
+    case 'knap': {
+      const kind = ITEM_KINDS[t.ref];
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = Math.max(10, Math.round(ITEMS[kind].work * (1.2 - p.skills[SK.craft] * 0.025)));
+      }
+      p.act = ACT.Sit;
+      face(p, c.x, c.z);
+      if (--t.timer > 0) return;
+      s.items.push({ id: s.newId(), kind, band: p.band, holder: -1, wear: 0, made: s.tick, maker: p.id });
+      s.book(`made.${kind}`, 1);
+      t.amount = 0;
+      skillUp(p, SK.craft, 0.08);
+      p.thought = kind === 'axe' ? 'Made a stone axe and laid it on the pile.' : 'Knapped a chopper and laid it on the pile.';
+      finish(s, p);
+      return;
+    }
     case 'fell': {
+      if (t.stage === -1) {
+        // to the pile for the tool, then out to the tree
+        if (!s.propAlive[t.ref]) return finish(s, p);
+        if (moving(go(s, p, t))) return;
+        t.stage = 0;
+        t.goal = s.propTile[t.ref];
+        t.gx = s.propX[t.ref] + 0.34;
+        t.gz = s.propZ[t.ref] + 0.18;
+        p.path = null;
+        p.thought = `Off to fell a tree with ${s.heldBy(p)?.kind === 'axe' ? 'an axe' : 'a chopper'}.`;
+        return;
+      }
       if (t.stage === 0) {
         if (!s.propAlive[t.ref]) return finish(s, p);
+        // the tool went back to the pile (or broke) while they were away: start over
+        const tool = s.heldBy(p);
+        if (!tool || (tool.kind === 'chopper' && treeStage(s.propType[t.ref]) > 1)) return finish(s, p);
         if (moving(go(s, p, t))) return;
         t.stage = 1;
         const st = treeStage(s.propType[t.ref]);
-        // a tree someone already half cut through needs only the rest
-        const total = Math.round([10, 22, 40, 55][st] * (1.25 - p.skills[SK.wood] * 0.03));
+        // a tree someone already half cut through needs only the rest; a chopper takes twice as long
+        const total = Math.round([10, 22, 40, 55][st] * (1.25 - p.skills[SK.wood] * 0.03) * (tool.kind === 'chopper' ? 2 : 1));
         t.timer = Math.max(1, total - (s.chopped.get(t.ref) ?? 0));
         if (s.chopped.has(t.ref)) p.thought = 'Finishing a tree someone started.';
       }
@@ -1057,6 +1131,15 @@ export function runTask(s: Sim, p: Person) {
         s.removeProp(k);
         s.stats.felled++;
         skillUp(p, SK.wood, 0.08);
+        const tool = s.heldBy(p);
+        if (tool) {
+          // hacking through a trunk with a stone in the fist is what gives people the idea of a haft
+          if (tool.kind === 'chopper') s.practise(p, 'fell_chopper');
+          if (s.wearTool(tool)) {
+            s.remember(p, 'tool_broke', -2, 0.3, -1, `Their ${tool.kind === 'axe' ? 'axe' : 'chopper'} broke.`);
+            s.event('tool', `${p.name}'s ${tool.kind === 'axe' ? 'stone axe' : 'hand chopper'} broke on ${art(what)} ${what}.`, [p.id], p.x, p.z, 1);
+          }
+        }
         if (r.chance(0.006)) {
           p.health -= 35;
           s.remember(p, 'injured', -15, 1, -1, 'Hurt by a falling tree.');
@@ -1405,6 +1488,12 @@ export function runTask(s: Sim, p: Person) {
       s.propVal[g] = body.id;
       body.buried = true;
       body.indoors = true;
+      // what they had in hand goes back on the pile with whoever buried them
+      const tool = s.heldBy(body);
+      if (tool) {
+        tool.holder = -1;
+        tool.band = p.band;
+      }
       p.carry = CARRY.None;
       s.event('burial', `${p.name} laid ${body.name} to rest.`, [p.id, body.id], p.x, p.z, 1);
       s.adjust(p, body, 0);

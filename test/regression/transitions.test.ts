@@ -96,6 +96,10 @@ describe('a job whose place is gone', () => {
 
 describe('preserving', () => {
   it('called off, gives back fish as fish and meat as meat', () => {
+    // empty-handed, so nothing else they carry lands in the stores too
+    abandon(s, p);
+    p.carry = CARRY.None;
+    p.carryAmt = 0;
     const { fish, meat } = s.camp.stock;
     p.task = task('preserve', { stage: 2, amount: 6, fish: 4 });
     abandon(s, p);
