@@ -16,7 +16,7 @@ const DOING: Record<string, string> = {
   fell: 'Felling a tree', haul: 'Hauling logs home', hunt: 'Hunting deer', fish: 'Fishing', build: 'Building',
   supply: 'Carrying materials to a building site', fuel: 'Feeding the fire', preserve: 'Drying meat and fish',
   bury: 'Burying the dead', explore: 'Exploring', deadwood: 'Gathering fallen branches', swim: 'Swimming to cool off',
-  reap: 'Cutting grass and reeds', twist: 'Twisting cordage', dig: 'Digging mud', quarry: 'Quarrying stone',
+  reap: 'Cutting grass and reeds', twist: 'Twisting cordage', dig: 'Digging mud', quarry: 'Quarrying stone', knap: 'Making tools',
 };
 const CARRYING: Record<number, string> = {
   [CARRY.Log]: 'a log', [CARRY.Berries]: 'berries', [CARRY.Meat]: 'meat', [CARRY.Fish]: 'fish',
@@ -166,6 +166,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
               <dt>Doing</dt>
               <dd>{p.task ? DOING[p.task] ?? p.task : 'Nothing much'}{p.indoors ? ', indoors' : ''}</dd>
               {p.carry > 0 && CARRYING[p.carry] && (<><dt>Carrying</dt><dd>{CARRYING[p.carry]}{p.carryAmt > 1 ? ` (${Math.round(p.carryAmt)})` : ''}</dd></>)}
+              {p.tool && (<><dt>In hand</dt><dd>A {p.tool}</dd></>)}
               <dt>Where</dt>
               <dd>{p.campDist < 3 ? `At ${p.bandName}` : `${Math.round((p.campDist * METERS_PER_UNIT) / 10) * 10} m from ${p.bandName}`}</dd>
             </dl>

@@ -72,6 +72,18 @@ the band it joins; and strangers bring some of what is known in the world, more 
 The band panel lists what a band knows. Every discovery is one row in `src/sim/know.ts`, and
 `npx tsx tools/discoveries.ts` shows when each seed's first band found each one.
 
+**Tools.** Felling takes a tool. A band starts with two hand choppers (a stone knapped to an edge,
+held in the fist), which take only saplings and young trees, and at half the pace. Hacking at trunks
+with them is what leads someone to lash a stone head to a haft: the stone axe, a discovery, which
+fells any tree. Tools are made by the fire (a chopper from a lump of stone; an axe from 2 wood, 1
+stone and 1 cordage), with the stone fetched from the rocks, and the band keeps a couple of choppers
+and about one axe for every few people. They lie on the stockpile: a woodcutter fetches one before
+setting out and lays it back when passing the pile again; the dead's tools come back with whoever
+buries them. Each tree wears a tool down (a chopper lasts about 10, an axe about 25) until it
+breaks. Fallen branches never need a tool, so a band that loses every tool still keeps its fire
+going. The band panel and the stockpile list the tools and how worn they are, and a woodcutter
+without an axe is drawn hacking with a stone.
+
 **Fortune.** Most years are ordinary. Some are not: a sickness that runs through a camp, a feud
 that ends in a killing and an exile, wolves or a bear on someone out alone after dark, a drowning,
 a summer the berries fail, a murrain among the deer; or a year of plenty, a great hunt that brings

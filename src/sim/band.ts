@@ -28,14 +28,48 @@ export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, S
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
-  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'twist' | 'dig' | 'quarry';
+  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'twist' | 'dig' | 'quarry' | 'knap';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
-  'deadwood', 'swim', 'migrate', 'reap', 'twist', 'dig', 'quarry',
+  'deadwood', 'swim', 'migrate', 'reap', 'twist', 'dig', 'quarry', 'knap',
 ];
+
+/** Things a band makes and keeps: for now, the tools for felling. */
+export const ITEM_KINDS = ['chopper', 'axe'] as const;
+export type ItemKind = (typeof ITEM_KINDS)[number];
+export interface ItemSpec {
+  label: string;
+  wood: number;
+  stone: number;
+  cordage: number;
+  /** ticks of work at the fire, before skill */
+  work: number;
+  /** how many trees it fells before it is worn out */
+  uses: number;
+}
+export const ITEMS: Record<ItemKind, ItemSpec> = {
+  // a stone knapped to an edge, held in the fist: saplings and young trees only, and slowly
+  chopper: { label: 'Hand chopper', wood: 0, stone: 1, cordage: 0, work: 24, uses: 10 },
+  // the same head lashed to a wooden haft: any tree
+  axe: { label: 'Stone axe', wood: 2, stone: 1, cordage: 1, work: 60, uses: 25 },
+};
+/** One made thing. It lies on its band's stockpile unless someone holds it. */
+export interface Item {
+  id: number;
+  kind: ItemKind;
+  /** the band whose pile it goes back to */
+  band: number;
+  /** who has it in hand (a person id), or -1 on the stockpile */
+  holder: number;
+  /** how worn it is, 0 new .. 1 broken */
+  wear: number;
+  made: number;
+  /** who made it (-1: brought from beyond the map) */
+  maker: number;
+}
 
 /** Anything in the world that can be clicked. */
 export interface Ref {

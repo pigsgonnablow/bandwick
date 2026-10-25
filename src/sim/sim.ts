@@ -8,7 +8,7 @@ import {
 } from './types';
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
-  Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
+  Item, ItemKind, ITEMS, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, TASK_KINDS, Ref, Card, CardLine,
 } from './band';
 import {
@@ -16,7 +16,7 @@ import {
   isDark, temperature, berriesRipe, freshFrozen, seasonPos, seasonOf, ageYears, yearOf, dayOf,
 } from './time';
 import { decide, runTask, abandon, sendHome, delivering } from './ai';
-import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor } from './know';
+import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, ITEM_KNOWS } from './know';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 const TREE_TYPES = SPECIES.length * STAGES * TREE_VARIANTS;
@@ -114,6 +114,8 @@ export class Sim {
   people: Person[] = [];
   byId = new Map<number, Person>();
   buildings: Building[] = [];
+  /** every tool a band has made (or brought), wherever it is */
+  items: Item[] = [];
   deer: Deer[] = [];
   herds: Herd[] = [];
   /** every band that has ever had a camp, in order of founding */
@@ -127,6 +129,10 @@ export class Sim {
   rWild: Rng;
   anomaly = 0;
   private nextId = 1;
+  /** A fresh id for a camp, building, person or thing. */
+  newId() {
+    return this.nextId++;
+  }
   private nextEvent = 1;
 
   // ---- mutable props (start as the generated world's, then change) ----
@@ -286,6 +292,7 @@ export class Sim {
         task: p.task ? { ...p.task } : null, traits: p.traits.slice(), memories: p.memories.map((m) => ({ ...m })), children: p.children.slice(),
       })),
       buildings: this.buildings.map((b) => ({ ...b, builders: b.builders.slice() })),
+      items: this.items.map((i) => ({ ...i })),
       deer: this.deer.map((d) => ({ ...d })),
       herds: this.herds.map((h) => ({ ...h })),
     };
@@ -363,6 +370,14 @@ export class Sim {
       c.practice = {};
       delete old.knowsPreserving;
       delete old.knowsStonework;
+    }
+    // saves from before tools: everyone felled any tree they liked, so each band knows the axe and has a few
+    this.items = d.items ?? [];
+    if (!d.items) {
+      for (const c of this.liveCamps()) {
+        if (!c.knows.includes('axe')) c.knows.push('axe');
+        this.giveTools(c, { chopper: 2, axe: 2 });
+      }
     }
     this.deer = d.deer as Deer[];
     this.herds = d.herds as Herd[];
@@ -591,6 +606,7 @@ export class Sim {
     const cx = best % N, cz = (best / N) | 0;
     const camp = this.foundCamp(best, { berries: 14, meat: 14, fish: 0, preserved: 0, wood: 8, fiber: 4, cordage: 2, mud: 0, stone: 0 }, -1, -1);
     camp.origin = strangers ? 'strangers' : 'first';
+    const giveAxes = () => (camp.knows.includes('axe') ? 2 : 0);
     // strangers bring some of what is known in the world by now, more the later they come
     if (strangers) {
       const known = new Set(this.camps.flatMap((o) => o.knows));
@@ -599,6 +615,8 @@ export class Sim {
       for (const d of DISCOVERIES)
         if (known.has(d.key) && d.needs.every((k) => camp.knows.includes(k)) && (d.key === 'huts' || this.rLife.chance(share))) camp.knows.push(d.key);
     }
+    // a couple of hand choppers, and axes if they know how to make them
+    this.giveTools(camp, { chopper: 2, axe: giveAxes() });
     const r = this.rLife;
     const y = TICKS_PER_YEAR;
     const band: Person[] = [];
@@ -884,6 +902,11 @@ export class Sim {
       // someone carrying goods home doesn't stop to rethink, only for an emergency
       if (!p.task || (t >= p.nextThink && !delivering(p)) || ((t + p.id) % 10 === 0 && this.urgent(p))) decide(this, p);
       if (p.task) runTask(this, p);
+      // a tool nobody is working with goes back on the pile when they pass by it
+      if ((t + p.id) % 10 === 0 && p.alive && p.task?.kind !== 'fell' && this.heldBy(p)) {
+        const st = this.storeSpot(true);
+        if (hyp(p.x - st.x, p.z - st.z) < 3.5) this.returnTool(p);
+      }
     }
     this.updateDeer();
   }
@@ -1100,6 +1123,77 @@ export class Sim {
   /** Whether a band has discovered something. */
   knows(k: string, c = this.camp) {
     return c.knows.includes(k);
+  }
+
+  // ------------------------------------------------------------------ tools
+  /** New tools laid on a band's stockpile (a starting set, or brought from beyond the map). */
+  giveTools(c: Camp, n: Partial<Record<ItemKind, number>>) {
+    for (const [kind, k] of Object.entries(n) as [ItemKind, number][])
+      for (let i = 0; i < k; i++) this.items.push({ id: this.newId(), kind, band: c.id, holder: -1, wear: 0, made: this.tick, maker: -1 });
+  }
+  /** A band's tools, of one kind or all. */
+  toolsOf(c = this.camp, kind?: ItemKind) {
+    return this.items.filter((i) => i.band === c.id && (!kind || i.kind === kind));
+  }
+  /** What someone has in hand. */
+  heldBy(p: Person) {
+    return this.items.find((i) => i.holder === p.id);
+  }
+  /** The best of these kinds they have in hand or could take from their band's pile (best first). */
+  toolFor(p: Person, kinds: ItemKind[]) {
+    const held = this.heldBy(p);
+    if (held && kinds.includes(held.kind)) return held;
+    for (const k of kinds) {
+      const free = this.items.filter((i) => i.band === p.band && i.holder < 0 && i.kind === k).sort((a, b) => b.wear - a.wear || a.id - b.id)[0];
+      if (free) return free;
+    }
+    return undefined;
+  }
+  /** Take a tool in hand (putting down whatever other tool they held). */
+  takeTool(p: Person, it: Item) {
+    const held = this.heldBy(p);
+    if (held && held !== it) held.holder = -1;
+    it.holder = p.id;
+  }
+  /** Lay what they hold back on their band's pile. */
+  returnTool(p: Person) {
+    const held = this.heldBy(p);
+    if (held) {
+      held.holder = -1;
+      held.band = p.band;
+    }
+  }
+  /** A use: a little more worn. Returns true when it breaks (and is gone). */
+  wearTool(it: Item) {
+    it.wear += 1 / ITEMS[it.kind].uses;
+    if (it.wear < 0.999) return false;
+    this.items.splice(this.items.indexOf(it), 1);
+    this.book('tools.worn', 1, this.campById(it.band) ?? this.camp);
+    return true;
+  }
+  /** What the band should make next at the fire, if anything: axes for the woodcutters, a couple of choppers. */
+  toolToMake(c = this.camp): ItemKind | null {
+    const pop = this.members(c).length;
+    const axes = this.toolsOf(c, 'axe').length, choppers = this.toolsOf(c, 'chopper').length;
+    if (this.knows('axe', c) && axes < 2 + Math.floor(pop / 8)) return 'axe';
+    if (choppers < (this.knows('axe', c) && axes > 0 ? 1 : 2)) return 'chopper';
+    return null;
+  }
+  /** "2 stone axes (1 well worn), 1 hand chopper". */
+  describeTools(list: Item[]) {
+    return (['axe', 'chopper'] as const).map((k) => {
+      const of = list.filter((i) => i.kind === k);
+      if (!of.length) return '';
+      const worn = of.filter((i) => i.wear >= 0.6).length;
+      const name = ITEMS[k].label.toLowerCase();
+      return `${of.length} ${of.length === 1 ? name : `${name}s`}${worn ? ` (${worn} well worn)` : ''}`;
+    }).filter(Boolean).join(', ');
+  }
+  /** Whether a band could make a thing from its stores right now. */
+  canMake(kind: ItemKind, c = this.camp) {
+    const sp = ITEMS[kind], st = c.stock;
+    const need = ITEM_KNOWS[kind];
+    return (!need || this.knows(need, c)) && st.wood >= sp.wood && st.stone >= sp.stone && st.cordage >= sp.cordage;
   }
 
   /**
@@ -1546,6 +1640,8 @@ export class Sim {
       this.camp = this.campOf(p);
       abandon(this, p);
       p.band = to.id;
+      const held = this.heldBy(p);
+      if (held) held.band = to.id;
       p.home = -1;
       p.indoors = false;
       sendHome(this, p, to);
@@ -1609,6 +1705,12 @@ export class Sim {
     const from = c;
     this.book('carried', foodTotal(take) + take.wood, from);
     const nc = this.foundCamp(site, take, from.id, leader.id);
+    // and their share of the tools on the pile: at least one of each, where the band has two or more to spare
+    for (const kind of ['axe', 'chopper'] as const) {
+      const pile = this.items.filter((i) => i.band === from.id && i.holder < 0 && i.kind === kind);
+      const n = Math.min(pile.length - 1, Math.max(1, Math.round(pile.length * share)));
+      for (const it of pile.slice(0, Math.max(0, n))) it.band = nc.id;
+    }
     // a bitter parting (a quarrelsome band, or a leader who has no love for those staying) takes a contrasting colour
     let regard = 0;
     const stayers = this.members(from).filter((q) => !group.includes(q));
@@ -1663,6 +1765,7 @@ export class Sim {
     nc.knows = c.knows.slice();
     nc.practice = { ...c.practice };
     nc.learning = c.learning?.slice();
+    for (const it of this.items) if (it.band === c.id && it.holder < 0) it.band = nc.id;
     // the same people, the same colour
     nc.color = c.color ?? nc.color;
     nc.origin = 'moved';
@@ -1685,6 +1788,8 @@ export class Sim {
     const to = this.liveCamps().filter((o) => o !== c).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
     if (!to || !ms.length) return false;
     this.join(ms, to);
+    // their tools go on the pile there
+    for (const it of this.items) if (it.band === c.id && it.holder < 0) it.band = to.id;
     // the band they join learns everything they knew
     const learned = this.unknownTo(c, to);
     if (learned.length) {
@@ -1956,6 +2061,7 @@ export class Sim {
     const fiberWant = siteFiber + 8;
     const woodP = clamp01((fuelNeed + siteWood - c.stock.wood) / (fuelNeed + siteWood + 1) * 1.15, 0.08, 1.0);
     const logsLying = this.countProps(LOGS);
+    const make = this.toolToMake(c);
     c.jobs = {
       food: foodP,
       wood: woodP + (logsLying > 0 ? 0.1 : 0),
@@ -1964,16 +2070,19 @@ export class Sim {
       preserve: this.knows('preserving') && mine.some((b) => b.kind === 'rack' && b.built) && c.stock.meat + c.stock.fish > 6 ? 0.7 : 0,
       fiber: fiberHave < fiberWant ? clamp01((fiberWant - fiberHave) / (fiberWant + 2) * 1.1 + (siteFiber > fiberHave ? 0.25 : 0), 0.1, 0.9) : 0,
       // twisting cordage: what the sites need first, then a few lengths put by
-      twist: c.stock.fiber >= FIBER_PER_CORD ? (siteCord > c.stock.cordage ? 0.8 : c.stock.cordage < 4 ? 0.3 : 0) : 0,
+      twist: c.stock.fiber >= FIBER_PER_CORD ? (siteCord > c.stock.cordage || (make === 'axe' && c.stock.cordage < 1) ? 0.8 : c.stock.cordage < 4 ? 0.3 : 0) : 0,
       // mud and stone are fetched only for a site that needs them (mud can't be dug from frozen ground)
       dig: siteMud > c.stock.mud && !winterNow ? 0.75 : 0,
-      quarry: siteStone > c.stock.stone ? 0.75 : 0,
+      // stone for walls, and a lump or two for knapping tools
+      quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < ITEMS[make].stone ? 0.5 : 0,
+      knap: make && this.canMake(make) ? 0.6 : 0,
       bury: this.people.some((p) => !p.alive && !p.buried && p.band === c.id) ? 1 : 0,
     };
     c.plan = [];
     if (foodP > 0.8) c.plan.push(winterNow ? 'Find food to last the winter' : 'Store food before winter');
     if (woodP > 0.5) c.plan.push(s > 2.0 && !winterNow ? 'Lay in firewood for the winter' : 'Gather wood');
     if (siteFiber > fiberHave) c.plan.push('Cut grass and reeds for thatch and cordage');
+    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : 'Knap a hand chopper');
 
     if (!mine.some((b) => b.kind === 'stockpile')) this.markStockpile(c);
     // shelter: first fill homes that stand empty (their families died or moved), then build
@@ -2377,7 +2486,7 @@ export class Sim {
   }
 
   // ------------------------------------------------------------------ snapshots for the renderer
-  static PERSON_STRIDE = 15;
+  static PERSON_STRIDE = 16;
   packPeople(): Float32Array {
     const list = this.people.filter((p) => p.alive || !p.buried);
     const out = new Float32Array(list.length * Sim.PERSON_STRIDE);
@@ -2399,6 +2508,9 @@ export class Sim {
       out[o + 12] = p.task ? TASK_KINDS.indexOf(p.task.kind) + 1 : 0;
       out[o + 13] = p.flash ?? 0;
       out[o + 14] = p.band;
+      // the tool in hand: 0 none, 1 chopper, 2 axe
+      const tool = this.heldBy(p);
+      out[o + 15] = tool ? (tool.kind === 'axe' ? 2 : 1) : 0;
     });
     return out;
   }
@@ -2488,6 +2600,7 @@ export class Sim {
       plan: c.plan.slice(),
       famine: c.famine,
       knows: c.knows.map((k) => DISCOVERY.get(k)?.label ?? k),
+      tools: this.describeTools(this.toolsOf(c)),
       deer: this.deer.filter((d) => d.alive).length,
       stats: { ...this.stats },
       temp: temperature(this.tick, this.anomaly, Math.max(0, this.world.level[c.tile] - SEA - 1)),
@@ -2587,6 +2700,10 @@ export class Sim {
         if (st.fiber >= 0.5 || st.cordage >= 0.5) lines.push(L('Fiber', `${Math.floor(st.fiber)} bundles of grass and reeds, ${Math.floor(st.cordage)} lengths of cordage`));
         if (st.mud >= 0.5) lines.push(L('Mud', `${Math.floor(st.mud)} loads`));
         if (st.stone >= 0.5) lines.push(L('Stone', `${Math.floor(st.stone)} loads`));
+        const owner = this.campById(b.band) ?? this.camp;
+        const tools = this.toolsOf(owner);
+        lines.push(L('Tools', tools.length ? this.describeTools(tools.filter((i) => i.holder < 0)) || 'All out in someone\'s hands' : 'None'));
+        if (tools.some((i) => i.holder >= 0)) lines.push(L('Out in use', this.describeTools(tools.filter((i) => i.holder >= 0))));
         if (inside) lines.push(L('Food', `${Math.round(foodTotal(st))} meals, kept in the storehouse`));
         else {
           lines.push(L('Berries', `${Math.round(st.berries)} handfuls`));
@@ -2849,6 +2966,10 @@ export class Sim {
       kills: p.kills,
       carry: p.carry,
       carryAmt: p.carryAmt,
+      tool: (() => {
+        const it = this.heldBy(p);
+        return it ? `${ITEMS[it.kind].label.toLowerCase()}${it.wear >= 0.6 ? ', well worn' : it.wear < 0.1 ? ', new' : ''}` : null;
+      })(),
       indoors: p.indoors,
       campDist: hyp(p.x - this.campOf(p).x, p.z - this.campOf(p).z),
       band: p.band,
@@ -2958,6 +3079,8 @@ export interface SaveData {
   events: SimEvent[];
   people: SavedPerson[];
   buildings: Building[];
+  /** absent in saves from before tools */
+  items?: Item[];
   deer: Deer[];
   herds: Herd[];
 }

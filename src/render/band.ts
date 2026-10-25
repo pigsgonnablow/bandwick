@@ -10,12 +10,12 @@ import { addCommon } from './shaderlib';
 import { U } from './env';
 import gait from '../assets/gait.json';
 
-const P_STRIDE = 15;
+const P_STRIDE = 16;
 /** Poses only the renderer chooses (the simulation just says where people are). */
 const SWIM = 19, TREAD = 20;
 const FISH_TASK = TASK_KINDS.indexOf('fish') + 1;
-/** Drawn in a woodcutter's hands while they chop (the simulation doesn't track tools). */
-const AXE = 99;
+/** Drawn in a woodcutter's hands while they chop: an axe, or a hand chopper (a knapped stone in the fist). */
+const AXE = 99, CHOPPER = 98;
 /** How walls that are not wood colour a building (multiplied over its own colours). */
 const WALL_TINT: Record<string, [number, number, number]> = { daub: [1.0, 0.86, 0.68], stone: [0.8, 0.82, 0.86] };
 /** A box of one colour, turned about its own centre and set down at (x, y, z) (y is its foot). */
@@ -160,6 +160,8 @@ interface Shown {
   fx: number; fz: number;
   /** their band */
   band: number;
+  /** the tool in hand: 0 none, 1 chopper, 2 axe */
+  tool: number;
   /** where the axe swing had got to last frame; whether this stab has hit the water yet */
   swing: number; splashed: boolean;
 }
@@ -204,7 +206,7 @@ export class BandLayer {
     // carried things
     const carryNames: [number, string][] = [
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
-      [CARRY.Spear, 'spear'], [CARRY.Body, 'body'], [CARRY.Baby, 'baby'], [AXE, 'axe'],
+      [CARRY.Spear, 'spear'], [CARRY.Body, 'body'], [CARRY.Baby, 'baby'], [AXE, 'axe'], [CHOPPER, 'chopper'],
       // cut grass and cordage go home in a basket like berries
       [CARRY.Fiber, 'berries'], [CARRY.Mud, 'berries'], [CARRY.Stone, 'berries'],
     ];
@@ -212,7 +214,7 @@ export class BandLayer {
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
     carryMat.customProgramCacheKey = () => 'carry';
     for (const [id, name] of carryNames) {
-      const g = geoms.get(`carry__${name}`);
+      const g = geoms.get(`carry__${name}`) ?? (name === 'chopper' ? plank(0.045, 0.06, 0.035, 0, -0.03, 0, 0.3, 0.2, 0x8a8478) : undefined);
       if (!g) continue;
       const m = new THREE.InstancedMesh(g, carryMat, 128);
       m.count = 0;
@@ -680,7 +682,7 @@ export class BandLayer {
       if (!s) {
         s = { x: P[o + 1], z: P[o + 2], px: P[o + 1], pz: P[o + 2], y: this.groundAt(P[o + 1], P[o + 2]), angle: 0, act: 0, indoors: false, age: 0, sex: 0, look: 0, seen, task: 0,
           dx: P[o + 1], dz: P[o + 2], want: 0, phase: (id * 0.37) % 1, run: 0, shownAct: P[o + 5], prevAct: P[o + 5], actAt: -1e9, still: 0,
-          flash: P[o + 13], gesture: null, gestAt: 0, gestCarry: 0, carry: P[o + 6], fx: P[o + 3], fz: P[o + 4], swing: 0, splashed: false, band: P[o + 14] };
+          flash: P[o + 13], gesture: null, gestAt: 0, gestCarry: 0, carry: P[o + 6], fx: P[o + 3], fz: P[o + 4], swing: 0, splashed: false, band: P[o + 14], tool: P[o + 15] };
         s.angle = s.want = Math.atan2(P[o + 3] - P[o + 1], P[o + 4] - P[o + 2]) || 0;
         this.people.set(id, s);
       } else {
@@ -696,6 +698,7 @@ export class BandLayer {
       s.fx = P[o + 3];
       s.fz = P[o + 4];
       s.band = P[o + 14];
+      s.tool = P[o + 15];
       const fx = P[o + 3] - P[o + 1], fz = P[o + 4] - P[o + 2];
       if (fx * fx + fz * fz > 1e-4) s.want = Math.atan2(fx, fz);
       s.act = P[o + 5];
@@ -967,15 +970,16 @@ export class BandLayer {
       }
       // a woodcutter's axe, in both hands, following the swing (as POSE_GLSL bends the arms)
       if (s.shownAct === ACT.Chop && s.act !== ACT.Dead) {
-        const am = this.carryMeshes.get(AXE);
-        const ak = carryCount.get(AXE) ?? 0;
+        const held = s.tool === 1 ? CHOPPER : AXE;
+        const am = this.carryMeshes.get(held);
+        const ak = carryCount.get(held) ?? 0;
         if (am && ak < am.instanceMatrix.count) {
           const c = Math.max(0, Math.sin((U.uTime.value + (look % 997) * 0.37) * 5.5));
           const sh = -2.75 + 1.85 * c, el = -0.35 + 0.25 * c, lean = 0.1 + 0.22 * c + (elder ? 0.18 : 0);
           const hand = handAt(sh, el, lean, 0);
           const am4 = new THREE.Matrix4().makeRotationX(sh + el + lean + Math.PI - 0.5).setPosition(0.035, hand.y, hand.z);
           am.setMatrixAt(ak, m4.clone().multiply(am4));
-          carryCount.set(AXE, ak + 1);
+          carryCount.set(held, ak + 1);
         }
       }
       if (bc && s.act !== ACT.Dead) this.auraList.push({ x, y: s.y, z, r: 1.0 * Math.max(0.7, scale), c: bc.color, k: 0.6 });

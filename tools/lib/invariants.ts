@@ -5,7 +5,7 @@ import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, yearOf } from '../../src/sim/time';
 import { CARRY, MATERIALS, specOf, foodTotal } from '../../src/sim/band';
-import { knowHowFor } from '../../src/sim/know';
+import { knowHowFor, ITEM_KNOWS } from '../../src/sim/know';
 
 export interface Problem {
   count: number;
@@ -40,6 +40,20 @@ export class InvariantChecker {
     // (a camp is closed at the next morning's count after its last person dies)
     for (const c of sim.liveCamps()) if (!sim.members(c).length && sim.tick - (c.lastDeath ?? 0) > TICKS_PER_DAY) flag('living camp with nobody in it', `${at} ${c.name}`);
     for (const b of sim.buildings) if (!sim.campById(b.band)) flag('building of an unknown band', `${at} ${b.kind} ${b.id}`);
+    for (const it of sim.items) {
+      const c = sim.campById(it.band);
+      if (!c) { flag('tool of an unknown band', `${at} ${it.kind} ${it.id}`); continue; }
+      if (!(it.wear >= 0 && it.wear < 1)) flag('tool worn past breaking', `${at} ${it.kind} ${it.id} ${it.wear}`);
+      const need = ITEM_KNOWS[it.kind];
+      if (need && !c.knows.includes(need)) flag("tool the band doesn't know how to make", `${at} ${c.name}: ${it.kind}`);
+      if (it.holder >= 0) {
+        const h = sim.byId.get(it.holder);
+        if (!h) flag('tool held by nobody', `${at} ${it.kind} ${it.id}`);
+        else if (h.alive && h.band !== it.band) flag("tool held by someone of another band", `${at} ${h.name} ${it.kind}`);
+        else if (!h.alive && h.buried) flag('tool held by the buried dead', `${at} ${h.name} ${it.kind}`);
+        if (sim.items.filter((j) => j.holder === it.holder).length > 1) flag('two tools in one pair of hands', `${at} ${h?.name}`);
+      }
+    }
     for (const b of sim.buildings) {
       const c = sim.campById(b.band);
       for (const k of c ? knowHowFor(b) : []) if (!c!.knows.includes(k)) flag("building what the band doesn't know", `${at} ${c!.name}: ${b.kind} needs ${k}`);
