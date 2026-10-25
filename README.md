@@ -84,6 +84,13 @@ breaks. Fallen branches never need a tool, so a band that loses every tool still
 going. The band panel and the stockpile list the tools and how worn they are, and a woodcutter
 without an axe is drawn hacking with a stone.
 
+**Digging stick.** Mud for daub and graves are dug by hand at first: two baskets a trip, and a grave
+takes a while. Digging that way is what leads someone to sharpen a stout stick and harden its point
+in the fire (a discovery). A digging stick is made by the fire from 1 wood. Diggers and gravediggers
+fetch one from the pile when there is one. With it a trip brings back three baskets, and a grave
+takes two-thirds of the time. A stick lasts about 15 trips. A band keeps one, or two once it raises
+wattle-and-daub.
+
 **Crafting.** Everything made by the fire is one job with a list of recipes (`RECIPES` in
 `src/sim/band.ts`): cordage, the hand chopper and the stone axe so far. Each morning the plan says
 what is wanted, in a fixed order: cordage a building site is waiting on, then tools the day's work is

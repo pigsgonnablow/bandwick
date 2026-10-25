@@ -1,6 +1,6 @@
 // Tools are made, kept on the stockpile, taken out for felling and put back, and wear out.
 import { describe, it, expect } from 'vitest';
-import { ITEMS } from '../../src/sim/band';
+import { ITEMS, CARRY } from '../../src/sim/band';
 import { treeStage, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY } from '../../src/sim/time';
 import { sim, runTo, runYears } from '../helpers';
@@ -71,5 +71,35 @@ describe('tools', () => {
     expect(t.knows('axe')).toBe(true);
     expect(t.toolsOf().filter((i: any) => i.kind === 'axe').length).toBe(2);
     runTo(t, t.tick + 5 * TICKS_PER_DAY);
+  });
+
+  it('digs a full basket with a digging stick, and less by hand', () => {
+    const s = sim(3);
+    s.camp.knows.push('huts', 'daub');
+    const site = () => { const b = s.newBuilding('hut', s.camp.tile + 4 * s.N, -1); b.walls = 'daub'; };
+    site();
+    const seen = new Set<number>();
+    let byHand = 0, withStick = 0;
+    for (let i = 0; i < 48 * 24 && !(withStick && byHand); i++) {
+      runTo(s, s.tick + 10);
+      if (byHand && !s.knows('digstick')) {
+        // the band works the stick out, and has a couple made
+        s.camp.knows.push('digstick');
+        s.giveTools(s.camp, { stick: 2 });
+        site();
+      }
+      for (const p of s.members()) {
+        const t = p.task;
+        if (t?.kind !== 'dig' || t.stage !== 2 || p.carry !== CARRY.Mud || seen.has(t.started * 1000 + p.id)) continue;
+        seen.add(t.started * 1000 + p.id);
+        const stick = s.heldBy(p)?.kind === 'stick';
+        expect(p.carryAmt).toBe(stick ? 3 : 2);
+        if (stick) withStick++;
+        else byHand++;
+      }
+    }
+    expect(byHand).toBeGreaterThan(0);
+    expect(withStick).toBeGreaterThan(0);
+    expect(s.items.some((i) => i.kind === 'stick' && i.wear > 0)).toBe(true);
   });
 });
