@@ -8,7 +8,7 @@ import {
 } from './types';
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
-  Person, Building, BuildKind, BUILD, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
+  Person, Building, BuildKind, BUILD, FIBER_PER_CORD, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, TASK_KINDS, Ref, Card, CardLine,
 } from './band';
 import {
@@ -31,6 +31,13 @@ export const art = (w: string) => (/^[aeiou]/i.test(w) ? 'an' : 'a');
 const SEASON_WORD = ['spring', 'summer', 'autumn', 'winter'];
 const BERRY_BASE = smallPropId('berry', 0);
 export const isBerry = (t: number) => t >= BERRY_BASE && t < BERRY_BASE + 3;
+const GRASS_BASE = smallPropId('grass', 0);
+const REEDS_BASE = smallPropId('reeds', 0);
+export const isReeds = (t: number) => t >= REEDS_BASE && t < REEDS_BASE + 3;
+/** Grass tussocks and reed beds: cut for fiber, and they grow back. */
+export const isFiberPlant = (t: number) => isReeds(t) || (t >= GRASS_BASE && t < GRASS_BASE + 3);
+/** Most fiber a clump holds when fully grown (reeds stand taller and thicker). */
+export const fiberCap = (t: number) => (isReeds(t) ? 5 : 3);
 const STUMP_BASE = propId('stump_v0');
 const LOGS = propId('logs_v0');
 const GRAVE = propId('grave_v0');
@@ -292,6 +299,8 @@ export class Sim {
       this.camps = [this.camp];
     }
     for (const c of this.camps) if (!c.color) { c.color = this.distinctColor(); c.origin ??= c.parent < 0 ? 'first' : 'amicable'; }
+    // saves from before fiber and cordage
+    for (const c of [...this.camps, this.camp]) { c.stock.fiber ??= 0; c.stock.cordage ??= 0; }
     this.events = d.events;
     this.people = d.people.map((p) => ({
       ...p, skills: Float32Array.from(p.skills), rel: new Map(p.rel), path: p.path !== null ? new Int32Array(unb64(p.path).buffer as ArrayBuffer) : null,
@@ -299,7 +308,7 @@ export class Sim {
     for (const p of this.people) p.band ??= this.camp.id;
     this.byId = new Map(this.people.map((p) => [p.id, p]));
     this.buildings = d.buildings as Building[];
-    for (const b of this.buildings) b.band ??= this.camp.id;
+    for (const b of this.buildings) { b.band ??= this.camp.id; b.fiber ??= 0; b.cordage ??= 0; }
     this.deer = d.deer as Deer[];
     this.herds = d.herds as Herd[];
     this.propsVersion++;
@@ -319,7 +328,7 @@ export class Sim {
     this.propAlive[k] = 1;
     const tile = Math.min(this.N - 1, Math.floor(z)) * this.N + Math.min(this.N - 1, Math.floor(x));
     this.propTile[k] = tile;
-    this.propVal[k] = isBerry(type) ? 0 : type === LOGS ? 0 : 0;
+    this.propVal[k] = isFiberPlant(type) ? fiberCap(type) : 0;
     if (isTreeType(type)) this.treesOnTile[tile]++;
     this.propsVersion++;
     return k;
@@ -522,7 +531,7 @@ export class Sim {
     }
     if (best < 0) return null;
     const cx = best % N, cz = (best / N) | 0;
-    const camp = this.foundCamp(best, { berries: 14, meat: 14, fish: 0, preserved: 0, wood: 8 }, -1, -1);
+    const camp = this.foundCamp(best, { berries: 14, meat: 14, fish: 0, preserved: 0, wood: 8, fiber: 4, cordage: 2 }, -1, -1);
     camp.origin = strangers ? 'strangers' : 'first';
     const r = this.rLife;
     const y = TICKS_PER_YEAR;
@@ -761,7 +770,7 @@ export class Sim {
     const N = this.N;
     const b: Building = {
       id: this.nextId++, band: this.camp ? this.camp.id : 0, kind, tile, x: tile % N, z: Math.floor(tile / N),
-      rot: hash3(tile, this.world.params.seed, 7) & 3, wood: 0, work: 0, built: false, owner,
+      rot: hash3(tile, this.world.params.seed, 7) & 3, wood: 0, fiber: 0, cordage: 0, work: 0, built: false, owner,
       fuel: 0, started: this.tick, finished: 0, builders: [],
     };
     this.buildings.push(b);
@@ -858,7 +867,7 @@ export class Sim {
     // except wood runs in the cold when the store is low: coming home empty-handed means a cold night
     const emergency = (k === 'fell' || k === 'haul' || k === 'deadwood') && (this.hearth().fuel < 2 || this.camp.stock.wood < 20) && this.tempAt(p) < 12;
     // (a burial, once begun, is seen through: a body far out on the land is not left another night)
-    if (k && !emergency && p.task!.stage === 0 && isDark(this.tick) && !['sleep', 'warm', 'eat', 'fuel', 'socialize', 'idle', 'bury'].includes(k)) return true;
+    if (k && !emergency && p.task!.stage === 0 && isDark(this.tick) && !['sleep', 'warm', 'eat', 'fuel', 'socialize', 'idle', 'bury', 'twist'].includes(k)) return true;
     return false;
   }
 
@@ -1028,6 +1037,7 @@ export class Sim {
     for (const [k, until] of this.unreachable) if (until <= this.tick) this.unreachable.delete(k);
     for (const [k, until] of this.deadwoodTaken) if (until <= this.tick) this.deadwoodTaken.delete(k);
     this.berries(dayOfYear);
+    this.grasses();
     this.trees(dayOfYear);
     this.herdsDaily(dayOfYear);
     // each band's own day: stores, births and deaths, and the morning plan
@@ -1076,6 +1086,17 @@ export class Sim {
         this.propVal[k] = 0;
         this.propsVersion++;
       }
+    }
+  }
+
+  /** Cut grass and reeds grow back through spring and summer, slowly in autumn, not at all in winter. */
+  private grasses() {
+    const rate = [0.3, 0.3, 0.12, 0][seasonOf(this.tick)];
+    if (!rate) return;
+    for (let k = 0; k < this.propCount; k++) {
+      if (!this.propAlive[k] || !isFiberPlant(this.propType[k])) continue;
+      const cap = fiberCap(this.propType[k]);
+      if (this.propVal[k] < cap) this.propVal[k] = Math.min(cap, this.propVal[k] + rate * (isReeds(this.propType[k]) ? 1.4 : 1));
     }
   }
 
@@ -1431,7 +1452,7 @@ export class Sim {
     if (site < 0) return false;
     // they take a fair share of the stores with them
     const share = (group.length / ms.length) * 0.85;
-    const take: Stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0 };
+    const take: Stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0 };
     for (const k of Object.keys(take) as (keyof Stock)[]) { take[k] = c.stock[k] * share; c.stock[k] -= take[k]; }
     // and the wood to get a fire going and a first roof up
     const wood = Math.min(c.stock.wood * 0.5, Math.max(0, 16 - take.wood));
@@ -1497,7 +1518,7 @@ export class Sim {
     nc.origin = 'moved';
     this.join(ms, nc);
     c.gone = this.tick;
-    c.stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0 };
+    c.stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0 };
     this.hearth(c).fuel = 0;
     nc.settled = this.tick;
     for (const p of ms) this.remember(p, 'moved_camp', poorWood ? 4 : 10, 2, -1, `Left ${c.name} behind for ${nc.name}.`);
@@ -1686,7 +1707,7 @@ export class Sim {
       this.event('death_quarrel', `${att.name} killed ${vic.name} in a quarrel. There was nowhere to send ${att.sex ? 'him' : 'her'}.`, [att.id, vic.id], att.x, att.z, 4);
       return;
     }
-    const take: Stock = { berries: 0, meat: Math.min(6, c.stock.meat), fish: 0, preserved: 0, wood: Math.min(6, c.stock.wood) };
+    const take: Stock = { berries: 0, meat: Math.min(6, c.stock.meat), fish: 0, preserved: 0, wood: Math.min(6, c.stock.wood), fiber: 0, cordage: 0 };
     c.stock.meat -= take.meat;
     c.stock.wood -= take.wood;
     this.book('carried', take.meat + take.wood, c);
@@ -1728,7 +1749,8 @@ export class Sim {
       const g = (k: string) => Math.round(r?.[k] ?? 0);
       const food = (pre: string) => g(`${pre}.berries`) + g(`${pre}.meat`) + g(`${pre}.fish`) + g(`${pre}.preserved`);
       return {
-        gathered: { berries: g('gathered.berries'), meat: g('gathered.meat'), fish: g('gathered.fish'), wood: g('gathered.wood') },
+        gathered: { berries: g('gathered.berries'), meat: g('gathered.meat'), fish: g('gathered.fish'), wood: g('gathered.wood'), fiber: g('gathered.fiber') },
+        twisted: g('twisted'), thatch: g('built.fiber'), lashed: g('built.cordage'),
         food: g('gathered.berries') + g('gathered.meat') + g('gathered.fish'),
         eaten: food('eaten'), spoiled: food('spoiled'), dried: g('dried'), burned: g('burned'), built: g('built'),
         carried: g('carried'), brought: g('brought'),
@@ -1757,6 +1779,11 @@ export class Sim {
     const fuelNeed = winterNow ? Math.max(14, daysToWinterEnd * 6.5) : s > 2.0 ? 80 : s > 1.4 ? 40 : 12;
     const sites = mine.filter((b) => !b.built);
     const siteWood = sites.reduce((a, b) => a + Math.max(0, BUILD[b.kind].wood - b.wood), 0);
+    // thatch and cordage still owed to the sites, counted as fiber; and a little kept in hand for the next roof
+    const siteCord = sites.reduce((a, b) => a + Math.max(0, BUILD[b.kind].cordage - b.cordage), 0);
+    const siteFiber = sites.reduce((a, b) => a + Math.max(0, BUILD[b.kind].fiber - b.fiber), 0) + siteCord * FIBER_PER_CORD;
+    const fiberHave = c.stock.fiber + c.stock.cordage * FIBER_PER_CORD;
+    const fiberWant = siteFiber + 8;
     const woodP = clamp01((fuelNeed + siteWood - c.stock.wood) / (fuelNeed + siteWood + 1) * 1.15, 0.08, 1.0);
     const logsLying = this.countProps(LOGS);
     c.jobs = {
@@ -1765,11 +1792,15 @@ export class Sim {
       build: sites.length ? 0.85 : 0,
       fuel: this.hearth().fuel < 5 ? 0.9 : 0.15,
       preserve: c.knowsPreserving && mine.some((b) => b.kind === 'rack' && b.built) && c.stock.meat + c.stock.fish > 6 ? 0.7 : 0,
+      fiber: fiberHave < fiberWant ? clamp01((fiberWant - fiberHave) / (fiberWant + 2) * 1.1 + (siteFiber > fiberHave ? 0.25 : 0), 0.1, 0.9) : 0,
+      // twisting cordage: what the sites need first, then a few lengths put by
+      twist: c.stock.fiber >= FIBER_PER_CORD ? (siteCord > c.stock.cordage ? 0.8 : c.stock.cordage < 4 ? 0.3 : 0) : 0,
       bury: this.people.some((p) => !p.alive && !p.buried && p.band === c.id) ? 1 : 0,
     };
     c.plan = [];
     if (foodP > 0.8) c.plan.push(winterNow ? 'Find food to last the winter' : 'Store food before winter');
     if (woodP > 0.5) c.plan.push(s > 2.0 && !winterNow ? 'Lay in firewood for the winter' : 'Gather wood');
+    if (siteFiber > fiberHave) c.plan.push('Cut grass and reeds for thatch and cordage');
 
     if (!mine.some((b) => b.kind === 'stockpile')) this.markStockpile(c);
     // shelter: first fill homes that stand empty (their families died or moved), then build
@@ -2105,7 +2136,7 @@ export class Sim {
   packPiles() {
     return this.buildings.filter((b) => b.kind === 'stockpile').map((b) => {
       const c = this.campById(b.band);
-      const st = c && !c.gone ? c.stock : { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0 };
+      const st = c && !c.gone ? c.stock : { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0 };
       const inside = this.buildings.some((q) => q.band === b.band && q.kind === 'storehouse' && q.built);
       return { id: b.id, wood: st.wood, berries: inside ? 0 : st.berries, meat: inside ? 0 : st.meat, fish: inside ? 0 : st.fish, preserved: inside ? 0 : st.preserved };
     });
@@ -2222,9 +2253,12 @@ export class Sim {
       const notes: string[] = [];
       if (!b.built) {
         lines.push(L('Wood', `${Math.floor(b.wood)} of ${spec.wood} loads delivered`));
+        if (spec.fiber) lines.push(L('Thatch', `${Math.floor(b.fiber)} of ${spec.fiber} bundles of grass and reeds`));
+        if (spec.cordage) lines.push(L('Cordage', `${Math.floor(b.cordage)} of ${spec.cordage} lengths`));
         lines.push(L('Work', `${Math.round((b.work / spec.work) * 100)}% done`));
         const workers = this.people.filter((p) => p.alive && (p.task?.kind === 'build' || p.task?.kind === 'supply') && p.task.ref === b.id);
-        for (const p of workers) lines.push(L(p.task!.kind === 'build' ? 'Building' : 'Fetching wood', p.name, pref(p.id)));
+        const fetching = { wood: 'Fetching wood', fiber: 'Fetching thatch', cordage: 'Fetching cordage' };
+        for (const p of workers) lines.push(L(p.task!.kind === 'build' ? 'Building' : fetching[p.task!.res ?? 'wood'], p.name, pref(p.id)));
       }
       if (b.kind === 'hearth') {
         const hours = b.fuel / ((isDark(this.tick) ? 0.34 : 0.19) * (seasonOf(this.tick) === 3 ? 1.35 : seasonOf(this.tick) === 1 ? 0.45 : 0.75));
@@ -2248,6 +2282,7 @@ export class Sim {
         const st = this.camp.stock;
         const inside = this.buildings.some((q) => q.band === b.band && q.kind === 'storehouse' && q.built);
         lines.push(L('Wood', `${Math.floor(st.wood)} loads`));
+        if (st.fiber >= 0.5 || st.cordage >= 0.5) lines.push(L('Fiber', `${Math.floor(st.fiber)} bundles of grass and reeds, ${Math.floor(st.cordage)} lengths of cordage`));
         if (inside) lines.push(L('Food', `${Math.round(foodTotal(st))} meals, kept in the storehouse`));
         else {
           lines.push(L('Berries', `${Math.round(st.berries)} handfuls`));
@@ -2259,6 +2294,7 @@ export class Sim {
         const y = book.now;
         lines.push(L(`This year (${book.year})`, `${y.food} food in (${y.gathered.berries} berries, ${y.gathered.meat} meat, ${y.gathered.fish} fish), ${y.gathered.wood} wood`));
         lines.push(L('Used', `${y.eaten} eaten, ${y.spoiled} spoiled${y.dried ? `, ${y.dried} dried` : ''}; ${y.burned} wood burned, ${y.built} built with`));
+        if (y.gathered.fiber + y.twisted > 0) lines.push(L('Fiber', `${y.gathered.fiber} cut, ${y.twisted} twisted into cordage, ${y.thatch} thatch and ${y.lashed} cordage built with`));
         if (book.last.food + book.last.gathered.wood > 0) lines.push(L('Last year', `${book.last.food} food in, ${book.last.eaten} eaten, ${book.last.spoiled} spoiled; ${book.last.gathered.wood} wood in, ${book.last.burned} burned`));
         const t = book.total;
         lines.push(L('Since founding', `${t.food} food and ${t.gathered.wood} wood brought in; ${t.eaten} eaten, ${t.spoiled} spoiled, ${t.burned} burned, ${t.built} built with`));
@@ -2318,6 +2354,12 @@ export class Sim {
         subtitle = 'Ripens from midsummer to late autumn';
         lines.push(L('Fruit', this.propVal[k] >= 1 ? `${Math.floor(this.propVal[k])} handfuls ripe` : berriesRipe(this.tick) ? 'Picked clean' : 'Not ripe yet'));
         if (by !== undefined) lines.push(L('Being picked by', name(by), pref(by)));
+      } else if (isFiberPlant(t)) {
+        title = isReeds(t) ? 'Reeds' : 'Tall grass';
+        subtitle = isReeds(t) ? 'Cut for thatch and cordage; grows back from the roots' : 'Cut for thatch and cordage; grows back by summer';
+        const v = this.propVal[k], cap = fiberCap(t);
+        lines.push(L('Fiber', v >= cap - 0.01 ? `${cap} bundles, fully grown` : v >= 1 ? `${Math.floor(v)} of ${cap} bundles` : 'Cut back'));
+        if (by !== undefined) lines.push(L('Being cut by', name(by), pref(by)));
       } else if (t >= STUMP_BASE && t < STUMP_BASE + 3) {
         title = `${SPECIES[t - STUMP_BASE][0].toUpperCase()}${SPECIES[t - STUMP_BASE].slice(1)} stump`;
         subtitle = 'Rots away over a few years';
@@ -2396,7 +2438,7 @@ export class Sim {
     const living = this.living();
     const n = Math.max(1, living.length);
     // stores across every band
-    const st: Stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0 };
+    const st: Stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0 };
     for (const c of this.liveCamps()) for (const k of Object.keys(st) as (keyof Stock)[]) st[k] += c.stock[k];
     this.history.push({
       tick: this.tick,

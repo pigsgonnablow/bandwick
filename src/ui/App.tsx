@@ -147,6 +147,8 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
             </dd>
             <dt>Wood</dt>
             <dd>{Math.round(st.wood)} loads</dd>
+            <dt>Fiber</dt>
+            <dd>{Math.floor(st.fiber ?? 0)} bundles · {Math.floor(st.cordage ?? 0)} cordage</dd>
             <dt>This year</dt>
             <dd class="small">
               <span title="Brought in this year">+{sum.stores.now.food} food, +{sum.stores.now.gathered.wood} wood</span>
