@@ -2,7 +2,7 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
 import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey } from './band';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, TICKS_PER_DAY } from './time';
 import { WATER, treeId } from './types';
 
@@ -15,6 +15,23 @@ interface Option {
 
 function newTask(s: Sim, kind: TaskKind, goal: number, gx: number, gz: number, ref = -1, near = false): Task {
   return { kind, stage: 0, goal, gx, gz, ref, timer: 0, started: s.tick, amount: 0, near };
+}
+
+/**
+ * Take a tool for the work. Unless they are standing by the pile, they walk there for it first
+ * (stage -1); the task's own case sends them on to the work from there. Returns whether they must.
+ */
+function takeFromPile(s: Sim, p: Person, t: Task, tool: Item) {
+  const pile = s.storeSpot(true);
+  const walk = tool.holder !== p.id && hyp(p.x - pile.x, p.z - pile.z) > 3.5;
+  if (walk) {
+    t.stage = -1;
+    t.goal = pile.tile;
+    t.gx = pile.x;
+    t.gz = pile.z;
+  }
+  s.takeTool(p, tool);
+  return walk;
 }
 
 /** A seat around the hearth, different for each person. */
@@ -324,12 +341,18 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       if (seasonOf(s.tick) === 3) return null;
       const i = nearestTile(s, s.mudSpots, 22, -1);
       if (i < 0) return null;
-      p.thought = s.world.clay[i] ? 'Digging clay on the riverbank.' : 'Digging mud by the water.';
-      return newTask(s, kind, i, (i % N) + 0.5, Math.floor(i / N) + 0.5, -1);
+      const what = s.world.clay[i] ? 'clay on the riverbank' : 'mud by the water';
+      p.thought = `Digging ${what}.`;
+      const t = newTask(s, kind, i, (i % N) + 0.5, Math.floor(i / N) + 0.5, i);
+      // a digging stick if there's one to be had; bare hands otherwise
+      const stick = s.toolFor(p, ['stick']);
+      if (stick && takeFromPile(s, p, t, stick)) p.thought = `Fetching a digging stick to dig ${what}.`;
+      return t;
     }
     case 'quarry': {
       // a lump of stone for a tool is worth a longer walk than a load for walls
-      const forTools = !!s.toolToMake() && c.stock.stone < 1;
+      const make = s.toolToMake();
+      const forTools = !!make && (RECIPES[make].uses.stone ?? 0) > c.stock.stone;
       const i = nearestTile(s, s.quarryTiles, forTools ? 36 : 22, -2);
       if (i < 0) return null;
       p.thought = 'Prising stone from the rocks.';
@@ -367,17 +390,8 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const kindName = ['pine', 'oak', 'birch'][Math.floor(s.propType[k] / 12)];
       const t = newTask(s, kind, s.propTile[k], s.propX[k] + 0.34, s.propZ[k] + 0.18, k);
       // a tool from the pile is fetched first, unless they are standing by it
-      const pile = s.storeSpot(true);
-      if (tool.holder !== p.id && hyp(p.x - pile.x, p.z - pile.z) > 3.5) {
-        t.stage = -1;
-        t.goal = pile.tile;
-        t.gx = pile.x;
-        t.gz = pile.z;
-        p.thought = `Fetching ${tool.kind === 'axe' ? 'an axe' : 'a chopper'} from the stockpile to fell a ${kindName}.`;
-      } else {
-        p.thought = treeStage(s.propType[k]) === 3 ? `Felling an old ${kindName}.` : tool.kind === 'chopper' ? `Hacking at a young ${kindName} with a chopper.` : `Felling a ${kindName} for wood.`;
-      }
-      s.takeTool(p, tool);
+      if (takeFromPile(s, p, t, tool)) p.thought = `Fetching ${tool.kind === 'axe' ? 'an axe' : 'a chopper'} from the stockpile to fell a ${kindName}.`;
+      else p.thought = treeStage(s.propType[k]) === 3 ? `Felling an old ${kindName}.` : tool.kind === 'chopper' ? `Hacking at a young ${kindName} with a chopper.` : `Felling a ${kindName} for wood.`;
       return t;
     }
     case 'deadwood': {
@@ -504,7 +518,11 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const body = s.people.find((q) => !q.alive && !q.buried && q.band === p.band && !s.people.some((o) => o.alive && o.task?.kind === 'bury' && o.task.ref === q.id));
       if (!body) return null;
       p.thought = `Preparing ${body.name} for burial.`;
-      return newTask(s, kind, s.tileOf(body), body.x, body.z, body.id, true);
+      const t = newTask(s, kind, s.tileOf(body), body.x, body.z, body.id, true);
+      // a digging stick for the grave, if there's one on the pile
+      const stick = s.toolFor(p, ['stick']);
+      if (stick && takeFromPile(s, p, t, stick)) p.thought = `Fetching a digging stick to bury ${body.name}.`;
+      return t;
     }
   }
   return null;
@@ -716,6 +734,13 @@ function flash(p: Person, code: number) {
   p.flash = ((((p.flash ?? 0) >> 2) + 1) % 4096) * 4 + code;
 }
 
+/** A digging trip or a grave wears the stick down; when it breaks, they say so. */
+function wearStick(s: Sim, p: Person, stick: Item) {
+  if (!s.wearTool(stick)) return;
+  s.remember(p, 'tool_broke', -1, 0.2, -1, 'Their digging stick broke.');
+  s.event('tool', `${p.name}'s digging stick broke.`, [p.id], p.x, p.z, 1);
+}
+
 function skillUp(p: Person, k: number, amt: number) {
   p.skills[k] = Math.min(20, p.skills[k] + amt);
 }
@@ -744,7 +769,7 @@ export function runTask(s: Sim, p: Person) {
       const propTask = t.kind === 'forage' || t.kind === 'fell' || t.kind === 'haul' || t.kind === 'eatwild' || t.kind === 'deadwood' || t.kind === 'reap';
       if (propTask && t.ref >= 0) s.unreachable.set(t.ref, s.tick + 2 * TICKS_PER_DAY);
       if (t.kind === 'fish') s.unreachable.set(-(t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
-      if (t.kind === 'dig' || t.kind === 'quarry') s.unreachable.set((t.kind === 'dig' ? -1 : -2) * s.N * s.N - (t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
+      if ((t.kind === 'dig' || t.kind === 'quarry') && t.stage >= 0) s.unreachable.set((t.kind === 'dig' ? -1 : -2) * s.N * s.N - (t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
       abandon(s, p);
       p.nextThink = s.tick;
       return true;
@@ -1034,6 +1059,17 @@ export function runTask(s: Sim, p: Person) {
     case 'dig':
     case 'quarry': {
       const dig = t.kind === 'dig';
+      if (t.stage === -1) {
+        // to the pile for a digging stick, then down to the water
+        if (moving(go(s, p, t))) return;
+        t.stage = 0;
+        t.goal = t.ref;
+        t.gx = (t.ref % s.N) + 0.5;
+        t.gz = Math.floor(t.ref / s.N) + 0.5;
+        p.path = null;
+        p.thought = 'Off to dig with a digging stick.';
+        return;
+      }
       if (t.stage === 0) {
         if (moving(go(s, p, t))) return;
         t.stage = 1;
@@ -1043,7 +1079,11 @@ export function runTask(s: Sim, p: Person) {
         p.act = dig ? ACT.Dig : ACT.Chop;
         if (--t.timer > 0) return;
         p.carry = dig ? CARRY.Mud : CARRY.Stone;
-        p.carryAmt = dig ? 3 : 2;
+        // with a digging stick a full basket; scraping with bare hands, two loads
+        const stick = dig ? s.heldBy(p) : undefined;
+        p.carryAmt = dig ? (stick?.kind === 'stick' ? 3 : 2) : 2;
+        if (dig && stick?.kind === 'stick') wearStick(s, p, stick);
+        else if (dig) s.practise(p, 'dig_hand');
         skillUp(p, SK.build, 0.04);
         goStore(s, p, t, 2);
         p.thought = dig ? 'Carrying a basket of mud back to camp.' : 'Carrying stone back to camp.';
@@ -1441,6 +1481,16 @@ export function runTask(s: Sim, p: Person) {
         p.carry = CARRY.None;
         return finish(s, p);
       }
+      if (t.stage === -1) {
+        // to the pile for a digging stick, then to the body
+        if (moving(go(s, p, t))) return;
+        t.stage = 0;
+        t.goal = s.tileOf(body);
+        t.gx = body.x;
+        t.gz = body.z;
+        p.path = null;
+        return;
+      }
       if (t.stage === 0) {
         if (moving(go(s, p, t))) return;
         t.stage = 1;
@@ -1467,12 +1517,16 @@ export function runTask(s: Sim, p: Person) {
         body.z = p.z;
         if (moving(go(s, p, t))) return;
         t.stage = 3;
-        t.timer = 30;
+        // a grave dug with bare hands takes half as long again
+        t.timer = s.heldBy(p)?.kind === 'stick' ? 30 : 45;
       }
       p.act = ACT.Dig;
       if (--t.timer > 0) return;
       const tile = s.tileOf(p);
       const g = s.addProp(GRAVE + (r.chance(0.5) ? 1 : 0), p.x - 0.25, s.world.groundY[tile], p.z, r.range(-0.3, 0.3), 1);
+      const stick = s.heldBy(p);
+      if (stick?.kind === 'stick') wearStick(s, p, stick);
+      else s.practise(p, 'grave');
       s.propVal[g] = body.id;
       body.buried = true;
       body.indoors = true;

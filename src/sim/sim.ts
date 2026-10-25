@@ -50,6 +50,8 @@ export const fiberCap = (t: number) => (isReeds(t) ? 5 : 3);
 const STUMP_BASE = propId('stump_v0');
 const LOGS = propId('logs_v0');
 const GRAVE = propId('grave_v0');
+/** Work done with a tool in hand: the tool stays with them until it's done. */
+const TOOL_TASKS: TaskKind[] = ['fell', 'dig', 'bury'];
 
 /** Annual chance of dying of old age, by age in years (piecewise linear). */
 const MORTALITY: number[][] = [[0, 0.03], [2, 0.012], [5, 0.004], [15, 0.003], [35, 0.006], [50, 0.02], [60, 0.05], [70, 0.13], [80, 0.32], [90, 0.7]];
@@ -389,7 +391,7 @@ export class Sim {
     if (!d.items) {
       for (const c of this.liveCamps()) {
         if (!c.knows.includes('axe')) c.knows.push('axe');
-        this.giveTools(c, { chopper: 2, axe: 2 });
+        this.giveTools(c, { chopper: 2, axe: 2, stick: c.knows.includes('digstick') ? 1 : 0 });
       }
     }
     this.deer = d.deer as Deer[];
@@ -628,8 +630,8 @@ export class Sim {
       for (const d of DISCOVERIES)
         if (known.has(d.key) && d.needs.every((k) => camp.knows.includes(k)) && (d.key === 'huts' || this.rLife.chance(share))) camp.knows.push(d.key);
     }
-    // a couple of hand choppers, and axes if they know how to make them
-    this.giveTools(camp, { chopper: 2, axe: giveAxes() });
+    // a couple of hand choppers, and axes and a digging stick if they know how to make them
+    this.giveTools(camp, { chopper: 2, axe: giveAxes(), stick: camp.knows.includes('digstick') ? 1 : 0 });
     const r = this.rLife;
     const y = TICKS_PER_YEAR;
     const band: Person[] = [];
@@ -916,7 +918,7 @@ export class Sim {
       if (!p.task || (t >= p.nextThink && !delivering(p)) || ((t + p.id) % 10 === 0 && this.urgent(p))) decide(this, p);
       if (p.task) runTask(this, p);
       // a tool nobody is working with goes back on the pile when they pass by it
-      if ((t + p.id) % 10 === 0 && p.alive && p.task?.kind !== 'fell' && this.heldBy(p)) {
+      if ((t + p.id) % 10 === 0 && p.alive && !TOOL_TASKS.includes(p.task?.kind as TaskKind) && this.heldBy(p)) {
         const st = this.storeSpot(true);
         if (hyp(p.x - st.x, p.z - st.z) < 3.5) this.returnTool(p);
       }
@@ -1184,17 +1186,21 @@ export class Sim {
     this.book('tools.worn', 1, this.campById(it.band) ?? this.camp);
     return true;
   }
-  /** What the band should make next at the fire, if anything: axes for the woodcutters, a couple of choppers. */
+  /**
+   * What the band should make next at the fire, if anything: axes for the woodcutters, a couple of
+   * choppers, and a digging stick or two (two where there is mud to dig for walls).
+   */
   toolToMake(c = this.camp): ItemKind | null {
     const pop = this.members(c).length;
     const axes = this.toolsOf(c, 'axe').length, choppers = this.toolsOf(c, 'chopper').length;
     if (this.knows('axe', c) && axes < 2 + Math.floor(pop / 8)) return 'axe';
     if (choppers < (this.knows('axe', c) && axes > 0 ? 1 : 2)) return 'chopper';
+    if (this.knows('digstick', c) && this.toolsOf(c, 'stick').length < (this.knows('daub', c) ? 2 : 1)) return 'stick';
     return null;
   }
   /** "2 stone axes (1 well worn), 1 hand chopper". */
   describeTools(list: Item[]) {
-    return (['axe', 'chopper'] as const).map((k) => {
+    return (['axe', 'chopper', 'stick'] as const).map((k) => {
       const of = list.filter((i) => i.kind === k);
       if (!of.length) return '';
       const worn = of.filter((i) => i.wear >= 0.6).length;
@@ -2123,6 +2129,7 @@ export class Sim {
       'craft.cordage': siteCord > c.stock.cordage || (make === 'axe' && c.stock.cordage < 1) ? 0.8 : c.stock.cordage < 4 ? 0.3 : 0,
       'craft.chopper': make === 'chopper' ? 0.6 : 0,
       'craft.axe': make === 'axe' ? 0.6 : 0,
+      'craft.stick': make === 'stick' ? 0.5 : 0,
       // mud and stone are fetched only for a site that needs them (mud can't be dug from frozen ground)
       dig: siteMud > c.stock.mud && !winterNow ? 0.75 : 0,
       // stone for walls, and a lump or two for knapping tools
@@ -2133,7 +2140,7 @@ export class Sim {
     if (foodP > 0.8) c.plan.push(winterNow ? 'Find food to last the winter' : 'Store food before winter');
     if (woodP > 0.5) c.plan.push(s > 2.0 && !winterNow ? 'Lay in firewood for the winter' : 'Gather wood');
     if (siteFiber > fiberHave) c.plan.push('Cut grass and reeds for thatch and cordage');
-    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : 'Knap a hand chopper');
+    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : make === 'stick' ? 'Make a digging stick' : 'Knap a hand chopper');
 
     this.craftNames(c);
 
@@ -2563,7 +2570,7 @@ export class Sim {
       out[o + 14] = p.band;
       // the tool in hand: 0 none, 1 chopper, 2 axe
       const tool = this.heldBy(p);
-      out[o + 15] = tool ? (tool.kind === 'axe' ? 2 : 1) : 0;
+      out[o + 15] = tool ? ITEM_KINDS.indexOf(tool.kind) + 1 : 0;
     });
     return out;
   }

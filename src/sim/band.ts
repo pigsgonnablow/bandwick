@@ -41,11 +41,11 @@ export const TASK_KINDS: TaskKind[] = [
 ];
 
 /** Things a band makes and keeps: for now, the tools for felling. */
-export const ITEM_KINDS = ['chopper', 'axe'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick'] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 export interface ItemSpec {
   label: string;
-  /** how many trees it fells before it is worn out */
+  /** how many trees it fells (or trips it digs) before it is worn out */
   uses: number;
 }
 export const ITEMS: Record<ItemKind, ItemSpec> = {
@@ -53,6 +53,8 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   chopper: { label: 'Hand chopper', uses: 10 },
   // the same head lashed to a wooden haft: any tree
   axe: { label: 'Stone axe', uses: 25 },
+  // a stout stick sharpened to a point and hardened in the fire: mud, clay and graves
+  stick: { label: 'Digging stick', uses: 15 },
 };
 
 /**
@@ -61,7 +63,7 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
  */
 /** Fiber twisted into one length of cordage. */
 export const FIBER_PER_CORD = 3;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage into the stores, or an item onto the pile */
@@ -93,6 +95,10 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
   axe: {
     makes: 'axe', uses: { wood: 2, stone: 1, cordage: 1 }, work: 60, skill: SK.tool, grow: 0.08, knows: 'axe', doing: 'Making a stone axe',
     thought: 'Lashing a stone head to a haft for an axe.', done: 'Made a stone axe and laid it on the pile.',
+  },
+  stick: {
+    makes: 'stick', uses: { wood: 1 }, work: 16, skill: SK.tool, grow: 0.05, knows: 'digstick', doing: 'Making a digging stick',
+    thought: 'Sharpening a digging stick and hardening its point in the fire.', done: 'Made a digging stick and laid it on the pile.',
   },
 };
 /** One made thing. It lies on its band's stockpile unless someone holds it. */

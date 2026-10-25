@@ -17,7 +17,9 @@ export type Practice =
   | 'store_food' // food carried into the stores (per meal)
   | 'store_meat' // meat and fish carried into the stores (per meal)
   | 'thatch' // grass and reeds cut and carried in (per bundle)
-  | 'fell_chopper'; // a tree felled with a hand chopper
+  | 'fell_chopper' // a tree felled with a hand chopper
+  | 'dig_hand' // a trip's digging done with bare hands
+  | 'grave'; // a grave dug with bare hands
 
 export interface Discovery {
   key: string;
@@ -72,6 +74,12 @@ export const DISCOVERIES: Discovery[] = [
     practice: { fell_chopper: 1 },
     found: 'lashed a stone head to a wooden haft and made the first axe, heavy enough for the big trees',
     taught: 'make stone axes', memory: 'Made the first stone axe.',
+  },
+  {
+    key: 'digstick', label: 'Digging stick', needs: [], skill: SK.build, need: 8,
+    practice: { dig_hand: 1, grave: 3 },
+    found: 'sharpened a stout stick, hardened its point in the fire, and found the ground gave way to it',
+    taught: 'make digging sticks', memory: 'Made the first digging stick.',
   },
   {
     key: 'preserving', label: 'Drying and smoking', needs: [], skill: SK.hide, need: 1600,
