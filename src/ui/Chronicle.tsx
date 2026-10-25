@@ -156,7 +156,7 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
   const builds = kinds('build');
   const STORY = new Set(['founding', 'discovery', 'famine', 'famine_end', 'winter', 'climate', 'hunt', 'fostering', 'injury', 'stillbirth', 'move',
     'split', 'move_camp', 'merge', 'gone', 'empty', 'exile', 'death_quarrel', 'fight', 'attack', 'epidemic', 'epidemic_end',
-    'murrain', 'blight', 'plenty', 'great_hunt', 'quiet', 'elder']);
+    'murrain', 'blight', 'plenty', 'great_hunt', 'quiet', 'elder', 'known']);
   const story: Seg[][] = [];
   for (const e of evs) {
     if (STORY.has(e.kind) || (e.kind === 'build' && e.weight >= 3)) story.push(linkify(e, byId));
@@ -600,7 +600,7 @@ function Records({ c, go, byId }: { c: Chron; go: (id: number) => void; byId: Ma
   const line = top(ppl, (p) => desc(p.id));
   const hunter = top(ppl, (p) => p.kills);
   const skilled = top(ppl, (p) => p.topSkill);
-  const SKILL = ['forager', 'woodcutter', 'builder', 'hunter', 'fisher', 'crafter'];
+  const SKILL = ['forager', 'woodcutter', 'builder', 'hunter', 'fisher', 'toolmaker', 'weaver', 'potter', 'hideworker'];
   const h = c.history;
   const peak = top(h, (s) => s.pop);
   // by year

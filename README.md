@@ -39,7 +39,7 @@ this year at a glance, and the Chronicle's annals give each year's totals.
 **Fiber and cordage.** Grass tussocks and reed beds are cut for fiber, and they grow back through
 spring and summer (reeds faster, not at all in winter). Older children help cut it. Fiber is
 stacked at the stockpile, and in the evenings people sit by the fire twisting it into cordage, three
-bundles to a length (the crafting skill). Buildings need both: a lean-to takes 4 wood and 3 thatch,
+bundles to a length (the weaving skill). Buildings need both: a lean-to takes 4 wood and 3 thatch,
 a hut 14 wood, 6 thatch and 3 cordage, a storehouse 10 wood, 4 thatch and 2 cordage, a drying rack
 5 wood and 2 cordage. Work on a site starts once everything has been carried to it.
 
@@ -83,6 +83,15 @@ buries them. Each tree wears a tool down (a chopper lasts about 10, an axe about
 breaks. Fallen branches never need a tool, so a band that loses every tool still keeps its fire
 going. The band panel and the stockpile list the tools and how worn they are, and a woodcutter
 without an axe is drawn hacking with a stone.
+
+**Crafting.** Everything made by the fire is one job with a list of recipes (`RECIPES` in
+`src/sim/band.ts`): cordage, the hand chopper and the stone axe so far. Each morning the plan says
+what is wanted, in a fixed order: cordage a building site is waiting on, then tools the day's work is
+missing, then a few lengths of cordage put by. A crafter takes whichever wanted recipe they are best
+at. Crafting is four skills: toolmaking, weaving, pottery and hidework (drying and smoking meat uses
+hidework for now). Pottery and hidework show on a person's card once the band has a use for them.
+Whoever is clearly a band's best at a craft is known for it ("Ada, the toolmaker") on their card
+and in the Chronicle. Older saves give each person's old crafting level to toolmaking and weaving.
 
 **Fortune.** Most years are ordinary. Some are not: a sickness that runs through a camp, a feud
 that ends in a killing and an exile, wolves or a bear on someone out alone after dark, a drowning,
