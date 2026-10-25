@@ -163,6 +163,10 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
               {sum.homes}
               {sum.building.length > 0 && <span class="muted"> · building {sum.building.join(', ').toLowerCase()}</span>}
             </dd>
+            <dt>Knows</dt>
+            <dd class="small" title="What this band has found out for itself or learned from others, beyond the old ways">
+              {sum.knows.length ? sum.knows.join(', ') : 'Only the old ways'}
+            </dd>
           </dl>
           {sum.plan.length > 0 && (
             <div class="plan">

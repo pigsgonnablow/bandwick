@@ -30,7 +30,7 @@ for (const seed of seeds) {
       const s = sim.summary();
       census.push(`y${lastYear}:${s.pop}`);
       if (verbose)
-        console.log(`  seed ${seed} year ${lastYear}: pop ${s.pop} (kids ${s.children}, elders ${s.elders}) food ${s.food} wood ${Math.round(s.stock.wood)} homes ${s.homes} deer ${s.deer} births ${s.stats.births} deaths ${s.stats.deaths} starved ${s.stats.starved} froze ${s.stats.froze} kills ${s.stats.kills} preserve ${s.knowsPreserving}`);
+        console.log(`  seed ${seed} year ${lastYear}: pop ${s.pop} (kids ${s.children}, elders ${s.elders}) food ${s.food} wood ${Math.round(s.stock.wood)} homes ${s.homes} deer ${s.deer} births ${s.stats.births} deaths ${s.stats.deaths} starved ${s.stats.starved} froze ${s.stats.froze} kills ${s.stats.kills} knows ${s.knows.join(', ') || 'nothing yet'}`);
       lastYear = y;
       if (s.pop === 0) break;
     }

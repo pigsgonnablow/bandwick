@@ -19,7 +19,7 @@ describe('fire', () => {
     expect(damp / s.burnRate(h)).toBeCloseTo(DAMP_BURN, 5);
   });
 
-  it('roofs the woodpile and raises a windbreak, on the stockpile and the fire, with all their materials', () => {
+  it('roofs the woodpile and raises a windbreak once it knows how, on the stockpile and the fire, with all their materials', () => {
     let checked = 0;
     for (const seed of [1, 4]) {
       const s = runYears(sim(seed), 3);
@@ -27,8 +27,8 @@ describe('fire', () => {
         const mine = s.buildings.filter((b) => b.band === c.id);
         const roof = mine.find((b) => b.kind === 'woodshed' && b.built);
         const screen = mine.find((b) => b.kind === 'windbreak' && b.built);
-        // a band only just founded may not have got to them yet
-        if (s.tick - c.founded < 2 * TICKS_PER_YEAR) continue;
+        // a band only just founded may not have got to them yet, and one that hasn't thought of them won't
+        if (s.tick - c.founded < 2 * TICKS_PER_YEAR || !s.knows('woodshed', c) || !s.knows('windbreak', c)) continue;
         checked++;
         expect(roof, `seed ${seed} band ${c.name}: woodpile roof`).toBeTruthy();
         expect(screen, `seed ${seed} band ${c.name}: windbreak`).toBeTruthy();

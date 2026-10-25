@@ -216,6 +216,15 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
   }
 
   // what the year is remembered for
+  const discoveryTitle = (t: string) => / dry and smoke/.test(t) ? 'The year of the drying racks'
+    : /taught|showed/.test(t) ? 'The year of new ways'
+    : / hut/.test(t) ? 'The year of the first huts'
+    : /woodpile/.test(t) ? 'The year of the dry woodpile'
+    : /behind the fire/.test(t) ? 'The year of the windbreak'
+    : /store/.test(t) ? 'The year of the storehouse'
+    : /mud/.test(t) ? 'The year of the mud walls'
+    : /stone/.test(t) ? 'The year of the stone walls'
+    : 'The year of new ways';
   const has = (k: string) => evs.some((e) => e.kind === k);
   const nBirth = babies.length, nDeath = deaths.length;
   const firstFounding = evs.find((e) => e.kind === 'founding' && !e.text.startsWith('Strangers'));
@@ -231,7 +240,7 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
     : has('plenty') ? 'The year of plenty'
     : has('great_hunt') ? 'The great hunt'
     : has('quiet') ? 'A blessed year'
-    : has('discovery') ? 'The year of the drying racks'
+    : has('discovery') ? discoveryTitle(evs.find((e) => e.kind === 'discovery')!.text)
     : has('famine') && nDeath >= 2 ? 'The year of hunger and graves'
     : has('famine') ? 'The hungry year'
     : has('winter') ? 'The bitter winter'

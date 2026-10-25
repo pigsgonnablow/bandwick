@@ -646,6 +646,10 @@ export function deposit(s: Sim, p: Person) {
   if (kind) {
     st[kind] += a;
     s.book(`gathered.${kind}`, a);
+    // handling the food and the thatch is what gives people ideas about keeping them
+    if (kind === 'berries' || kind === 'meat' || kind === 'fish') s.practise(p, 'store_food', a);
+    if (kind === 'meat' || kind === 'fish') s.practise(p, 'store_meat', a);
+    if (kind === 'fiber') s.practise(p, 'thatch', a);
   }
   p.carry = CARRY.None;
   p.carryAmt = 0;
@@ -1285,7 +1289,11 @@ export function runTask(s: Sim, p: Person) {
       b.work += (1 + p.skills[SK.build] * 0.06) * (s.age(p) >= 58 ? 0.7 : 1);
       if (!b.builders.includes(p.id)) b.builders.push(p.id);
       if (s.tick % 10 === 0) s.buildingsVersion++;
-      if (s.tick % 20 === 0) skillUp(p, SK.build, 0.05);
+      if (s.tick % 20 === 0) {
+        skillUp(p, SK.build, 0.05);
+        s.practise(p, 'build');
+        if (b.kind === 'leanto') s.practise(p, 'leanto');
+      }
       if (b.work >= specOf(b).work) completeBuilding(s, b, p);
       if (--t.timer <= 0 || b.built) finish(s, p);
       return;
@@ -1314,6 +1322,7 @@ export function runTask(s: Sim, p: Person) {
       const wasOut = h.fuel <= 0;
       s.book('burned', t.amount);
       h.fuel = Math.min(12, h.fuel + t.amount);
+      if (s.dampWood()) s.practise(p, 'damp_fire');
       p.carry = CARRY.None;
       p.carryAmt = 0;
       t.amount = 0;
