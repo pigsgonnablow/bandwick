@@ -522,7 +522,13 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const body = s.people.find((q) => !q.alive && !q.buried && q.band === p.band && !s.people.some((o) => o.alive && o.task?.kind === 'bury' && o.task.ref === q.id));
       if (!body) return null;
       // a body far out on the land is a long walk: not on an empty stomach, or hunger turns them back halfway
-      if (hyp(body.x - c.x, body.z - c.z) > FAR_GRAVE && p.food < 80) return null;
+      const far = hyp(body.x - c.x, body.z - c.z);
+      if (far > FAR_GRAVE && p.food < 80) return null;
+      // nor in a frost that would chill them through before they were back: the body can wait for a milder day
+      if (far > FAR_GRAVE && s.tempAt(p) < 15) {
+        const lasts = p.warmth / ((15 - s.tempAt(p)) * 0.018);
+        if (lasts < (2 * far) / (speed(s, p) * 0.4) + 40) return null;
+      }
       p.thought = `Preparing ${body.name} for burial.`;
       const t = newTask(s, kind, s.tileOf(body), body.x, body.z, body.id, true);
       // a digging stick for the grave, if there's one on the pile
@@ -625,6 +631,14 @@ function nextClump(s: Sim, x: number, z: number, radius: number) {
 // ---------------------------------------------------------------- movement
 type GoResult = 'arrived' | 'moving' | 'fail';
 
+/** Where to stand at the end of a walk: the spot asked for, unless that is a step over into the lake. */
+export function standOn(s: Sim, t: Task): [number, number] {
+  const x0 = t.goal % s.N, z0 = Math.floor(t.goal / s.N);
+  const k = Math.floor(t.gz) * s.N + Math.floor(t.gx);
+  if (k === t.goal || (s.grid.walkable(k) && s.world.water[k] === WATER.None)) return [t.gx, t.gz];
+  return [Math.min(x0 + 0.95, Math.max(x0 + 0.05, t.gx)), Math.min(z0 + 0.95, Math.max(z0 + 0.05, t.gz))];
+}
+
 function go(s: Sim, p: Person, t: Task, running = false): GoResult {
   const here = s.tileOf(p);
   if (!p.path) {
@@ -647,14 +661,10 @@ function go(s: Sim, p: Person, t: Task, running = false): GoResult {
     const oz = (((p.look >>> 7) & 15) / 15 - 0.5) * 0.45;
     tx = (n % s.N) + 0.5 + ox;
     tz = Math.floor(n / s.N) + 0.5 + oz;
-    if (p.pathIdx === path.length - 1 && !t.near) {
-      tx = t.gx;
-      tz = t.gz;
-    }
+    if (p.pathIdx === path.length - 1 && !t.near) [tx, tz] = standOn(s, t);
   } else {
     if (t.near) return 'arrived';
-    tx = t.gx;
-    tz = t.gz;
+    [tx, tz] = standOn(s, t);
   }
   const dx = tx - p.x, dz = tz - p.z;
   const d = hyp(dx, dz);
@@ -1624,7 +1634,7 @@ function graveSpot(s: Sim) {
   return { x: c.x + 2.5, z: c.z + 2.5 };
 }
 
-function completeBuilding(s: Sim, b: Building, p: Person) {
+export function completeBuilding(s: Sim, b: Building, p: Person) {
   b.built = true;
   b.finished = s.tick;
   s.buildingsVersion++;
@@ -1632,7 +1642,8 @@ function completeBuilding(s: Sim, b: Building, p: Person) {
   const first = s.buildings.filter((q) => q.kind === b.kind && (q.walls ?? 'wood') === (b.walls ?? 'wood') && q.built && q.band === b.band).length === 1;
   const owner = s.byId.get(b.owner);
   if (b.kind === 'hut' || b.kind === 'leanto') {
-    if (owner && owner.alive) {
+    // (one whose owner has since gone to live with another band stands empty for someone here)
+    if (owner && owner.alive && owner.band === b.band) {
       // (only those living in this band: a grown child who stayed behind when the family split off keeps their own)
       const household = [owner, s.byId.get(owner.partner)].filter((q): q is Person => !!q && q.alive && q.band === owner.band);
       for (const h of [...household]) for (const cid of h.children) {
@@ -1646,7 +1657,7 @@ function completeBuilding(s: Sim, b: Building, p: Person) {
       }
       s.event('build', first ? `The first ${label} at ${s.camp.name} stands, home to ${owner.name}'s family.` : `A ${label} was finished for ${owner.name}'s family.`,
         household.map((h) => h.id), b.x + 0.5, b.z + 0.5, first ? 3 : 1);
-    }
+    } else s.event('build', `A ${label} was finished.`, [p.id], b.x + 0.5, b.z + 0.5, 1);
   } else {
     s.event('build', first ? `${p.name} and the others raised the camp's first ${label}.` : `A ${label} was finished.`, [p.id], b.x + 0.5, b.z + 0.5, first ? 3 : 1);
   }

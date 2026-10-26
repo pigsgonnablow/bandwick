@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Sim, SaveData } from '../../src/sim/sim';
 import { generateWorld } from '../../src/sim/worldgen';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, START_TICK, seasonOf } from '../../src/sim/time';
-import { FAR_GRAVE } from '../../src/sim/ai';
+import { FAR_GRAVE, completeBuilding, standOn } from '../../src/sim/ai';
 import { runChecked } from '../../tools/lib/invariants';
 import { sim, world, runTo, runYears } from '../helpers';
 
@@ -103,6 +103,35 @@ describe('a band that leaves its camp', () => {
     for (const id of built) expect(s.buildings.some((b) => b.id === id)).toBe(true);
     expect(s.buildings.some((b) => b.band === c.id && b.kind === 'hearth')).toBe(true);
   });
+
+  it('leaves huts that fall in a dozen years on, all but the ring of the hearth', () => {
+    const s = runYears(sim(2), 1);
+    const c = s.camp;
+    expect(s.buildings.filter((b) => b.band === c.id && b.kind !== 'hearth').length).toBeGreaterThan(0);
+    for (const p of s.members(c)) s.kill(p, 'fever');
+    (s as any).emptied(c);
+    c.gone = s.tick - 11 * TICKS_PER_YEAR;
+    (s as any).ruinsFall();
+    expect(s.buildings.filter((b) => b.band === c.id && b.kind !== 'hearth').length).toBeGreaterThan(0);
+    c.gone = s.tick - 13 * TICKS_PER_YEAR;
+    (s as any).ruinsFall();
+    expect(s.buildings.filter((b) => b.band === c.id).map((b) => b.kind)).toEqual(['hearth']);
+    expect(s.people.some((p) => p.home >= 0 && !s.buildings.some((b) => b.id === p.home))).toBe(false);
+  });
+});
+
+describe('an empty land', () => {
+  it('has strangers come to it again', () => {
+    const s = runYears(sim(2), 1);
+    for (const c of s.liveCamps()) {
+      for (const p of s.members(c)) s.kill(p, 'fever');
+      (s as any).emptied(c);
+    }
+    expect(s.liveCamps().length).toBe(0);
+    runYears(s, 4);
+    expect(s.liveCamps().length).toBeGreaterThan(0);
+    expect(s.living().length).toBeGreaterThan(0);
+  });
 });
 
 describe('homes', () => {
@@ -113,6 +142,40 @@ describe('homes', () => {
     p.home = -1;
     runTo(s, s.tick + TICKS_PER_DAY);
     expect(p.home).toBe(s.byId.get(p.partner)!.home);
+  });
+});
+
+describe('a hut', () => {
+  it('finished after its owner went to live with another band stands empty for someone here', () => {
+    const s = runYears(sim(2), 1);
+    const home = s.camp;
+    const owner = s.members().find((q) => s.age(q) >= 18)!;
+    const site = s.newBuilding('hut', home.tile + 5 * s.N + 3, owner.id);
+    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
+    const away = s.foundCamp(home.tile + 30, stock, -1, -1);
+    (s as any).join([owner], away);
+    const moved = owner.home;
+    s.camp = home;
+    completeBuilding(s, site, s.members(home)[0]);
+    expect(site.built).toBe(true);
+    expect(owner.home).toBe(moved);
+    expect(s.people.some((q) => q.home === site.id && q.band !== home.id)).toBe(false);
+  });
+});
+
+describe('walking up to something', () => {
+  it('stops on its own tile rather than a step over into deep water', () => {
+    const s = sim(1);
+    const N = s.N;
+    let goal = -1;
+    for (let i = N; i < N * N - N && goal < 0; i++)
+      if (s.grid.walkable(i) && !s.grid.walkable(i + 1)) goal = i;
+    expect(goal).toBeGreaterThan(0);
+    const x0 = goal % N, z0 = Math.floor(goal / N);
+    const [x, z] = standOn(s, { goal, gx: x0 + 1.2, gz: z0 + 0.5 } as any);
+    expect(Math.floor(z) * N + Math.floor(x)).toBe(goal);
+    // and anywhere dry is left as asked
+    expect(standOn(s, { goal, gx: x0 + 0.7, gz: z0 + 0.4 } as any)).toEqual([x0 + 0.7, z0 + 0.4]);
   });
 });
 
@@ -139,6 +202,29 @@ describe('the dead', () => {
     expect(p.buried).toBe(true);
     // a grave out there, not in the camp's burial ground
     expect(Math.hypot(p.x - at.x, p.z - at.z)).toBeLessThan(3);
+  });
+
+  it('leaves someone who died far out to lie through a hard frost, rather than freeze going to them', () => {
+    const s = sim(1);
+    while (seasonOf(s.tick) !== 3) runTo(s, s.tick + 200);
+    const c = s.camp;
+    const p = s.members().find((q) => s.age(q) >= 20 && s.age(q) < 50)!;
+    let tile = -1;
+    for (let r = FAR_GRAVE + 30; r < 60 && tile < 0; r++)
+      for (const [dx, dz] of [[r, 0], [-r, 0], [0, r], [0, -r]]) {
+        const x = Math.floor(c.x) + dx, z = Math.floor(c.z) + dz;
+        if (x < 2 || z < 2 || x >= s.N - 2 || z >= s.N - 2) continue;
+        const i = z * s.N + x;
+        if (s.grid.walkable(i) && s.world.water[i] === 0) { tile = i; break; }
+      }
+    Object.assign(p, { x: (tile % s.N) + 0.5, z: Math.floor(tile / s.N) + 0.5, task: null, path: null });
+    s.kill(p, 'wolves');
+    for (let t = 0; t < TICKS_PER_DAY * 2; t++) {
+      s.anomaly = -16;
+      s.step();
+      expect(s.people.some((q) => q.alive && q.task?.kind === 'bury' && q.task.ref === p.id)).toBe(false);
+    }
+    expect(p.buried).toBe(false);
   });
 });
 
