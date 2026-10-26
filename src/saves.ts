@@ -69,9 +69,9 @@ export async function unpack(bytes: Uint8Array): Promise<SaveData> {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error('that file is not a Living World save.');
+    throw new Error('that file is not a Bandwick save.');
   }
-  if (!data || typeof data !== 'object' || !('v' in data) || !('params' in data)) throw new Error('that file is not a Living World save.');
+  if (!data || typeof data !== 'object' || !('v' in data) || !('params' in data)) throw new Error('that file is not a Bandwick save.');
   return data;
 }
 

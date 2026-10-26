@@ -12,5 +12,5 @@ const out = html
   .replace(/<meta charset="utf-8" \/>/i, '')
   .replace(/<meta name="viewport"[^>]*>/i, '')
   .trim();
-writeFileSync('dist/living-world.html', out + '\n');
+writeFileSync('dist/bandwick.html', out + '\n');
 console.log('artifact page', (out.length / 1024).toFixed(0), 'KB; starts with', JSON.stringify(out.slice(0, 40)));
