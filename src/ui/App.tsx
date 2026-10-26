@@ -4,7 +4,7 @@ import { DEFAULT_PARAMS } from '../sim/types';
 import { TICKS_PER_DAY, DAYS_PER_SEASON, DAYS_PER_YEAR } from '../sim/time';
 import { SEASON_NAMES } from '../render/env';
 import { QUALITY_NAMES } from '../render/view';
-import { SPEEDS, randomSeed, tps } from './shared';
+import { SPEEDS, randomSeed, tps, bandCss } from './shared';
 import { BUILD } from '../build';
 import { yearSeason } from '../saves';
 import type { SaveMeta } from '../saves';
@@ -170,6 +170,7 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
             <dt>Knows</dt>
             <dd class="small" title="What this band has found out for itself or learned from others, beyond the old ways">
               {sum.knows.length ? sum.knows.join(', ') : 'Only the old ways'}
+              {' · '}<button class="link" onClick={() => engine.setChronicleOpen(true, 'discoveries')}>how they came to know it</button>
             </dd>
           </dl>
           {sum.plan.length > 0 && (
@@ -189,8 +190,6 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
   );
 }
 
-/** CSS colour for a band's colour. */
-export const bandCss = (c: { h: number; s: number; l: number }) => `hsl(${Math.round(c.h)} ${Math.round(c.s * 100)}% ${Math.round(c.l * 100)}%)`;
 const ORIGIN: Record<string, string> = {
   first: 'the first band', strangers: 'came as strangers', amicable: 'parted on good terms from', turmoil: 'broke away in anger from', moved: 'moved from',
 };

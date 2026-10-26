@@ -104,11 +104,25 @@ export interface Camp {
   practice: Record<string, number>;
   /** what a newcomer who married in will teach the band, and when */
   learning?: { k: string; at: number; by: number }[];
+  /** how and when it came to know each thing it knows (absent for what it knew in saves from before this was kept) */
+  learned?: Learned[];
   famine: boolean;
   hungryWinters: number;
   /** job weights from the planner, refreshed each morning */
   jobs: Record<string, number>;
   plan: string[];
+}
+
+/** How a band came to know something: found it out, was taught it by someone who married in, was shown it
+ *  by the last of a band that came to live with them, or brought it with them as strangers. */
+export interface Learned {
+  k: string;
+  tick: number;
+  how: 'found' | 'taught' | 'newcomers' | 'strangers';
+  /** who found it or taught it (-1: no one in particular) */
+  by: number;
+  /** the band the newcomers came from */
+  from?: string;
 }
 
 export class Sim {
@@ -533,6 +547,7 @@ export class Sim {
       stock, graveyard: -1, founded: this.tick,
       // a daughter band knows all its parent did
       knows: prev && parent === prev.id ? prev.knows.slice() : [], practice: {},
+      learned: prev && parent === prev.id ? prev.learned?.slice() ?? [] : [],
       famine: false, hungryWinters: 0, jobs: {}, plan: [],
     };
     c.color = this.distinctColor();
@@ -634,7 +649,7 @@ export class Sim {
       const share = Math.min(0.8, 0.2 + yearOf(this.tick) * 0.03);
       // shelter, once anyone knows it, they all know: no band gets through many winters without it
       for (const d of DISCOVERIES)
-        if (known.has(d.key) && d.needs.every((k) => camp.knows.includes(k)) && (d.key === 'huts' || this.rLife.chance(share))) camp.knows.push(d.key);
+        if (known.has(d.key) && d.needs.every((k) => camp.knows.includes(k)) && (d.key === 'huts' || this.rLife.chance(share))) this.learn(camp, d.key, 'strangers');
     }
     // a couple of hand choppers, and axes and a digging stick if they know how to make them
     this.giveTools(camp, { chopper: 2, axe: giveAxes(), stick: camp.knows.includes('digstick') ? 1 : 0 });
@@ -1292,8 +1307,7 @@ export class Sim {
   }
 
   private discover(c: Camp, d: Discovery, p: Person) {
-    c.knows.push(d.key);
-    delete c.practice[d.key];
+    this.learn(c, d.key, 'found', p.id);
     this.remember(p, 'discovery', 30, 5, -1, d.memory);
     this.event('discovery', `${p.name} ${d.found}.`, [p.id], p.x, p.z, 5);
   }
@@ -1321,11 +1335,17 @@ export class Sim {
       const d = DISCOVERY.get(l.k);
       const by = this.byId.get(l.by);
       if (!d || c.knows.includes(l.k) || !by || !by.alive || by.band !== c.id) continue;
-      c.knows.push(l.k);
-      delete c.practice[l.k];
+      this.learn(c, l.k, 'taught', by.id);
       this.remember(by, 'taught', 12, 2, -1, `Taught the people of ${c.name} to ${d.taught}.`);
       this.event('discovery', `${by.name} taught the people of ${c.name} to ${d.taught}.`, [by.id], by.x, by.z, 3);
     }
+  }
+
+  /** A band comes to know something, and the chronicle keeps how and when. */
+  private learn(c: Camp, k: string, how: Learned['how'], by = -1, from?: string) {
+    c.knows.push(k);
+    delete c.practice[k];
+    (c.learned ??= []).push({ k, tick: this.tick, how, by, ...(from ? { from } : {}) });
   }
 
   /** What one band knows that another doesn't, in the order it should be learned. */
@@ -1845,6 +1865,7 @@ export class Sim {
     nc.knows = c.knows.slice();
     nc.practice = { ...c.practice };
     nc.learning = c.learning?.slice();
+    nc.learned = c.learned?.slice();
     for (const it of this.items) if (it.band === c.id && it.holder < 0) it.band = nc.id;
     // the same people, the same colour
     nc.color = c.color ?? nc.color;
@@ -1873,10 +1894,7 @@ export class Sim {
     for (const it of this.items) if (it.band === c.id && it.holder < 0) it.band = to.id;
     // the band they join learns everything they knew
     const learned = this.unknownTo(c, to);
-    if (learned.length) {
-      to.knows.push(...learned);
-      for (const k of learned) delete to.practice[k];
-    }
+    for (const k of learned) this.learn(to, k, 'newcomers', -1, c.name);
     c.gone = this.tick;
     this.dropSites(c);
     this.hearth(c).fuel = 0;
@@ -3033,7 +3051,8 @@ export class Sim {
       camp: this.camps[0].name,
       founded: this.camps[0].founded,
       /** every band there has been */
-      camps: this.camps.map((c) => ({ id: c.id, name: c.name, founded: c.founded, gone: c.gone, parent: c.parent, leader: c.leader, x: c.x, z: c.z, pop: this.members(c).length, color: c.color ?? { h: 30, s: 0.5, l: 0.5 }, origin: c.origin ?? '' })),
+      camps: this.camps.map((c) => ({ id: c.id, name: c.name, founded: c.founded, gone: c.gone, parent: c.parent, leader: c.leader, x: c.x, z: c.z, pop: this.members(c).length, color: c.color ?? { h: 30, s: 0.5, l: 0.5 }, origin: c.origin ?? '',
+        knows: c.knows.slice(), learned: c.learned?.slice() ?? [] })),
       stats: { ...this.stats },
       history: this.history.slice(),
       people: this.people.map((p) => ({
