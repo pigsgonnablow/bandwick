@@ -5,6 +5,7 @@ import { TICKS_PER_DAY, DAYS_PER_SEASON, DAYS_PER_YEAR } from '../sim/time';
 import { SEASON_NAMES } from '../render/env';
 import { QUALITY_NAMES } from '../render/view';
 import { SPEEDS, randomSeed, tps } from './shared';
+import { BUILD } from '../build';
 import { yearSeason } from '../saves';
 import type { SaveMeta } from '../saves';
 import { InfoWindows } from './InfoWindows';
@@ -73,6 +74,7 @@ function TitleCard({ s }: { s: Snapshot }) {
       <div class="sub">
         Seed {w.params.seed} · {w.size} × {w.size} tiles · {(w.size * METERS_PER_UNIT) / 1000} km across
       </div>
+      <div class="build" title="Game version · commit · build date">{BUILD}</div>
     </header>
   );
 }
