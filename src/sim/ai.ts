@@ -519,6 +519,8 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
     case 'bury': {
       const body = s.people.find((q) => !q.alive && !q.buried && q.band === p.band && !s.people.some((o) => o.alive && o.task?.kind === 'bury' && o.task.ref === q.id));
       if (!body) return null;
+      // a body far out on the land is a long walk: not on an empty stomach, or hunger turns them back halfway
+      if (hyp(body.x - c.x, body.z - c.z) > FAR_GRAVE && p.food < 80) return null;
       p.thought = `Preparing ${body.name} for burial.`;
       const t = newTask(s, kind, s.tileOf(body), body.x, body.z, body.id, true);
       // a digging stick for the grave, if there's one on the pile
@@ -1502,17 +1504,24 @@ export function runTask(s: Sim, p: Person) {
         p.act = ACT.Mourn;
         face(p, body.x, body.z);
         if (--t.timer > 0) return;
-        // lift the body and carry it to the burial ground
-        p.carry = CARRY.Body;
-        body.indoors = true;
-        const spot = graveSpot(s);
-        t.goal = s.tileOf(spot);
-        t.gx = spot.x;
-        t.gz = spot.z;
-        t.near = false;
-        t.stage = 2;
-        p.path = null;
-        p.thought = `Carrying ${body.name} to the burial ground.`;
+        // far from camp, they are buried where they fell
+        if (hyp(body.x - c.x, body.z - c.z) > FAR_GRAVE) {
+          t.stage = 3;
+          t.timer = s.heldBy(p)?.kind === 'stick' ? 30 : 45;
+          p.thought = `Burying ${body.name} where they fell.`;
+        } else {
+          // lift the body and carry it to the burial ground
+          p.carry = CARRY.Body;
+          body.indoors = true;
+          const spot = graveSpot(s);
+          t.goal = s.tileOf(spot);
+          t.gx = spot.x;
+          t.gz = spot.z;
+          t.near = false;
+          t.stage = 2;
+          p.path = null;
+          p.thought = `Carrying ${body.name} to the burial ground.`;
+        }
       }
       if (t.stage === 2) {
         body.x = p.x;
@@ -1547,6 +1556,9 @@ export function runTask(s: Sim, p: Person) {
     }
   }
 }
+
+/** Beyond this far from camp, the dead are buried where they lie rather than carried home. */
+export const FAR_GRAVE = 18;
 
 function graveSpot(s: Sim) {
   const c = s.camp;

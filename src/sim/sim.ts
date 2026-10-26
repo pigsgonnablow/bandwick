@@ -962,7 +962,9 @@ export class Sim {
     const starveAt = 15 + Math.min(22, hyp(p.x - this.camp.x, p.z - this.camp.z) * 0.6);
     // (carrying food home, they eat from what they carry instead)
     const foodInHand = delivering(p) && p.carryAmt >= 1 && (p.carry === CARRY.Berries || p.carry === CARRY.Meat || p.carry === CARRY.Fish);
-    if (p.food < starveAt && !foodInHand && k !== 'eat' && k !== 'eatwild' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
+    // (a grave begun far out is finished first, unless they are near to starving)
+    const graveDug = k === 'bury' && p.task!.stage >= 1 && p.food >= 10;
+    if (p.food < starveAt && !foodInHand && !graveDug && k !== 'eat' && k !== 'eatwild' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
     const woodRun = (k === 'fell' || k === 'haul' || k === 'deadwood') && this.hearth().fuel < 2;
     if (p.warmth < (woodRun ? 8 : 18) && k !== 'warm' && k !== 'sleep') return true;
     // worn out on the way home with a load: the bed is at camp, where they're going anyway
@@ -1653,6 +1655,15 @@ export class Sim {
    */
   private bands(dayOfYear: number) {
     for (const c of this.liveCamps()) if (!this.members(c).length) this.emptied(c);
+    // children left on their own, or a last adult with the store bare, don't wait for spring to go to a neighbour
+    for (const c of this.liveCamps()) {
+      const ms = this.members(c);
+      const adults = ms.filter((p) => this.age(p) >= 16).length;
+      if (!adults || (adults < 2 && foodTotal(c.stock) < ms.length)) {
+        this.camp = c;
+        this.considerMerge(c);
+      }
+    }
     const season = seasonOf(this.tick);
     // setting out is for spring and summer: there has to be time to build and lay in wood before winter
     if (dayOfYear % 6 === 3 && season < 2) {
