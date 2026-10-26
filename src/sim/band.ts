@@ -31,17 +31,19 @@ export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, S
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
-  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry';
+  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
-  'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry',
+  'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap',
 ];
 
 /** Things a band makes and keeps: for now, the tools for felling. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap'] as const;
+/** Things set out in the land and left to work: checked on the band's daily round. */
+export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
 export interface ItemSpec {
   label: string;
@@ -55,6 +57,10 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   axe: { label: 'Stone axe', uses: 25 },
   // a stout stick sharpened to a point and hardened in the fire: mud, clay and graves
   stick: { label: 'Digging stick', uses: 15 },
+  // a loop of cord at the foot of a bush, for hares: the cord rots or is chewed through in about a season
+  snare: { label: 'Snare', uses: 12 },
+  // a woven basket funnel in the shallows: about a year
+  fishtrap: { label: 'Fish trap', uses: 48 },
 };
 
 /**
@@ -63,7 +69,7 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
  */
 /** Fiber twisted into one length of cordage. */
 export const FIBER_PER_CORD = 3;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage into the stores, or an item onto the pile */
@@ -100,8 +106,16 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
     makes: 'stick', uses: { wood: 1 }, work: 16, skill: SK.tool, grow: 0.05, knows: 'digstick', doing: 'Making a digging stick',
     thought: 'Sharpening a digging stick and hardening its point in the fire.', done: 'Made a digging stick and laid it on the pile.',
   },
+  snare: {
+    makes: 'snare', uses: { cordage: 1 }, work: 12, skill: SK.weave, grow: 0.04, knows: 'snares', doing: 'Making a snare',
+    thought: 'Knotting a running loop of cord for a snare.', done: 'Made a snare and laid it on the pile.',
+  },
+  fishtrap: {
+    makes: 'fishtrap', uses: { fiber: 3, wood: 2 }, work: 40, skill: SK.weave, grow: 0.06, knows: 'fishtraps', doing: 'Weaving a fish trap',
+    thought: 'Weaving reeds into a funnel basket for the shallows.', done: 'Wove a fish trap and laid it on the pile.',
+  },
 };
-/** One made thing. It lies on its band's stockpile unless someone holds it. */
+/** One made thing. It lies on its band's stockpile unless someone holds it, or it is set out in the land. */
 export interface Item {
   id: number;
   kind: ItemKind;
@@ -114,6 +128,10 @@ export interface Item {
   made: number;
   /** who made it (-1: brought from beyond the map) */
   maker: number;
+  /** a trap: the tile it is set on (absent or -1: on the pile; -2: in the basket of whoever is setting it) */
+  tile?: number;
+  /** a trap: what it has caught and is holding, waiting for the round (meat for a snare, fish for a fish trap) */
+  catch?: number;
 }
 
 /** Anything in the world that can be clicked. */
@@ -158,6 +176,10 @@ export interface Task {
   homeAt?: number;
   /** preserving: how much of `amount` was taken from the fish (the rest is meat) */
   fish?: number;
+  /** the trap round: the stops, three numbers each (trap id, the tile to stand on, the tile to set it on) */
+  route?: number[];
+  /** the trap round: which stop is next */
+  step?: number;
   /** supplying a building site: what is carried there (absent: wood) */
   res?: Material;
 }

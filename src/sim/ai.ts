@@ -2,9 +2,9 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
 import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, HEALTH } from './band';
-import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, TICKS_PER_DAY } from './time';
-import { WATER, treeId } from './types';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS } from './band';
+import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, dayOf, TICKS_PER_DAY } from './time';
+import { WATER, DIRS4, treeId } from './types';
 
 const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 
@@ -73,8 +73,9 @@ function craftFor(s: Sim, p: Person): { key: RecipeKey; score: number } | null {
   let best: { key: RecipeKey; score: number } | null = null;
   for (const key of RECIPE_KEYS) {
     const w = s.camp.jobs[`craft.${key}`] ?? 0;
-    // the morning's plan may be met already: a tool only while the band is still short of it
-    if (w <= 0 || !s.canCraft(key) || (key !== 'cordage' && s.toolToMake() !== key)) continue;
+    // the morning's plan may be met already: a tool or a trap only while the band is still short of it
+    if (w <= 0 || !s.canCraft(key)) continue;
+    if (TRAP_KINDS.includes(key as ItemKind) ? !s.trapShort(key as ItemKind) : key !== 'cordage' && s.toolToMake() !== key) continue;
     const score = w * fit(p, RECIPES[key].skill);
     if (!best || score > best.score) best = { key, score };
   }
@@ -144,6 +145,9 @@ export function decide(s: Sim, p: Person) {
     if (age >= 11) add('fish', food * fit(p, SK.fish) * 0.85 * crowd('fish'));
     // grass and reeds for thatch and cordage: work the older children can do too
     if (age >= 9) add('reap', (j.fiber ?? 0) * drive * night * fit(p, SK.forage) * (child ? 1.15 : 1) * crowd('reap'));
+    // the round of the snares and fish traps: one person, once a day, by daylight
+    if (age >= 12 && !dark && (j.trap ?? 0) > 0 && c.trapRound !== dayOf(s.tick) && busyWith(s, 'trap') === 0)
+      add('trap', j.trap * drive * fit(p, SK.hunt));
     // mud for daub, stone for walls: heavy work, for a site that needs it
     if (age >= 13) add('dig', (j.dig ?? 0) * drive * night * fit(p, SK.build) * crowd('dig'));
     if (age >= 16 && age < 56) add('quarry', (j.quarry ?? 0) * drive * night * fit(p, SK.build) * crowd('quarry'));
@@ -362,6 +366,34 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       p.thought = 'Prising stone from the rocks.';
       return newTask(s, kind, i, (i % N) + 0.5, Math.floor(i / N) + 0.5, -1, true);
     }
+    case 'trap': {
+      const route = trapRoute(s);
+      if (!route.length) return null;
+      c.trapRound = dayOf(s.tick);
+      const t = newTask(s, kind, route[1], (route[1] % N) + 0.5, Math.floor(route[1] / N) + 0.5);
+      t.route = route;
+      t.step = 0;
+      t.amount = 0;
+      t.fish = 0;
+      // the traps to set out today go into the basket at the pile first
+      let fetch = false;
+      for (let k = 0; k < route.length; k += 3) {
+        const it = s.items.find((i) => i.id === route[k]);
+        if (route[k + 2] >= 0 && it && (it.tile ?? -1) === -1) {
+          it.tile = -2;
+          fetch = true;
+        }
+      }
+      const pile = s.storeSpot(true);
+      if (fetch && hyp(p.x - pile.x, p.z - pile.z) > 3.5) {
+        t.stage = -1;
+        t.goal = pile.tile;
+        t.gx = pile.x;
+        t.gz = pile.z;
+      }
+      p.thought = fetch ? 'Taking traps from the pile to set out.' : 'Going round the traps.';
+      return t;
+    }
     case 'craft': {
       const key = recipe ?? craftFor(s, p)?.key;
       if (!key || !s.canCraft(key)) return null;
@@ -568,6 +600,7 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
       for (const [m, n] of Object.entries(uses) as [keyof typeof uses, number][]) st[m] += n;
       t.amount = 0;
     }
+    if (t.kind === 'trap') untakeTraps(s, t);
     if (t.kind === 'preserve' && t.amount > 0) {
       // back as it came: fish to the fish, meat to the meat
       const fish = Math.min(t.amount, t.fish ?? 0);
@@ -750,6 +783,106 @@ function flash(p: Person, code: number) {
   p.flash = ((((p.flash ?? 0) >> 2) + 1) % 4096) * 4 + code;
 }
 
+/**
+ * Plan the day's round of the traps: every trap set out is checked (and taken up where the land around
+ * it is trapped or fished out), then traps from the pile, and those taken up, are set where the hares
+ * run thickest or the fish are, near camp. Three numbers a stop: trap id, tile to stand on, and the
+ * tile to set it on (-1: check it, -3: check it and take it up).
+ */
+function trapRoute(s: Sim): number[] {
+  const c = s.camp, N = s.N;
+  const mine = s.toolsOf(c).filter((i) => TRAP_KINDS.includes(i.kind) && i.holder < 0);
+  const taken = new Set(s.items.filter((i) => (i.tile ?? -1) >= 0).map((i) => i.tile!));
+  const frozen = freshFrozen(s.tick);
+  const bad = (stand: number) => (s.unreachable.get(-3 * N * N - (stand + 1)) ?? 0) > s.tick;
+  // the bank to stand on to reach a fish trap in the water
+  const bankOf = (w: number) => {
+    for (const [dx, dz] of DIRS4) {
+      const x = (w % N) + dx, z = Math.floor(w / N) + dz;
+      if (x < 0 || z < 0 || x >= N || z >= N) continue;
+      const i = z * N + x;
+      if (s.world.water[i] === WATER.None && s.grid.walkable(i)) return i;
+    }
+    return -1;
+  };
+  const checks: number[][] = [];
+  const toSet: Item[] = [];
+  for (const it of mine) {
+    const w = it.tile ?? -1;
+    if (w >= 0) {
+      const stand = it.kind === 'snare' ? w : bankOf(w);
+      if (stand < 0 || bad(stand)) continue;
+      const spent = !it.catch && (it.kind === 'snare' ? s.game[w] < 1 : s.fish[w] < 1.5 || (frozen && s.world.water[w] !== WATER.Sea));
+      checks.push([it.id, stand, spent ? -3 : -1]);
+      if (spent) toSet.push(it);
+    } else if (w === -1) toSet.push(it);
+  }
+  const sets: number[][] = [];
+  const near = (i: number, r: number) => hyp((i % N) + 0.5 - c.x, Math.floor(i / N) + 0.5 - c.z) < r;
+  for (const it of toSet.slice(0, 6)) {
+    let best = -1, bestStand = -1, bestS = -Infinity;
+    if (it.kind === 'snare') {
+      const cx = Math.floor(c.x), cz = Math.floor(c.z);
+      for (let z = Math.max(0, cz - 10); z <= Math.min(N - 1, cz + 10); z++)
+        for (let x = Math.max(0, cx - 10); x <= Math.min(N - 1, cx + 10); x++) {
+          const i = z * N + x;
+          if (s.gameCap[i] <= 0 || s.game[i] < 1.5 || taken.has(i) || bad(i)) continue;
+          const d = hyp(x + 0.5 - c.x, z + 0.5 - c.z);
+          // not in the middle of camp, and spread out: a snare on every bush catches nothing
+          if (d < 3 || d > 10) continue;
+          if (taken.has(i - 1) || taken.has(i + 1) || taken.has(i - N) || taken.has(i + N)) continue;
+          const sc = (s.game[i] / s.gameCap[i]) * 3 - d * 0.15;
+          if (sc > bestS) { bestS = sc; best = i; bestStand = i; }
+        }
+    } else {
+      for (const spot of s.fishingSpots) {
+        if (!near(spot, 14) || bad(spot)) continue;
+        for (const [dx, dz] of DIRS4) {
+          const x = (spot % N) + dx, z = Math.floor(spot / N) + dz;
+          if (x < 0 || z < 0 || x >= N || z >= N) continue;
+          const w = z * N + x;
+          if (s.fishCap[w] <= 0 || s.fish[w] < 2 || taken.has(w) || (frozen && s.world.water[w] !== WATER.Sea)) continue;
+          const sc = s.fish[w] - hyp(x + 0.5 - c.x, z + 0.5 - c.z) * 0.2;
+          if (sc > bestS) { bestS = sc; best = w; bestStand = spot; }
+        }
+      }
+    }
+    if (best < 0) continue;
+    taken.add(best);
+    sets.push([it.id, bestStand, best]);
+  }
+  // nearest stop next, from camp: the checks first, then the setting
+  const order = (stops: number[][], x: number, z: number) => {
+    const out: number[][] = [];
+    const left = stops.slice();
+    while (left.length) {
+      let bi = 0, bd = Infinity;
+      left.forEach((st, k) => {
+        const d = hyp((st[1] % N) + 0.5 - x, Math.floor(st[1] / N) + 0.5 - z);
+        if (d < bd) { bd = d; bi = k; }
+      });
+      const [st] = left.splice(bi, 1);
+      out.push(st);
+      x = (st[1] % N) + 0.5;
+      z = Math.floor(st[1] / N) + 0.5;
+    }
+    return out;
+  };
+  const a = order(checks, c.x, c.z);
+  const last = a[a.length - 1];
+  const b = order(sets, last ? (last[1] % N) + 0.5 : c.x, last ? Math.floor(last[1] / N) + 0.5 : c.z);
+  return [...a, ...b].flat();
+}
+
+/** Traps still in the basket when the round ends, or is given up, go back on the pile. */
+function untakeTraps(s: Sim, t: Task) {
+  const route = t.route ?? [];
+  for (let k = 0; k < route.length; k += 3) {
+    const it = s.items.find((i) => i.id === route[k]);
+    if (it?.tile === -2) delete it.tile;
+  }
+}
+
 /** A digging trip or a grave wears the stick down; when it breaks, they say so. */
 function wearStick(s: Sim, p: Person, stick: Item) {
   if (!s.wearTool(stick)) return;
@@ -785,6 +918,7 @@ export function runTask(s: Sim, p: Person) {
       const propTask = t.kind === 'forage' || t.kind === 'fell' || t.kind === 'haul' || t.kind === 'eatwild' || t.kind === 'deadwood' || t.kind === 'reap';
       if (propTask && t.ref >= 0) s.unreachable.set(t.ref, s.tick + 2 * TICKS_PER_DAY);
       if (t.kind === 'fish') s.unreachable.set(-(t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
+      if (t.kind === 'trap' && t.stage >= 0) s.unreachable.set(-3 * s.N * s.N - (t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
       if ((t.kind === 'dig' || t.kind === 'quarry') && t.stage >= 0) s.unreachable.set((t.kind === 'dig' ? -1 : -2) * s.N * s.N - (t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
       abandon(s, p);
       p.nextThink = s.tick;
@@ -1012,6 +1146,8 @@ export function runTask(s: Sim, p: Person) {
         s.reserved.delete(t.ref);
         p.carry = CARRY.Berries;
         p.carryAmt = take;
+        // watching the hares in the undergrowth while picking
+        s.practise(p, 'forage');
         if (p.food < 45 && take >= 1) {
           p.carryAmt -= 0.5;
           p.food = clamp(p.food + 20);
@@ -1106,6 +1242,81 @@ export function runTask(s: Sim, p: Person) {
       }
       if (moving(go(s, p, t))) return;
       deposit(s, p);
+      finish(s, p);
+      return;
+    }
+    case 'trap': {
+      const route = t.route ?? [];
+      const aim = () => {
+        const stand = route[(t.step ?? 0) * 3 + 1];
+        t.goal = stand;
+        t.gx = (stand % s.N) + 0.5;
+        t.gz = Math.floor(stand / s.N) + 0.5;
+        t.near = false;
+        t.stage = 0;
+        p.path = null;
+      };
+      if (t.stage === -1) {
+        if (moving(go(s, p, t))) return;
+        aim();
+        p.thought = 'Off round the traps.';
+        return;
+      }
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 8;
+      }
+      if (t.stage === 1) {
+        p.act = ACT.Gather;
+        if (--t.timer > 0) return;
+        const k = (t.step ?? 0) * 3;
+        const it = s.items.find((i) => i.id === route[k]);
+        const action = route[k + 2];
+        if (it && it.band === p.band) {
+          if (action >= 0) {
+            if (it.tile === -2) {
+              it.tile = action;
+              it.catch = 0;
+              p.thought = it.kind === 'snare' ? 'Set a snare across a hare run.' : 'Set a fish trap in the shallows.';
+            }
+          } else if ((it.tile ?? -1) >= 0) {
+            const got = it.catch ?? 0;
+            if (got > 0) {
+              if (it.kind === 'snare') t.amount += got;
+              else t.fish = (t.fish ?? 0) + got;
+              skillUp(p, SK.hunt, 0.03);
+            }
+            it.catch = 0;
+            p.thought = got > 0 ? (it.kind === 'snare' ? 'A hare in the snare.' : `${got} fish in the trap.`) : it.kind === 'snare' ? 'Nothing in this snare.' : 'The trap is empty.';
+            // nothing left to catch here: take it up, to set somewhere better
+            if (action === -3) it.tile = -2;
+          }
+        }
+        t.step = (t.step ?? 0) + 1;
+        if (t.step * 3 < route.length) return aim();
+        untakeTraps(s, t);
+        const meat = t.amount, fish = t.fish ?? 0;
+        if (meat + fish <= 0) {
+          p.thought = 'Nothing in the traps today.';
+          return finish(s, p);
+        }
+        s.book('trapped', meat + fish);
+        p.carry = meat > 0 ? CARRY.Meat : CARRY.Fish;
+        p.carryAmt = meat > 0 ? meat : fish;
+        if (meat <= 0) t.fish = 0;
+        t.amount = 0;
+        goStore(s, p, t, 2);
+        p.thought = meat > 0 ? 'Carrying the catch from the snares home.' : 'Carrying fish from the traps home.';
+      }
+      if (moving(go(s, p, t))) return;
+      deposit(s, p);
+      // fish carried along with the hares
+      if ((t.fish ?? 0) > 0) {
+        c.stock.fish += t.fish!;
+        s.book('gathered.fish', t.fish!);
+        t.fish = 0;
+      }
       finish(s, p);
       return;
     }
@@ -1314,6 +1525,7 @@ export function runTask(s: Sim, p: Person) {
             }
           }
           skillUp(p, SK.hunt, 0.35);
+          s.practise(p, 'hunt');
           if (p.kills === 1) s.remember(p, 'first_kill', 18, 2, -1, 'Brought down their first deer.');
           if (s.stats.kills === 1) s.event('hunt', `${p.name} brought down the band's first deer at ${s.camp.name}.`, [p.id], p.x, p.z, 3);
           p.carry = CARRY.Meat;
@@ -1322,6 +1534,7 @@ export function runTask(s: Sim, p: Person) {
           p.thought = 'Carrying the kill home.';
         } else {
           skillUp(p, SK.hunt, 0.05);
+          s.practise(p, 'hunt', 0.2);
           p.thought = 'Missed. Following the herd.';
           p.path = null;
         }
@@ -1352,6 +1565,8 @@ export function runTask(s: Sim, p: Person) {
           const got = Math.min(s.fish[w], 3 + Math.floor(p.skills[SK.fish] / 4));
           s.fish[w] -= got;
           skillUp(p, SK.fish, 0.12);
+          // standing in the shallows with reeds to hand is what makes someone think of a woven trap
+          if (c.stock.fiber >= 3) s.practise(p, 'fish_fiber', got < 3 ? 1.5 : 1);
           p.carry = CARRY.Fish;
           p.carryAmt = got;
           goStore(s, p, t, 2);
@@ -1363,6 +1578,7 @@ export function runTask(s: Sim, p: Person) {
           skillUp(p, SK.fish, 0.03);
         } else {
           p.thought = 'Caught nothing today.';
+          if (c.stock.fiber >= 3) s.practise(p, 'fish_fiber', 1.5);
           return finish(s, p);
         }
       }
