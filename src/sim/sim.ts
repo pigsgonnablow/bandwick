@@ -42,6 +42,8 @@ const BERRY_BASE = smallPropId('berry', 0);
 export const isBerry = (t: number) => t >= BERRY_BASE && t < BERRY_BASE + 3;
 const GRASS_BASE = smallPropId('grass', 0);
 const REEDS_BASE = smallPropId('reeds', 0);
+/** How long what a band leaves standing lasts once it has gone. */
+const RUIN_TICKS = TICKS_PER_YEAR * 12;
 export const isReeds = (t: number) => t >= REEDS_BASE && t < REEDS_BASE + 3;
 /** Grass tussocks and reed beds: cut for fiber, and they grow back. */
 export const isFiberPlant = (t: number) => isReeds(t) || (t >= GRASS_BASE && t < GRASS_BASE + 3);
@@ -480,6 +482,7 @@ export class Sim {
     const others = this.camps.filter((c) => !c.gone);
     const avoid = opts.avoid ?? 0;
     const cands: { i: number; score: number }[] = [];
+    const fallback: typeof cands = [];
     for (let z = 6; z < N - 6; z += 2)
       for (let x = 6; x < N - 6; x += 2) {
         const i = z * N + x;
@@ -489,8 +492,8 @@ export class Sim {
           if (d < (opts.min ?? 0) || d > (opts.max ?? 1e9)) continue;
         }
         if (avoid && others.some((c) => hyp(x - c.x, z - c.z) < avoid)) continue;
-        // and clear of anything left standing where others once lived
-        if (this.buildings.some((b) => Math.abs(b.x - x) <= 3 && Math.abs(b.z - z) <= 3)) continue;
+        // and clear of anything left standing where others once lived (an old cold hearth needs only a step's room)
+        if (this.buildings.some((b) => Math.abs(b.x - x) <= (this.oldAsh(b) ? 1 : 3) && Math.abs(b.z - z) <= (this.oldAsh(b) ? 1 : 3))) continue;
         let flat = true;
         for (let dz = -2; dz <= 2 && flat; dz++)
           for (let dx = -2; dx <= 2; dx++) {
@@ -502,12 +505,15 @@ export class Sim {
         if (fd > 6) continue;
         // a camp needs timber: a band burns a big tree every few days through winter
         const timber = near(treeTiles, x, z, 12);
-        if ((opts.from || opts.timber) && timber < 30) continue;
+        // (strangers make do with thinner woods if that is all there is)
+        const thin = (opts.from || opts.timber) && timber < 30;
+        if (thin && !(opts.timber && !opts.from && timber >= 8)) continue;
         const score =
           -Math.abs(fd - 2.5) * 2 + Math.min(40, timber) * 0.25 + Math.min(10, near(berryTiles, x, z, 14)) * 0.9 +
           (w.fertility[i] / 255) * 3 - (w.level[i] - SEA) * 0.4 + (hash3(i, w.params.seed, 404 + this.camps.length) % 100) * 0.01;
-        cands.push({ i, score });
+        (thin ? fallback : cands).push({ i, score });
       }
+    if (!cands.length) cands.push(...fallback);
     cands.sort((a, b) => b.score - a.score);
     // the best few that can actually be walked to
     for (const c of cands.slice(0, 8)) {
@@ -1677,6 +1683,7 @@ export class Sim {
         this.considerSplit(c);
       }
     }
+    if (dayOfYear === 5) this.ruinsFall();
     // strangers come in spring, with a summer ahead to build and lay in stores before their first winter
     if (dayOfYear === 6) this.considerStrangers();
     if (dayOfYear % 12 === 3 && season < 3) this.considerMatches();
@@ -1889,6 +1896,28 @@ export class Sim {
     const n = this.buildings.length;
     this.buildings = this.buildings.filter((b) => b.band !== c.id || b.built || b.kind === 'hearth' || b.kind === 'stockpile');
     if (this.buildings.length !== n) this.buildingsVersion++;
+  }
+
+  /** The ring of stones where a band long gone had its fire. */
+  private oldAsh(b: Building) {
+    if (b.kind !== 'hearth') return false;
+    const c = this.campById(b.band);
+    return !!c?.gone && this.tick - c.gone > RUIN_TICKS;
+  }
+
+  /** Huts, sheds and racks left standing fall in, a generation after their band has gone. */
+  private ruinsFall() {
+    const n = this.buildings.length;
+    const fallen = new Set<number>();
+    this.buildings = this.buildings.filter((b) => {
+      const c = this.campById(b.band);
+      const falls = b.kind !== 'hearth' && !!c?.gone && this.tick - c.gone > RUIN_TICKS;
+      if (falls) fallen.add(b.id);
+      return !falls;
+    });
+    if (this.buildings.length === n) return;
+    this.buildingsVersion++;
+    for (const p of this.people) if (fallen.has(p.home)) p.home = -1;
   }
 
   /** No one left: the camp goes back to the land. */

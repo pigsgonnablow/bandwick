@@ -3,7 +3,8 @@
 // anything impossible it finds in `problems`, keyed by kind, with the first example of each.
 import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
-import { TICKS_PER_DAY, TICKS_PER_YEAR, yearOf } from '../../src/sim/time';
+import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, yearOf } from '../../src/sim/time';
+import { FAR_GRAVE } from '../../src/sim/ai';
 import { CARRY, MATERIALS, specOf, foodTotal, RECIPES } from '../../src/sim/band';
 import { knowHowFor } from '../../src/sim/know';
 
@@ -100,7 +101,10 @@ export class InvariantChecker {
     for (const p of sim.people) {
       if (p.alive || p.buried) continue;
       const buriers = !sim.campById(p.band)?.gone && sim.people.some((q) => q.alive && q.band === p.band && sim.age(q) >= 15);
-      if (buriers && sim.tick - p.death > 6 * TICKS_PER_DAY) flag('body unburied for 6+ days', `${at} ${p.name} died t${p.death}`);
+      // (one far out on the land may wait out a hard frost: nobody walks that far in it)
+      const camp = sim.campById(p.band);
+      const wait = camp && Math.hypot(p.x - camp.x, p.z - camp.z) > FAR_GRAVE ? DAYS_PER_SEASON + 6 : 6;
+      if (buriers && sim.tick - p.death > wait * TICKS_PER_DAY) flag('body unburied too long', `${at} ${p.name} died t${p.death}`);
       const carried = sim.people.some((q) => q.alive && q.task?.kind === 'bury' && q.task.ref === p.id && q.carry === CARRY.Body);
       if (p.indoors && !carried) flag('body hidden but not carried', `${at} ${p.name}`);
     }
