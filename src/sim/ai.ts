@@ -2,7 +2,7 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
 import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item } from './band';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, HEALTH } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, TICKS_PER_DAY } from './time';
 import { WATER, treeId } from './types';
 
@@ -60,7 +60,7 @@ function workDrive(s: Sim, p: Person) {
   else if (age >= 52) d *= 0.8;
   if (p.pregnantUntil > 0 && p.pregnantUntil - s.tick < 4 * TICKS_PER_DAY) d *= 0.5;
   if (p.sick > 0) d *= 0.3;
-  if (p.health < 40) d *= 0.5;
+  if (p.health < HEALTH.weak) d *= 0.5;
   return d;
 }
 const fit = (p: Person, k: number) => 0.7 + Math.min(20, p.skills[k]) * 0.03;
@@ -116,7 +116,7 @@ export function decide(s: Sim, p: Person) {
   add('idle', 0.16 + (hour > 18 && !dark ? 0.15 : 0) + (s.has(p, 'lazy') ? 0.1 : 0));
   if (child && age >= 2 && !dark) add('play', 0.5 + (age < 9 ? 0.2 : 0));
   // a hot afternoon: the young go down to the water to cool off
-  if (!dark && temp >= 21 && age >= 4 && age < 40 && p.health > 50 && hour > 10 && hour < 19)
+  if (!dark && temp >= 21 && age >= 4 && age < 40 && p.health > HEALTH.swim && hour > 10 && hour < 19)
     add('swim', (child ? 0.42 : 0.24) + Math.min(0.3, (temp - 21) * 0.05) + (s.has(p, 'wanderlust') ? 0.05 : 0));
   // far from their own camp (left behind in a move, or newly joined): make for it
   const away = hyp(p.x - c.x, p.z - c.z);
@@ -137,7 +137,7 @@ export function decide(s: Sim, p: Person) {
     const food = (j.food ?? 0.5) * drive * night * (stock < 0.4 && p.food < 35 ? 1 + hunger : 1);
     if (berriesRipe(s.tick)) add('forage', food * fit(p, SK.forage) * (child ? 1.3 : 1) * crowd('forage'));
     // a hunt can mean a day's walk: not for the sick, the weak or the half-starved
-    if (age >= 16 && age < 56 && p.sick === 0 && p.health >= 45 && (p.food >= 50 || stock < 0.4)) {
+    if (age >= 16 && age < 56 && p.sick === 0 && p.health >= HEALTH.hunt && (p.food >= 50 || stock < 0.4)) {
       const nerve = s.has(p, 'brave') ? 1.4 : s.has(p, 'cautious') ? 0.55 : 1;
       add('hunt', food * fit(p, SK.hunt) * nerve * 0.95 * crowd('hunt'));
     }
@@ -694,7 +694,7 @@ function speed(s: Sim, p: Person) {
   if (p.carry === CARRY.Meat || p.carry === CARRY.Body || p.carry === CARRY.Stone) v *= 0.65;
   else if (p.carry === CARRY.Mud) v *= 0.78;
   else if (p.carry === CARRY.Log) v *= 0.82;
-  if (p.health < 40) v *= 0.7;
+  if (p.health < HEALTH.weak) v *= 0.7;
   return v;
 }
 

@@ -4,7 +4,7 @@
 import { useRef } from 'preact/hooks';
 import type { Engine, Snapshot, InfoWin, PersonDetail } from '../main';
 import { WIN_W } from '../main';
-import { SKILLS, CARRY } from '../sim/band';
+import { SKILLS, CARRY, HEALTH } from '../sim/band';
 import { TICKS_PER_YEAR } from '../sim/time';
 import { when, Bar } from './App';
 
@@ -23,6 +23,36 @@ const CARRYING: Record<number, string> = {
   [CARRY.Body]: 'the body of the dead', [CARRY.Spear]: 'a spear', [CARRY.Baby]: 'a baby', [CARRY.Fiber]: 'grass and cordage', [CARRY.Mud]: 'a basket of mud', [CARRY.Stone]: 'stone',
 };
 const NEEDS: [keyof PersonDetail['needs'], string][] = [['food', 'Food'], ['rest', 'Rest'], ['warmth', 'Warmth'], ['belonging', 'Company'], ['safety', 'Safety']];
+const NEED_WORDS: Record<keyof PersonDetail['needs'], string> = { food: 'hunger', rest: 'tiredness', warmth: 'cold', belonging: 'loneliness', safety: 'fear' };
+
+/** What their health is doing to them right now, in the sim's own thresholds. */
+function healthTip(p: PersonDetail) {
+  const h = p.health, { food, warmth } = p.needs;
+  const effects: string[] = [];
+  if (h < HEALTH.weak) effects.push('too weak to do much work, slow on their feet, and more likely to die of fever or old age');
+  if (h < HEALTH.hunt) effects.push('too hurt to hunt');
+  if (h <= HEALTH.swim) effects.push(h < HEALTH.lead ? 'not up to swimming or leading others away' : 'not up to swimming');
+  const harm = [food < HEALTH.starving && 'starving', warmth < HEALTH.cold && 'cold', p.sick && 'sick'].filter(Boolean);
+  const trend = harm.length ? `Getting worse (${harm.join(', ')}).`
+    : h >= 99.5 ? ''
+    : food > HEALTH.mend && warmth > HEALTH.mend ? 'Recovering slowly (fed and warm).'
+    : 'Not mending: needs to be fed and warm.';
+  if (!effects.length && !trend) return `Health ${Math.round(h)}: healthy.`;
+  const now = effects.length ? `${effects.join('; ')}.` : 'no ill effects yet.';
+  return `Health ${Math.round(h)}: ${now}${trend ? ` ${trend}` : ''}`;
+}
+
+const MOOD_LOW = 30;
+/** How their mood is touching their work and family, and what is weighing on it. */
+function moodTip(p: PersonDetail) {
+  const m = p.mood;
+  const state = m < MOOD_LOW ? 'low spirits, so works with less heart and is less keen to start a family.'
+    : m >= 70 ? 'in good spirits.' : 'getting by.';
+  const weigh = (Object.keys(NEED_WORDS) as (keyof PersonDetail['needs'])[]).filter((k) => p.needs[k] < MOOD_LOW).map((k) => NEED_WORDS[k]);
+  if (p.health < HEALTH.weak) weigh.push('poor health');
+  return `Mood ${Math.round(m)}: ${state}${weigh.length ? ` Weighing on them: ${weigh.join(', ')}.` : ''}`;
+}
+
 const SKILL_WORDS: Record<string, string> = {
   foraging: 'Foraging', woodcutting: 'Woodcutting', building: 'Building', hunting: 'Hunting', fishing: 'Fishing',
   toolmaking: 'Toolmaking', weaving: 'Weaving', pottery: 'Pottery', hidework: 'Hidework',
@@ -175,8 +205,8 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
               {NEEDS.map(([k, label]) => (
                 <div key={k} class="need"><span>{label}</span><Bar v={p.needs[k]} /><b>{Math.round(p.needs[k])}</b></div>
               ))}
-              <div class="need"><span>Health</span><Bar v={p.health} warn={40} /><b>{Math.round(p.health)}</b></div>
-              <div class="need"><span>Mood</span><Bar v={p.mood} warn={30} /><b>{Math.round(p.mood)}</b></div>
+              <div class="need" title={healthTip(p)}><span>Health</span><Bar v={p.health} warn={HEALTH.weak} /><b>{Math.round(p.health)}</b></div>
+              <div class="need" title={moodTip(p)}><span>Mood</span><Bar v={p.mood} warn={MOOD_LOW} /><b>{Math.round(p.mood)}</b></div>
             </div>
             <div class="chips">{p.traits.map((t) => <span key={t} class="chip">{t}</span>)}</div>
           </>

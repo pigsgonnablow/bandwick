@@ -9,7 +9,7 @@ import {
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
   Item, ItemKind, ITEMS, ITEM_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
-  TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, TASK_KINDS, Ref, Card, CardLine,
+  TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, TASK_KINDS, Ref, Card, CardLine, HEALTH,
 } from './band';
 import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
@@ -1033,16 +1033,16 @@ export class Sim {
 
     // health
     let dmg = 0;
-    if (p.food < 8) dmg += 0.045;
-    if (p.warmth < 22) dmg += 0.05;
-    if (p.warmth < 8) dmg += 0.12;
+    if (p.food < HEALTH.starving) dmg += 0.045;
+    if (p.warmth < HEALTH.cold) dmg += 0.05;
+    if (p.warmth < HEALTH.freezing) dmg += 0.12;
     if (p.sick > 0) dmg += 0.03;
     if (dmg > 0) p.health -= dmg;
-    else if (p.food > 30 && p.warmth > 30) p.health += 0.012;
+    else if (p.food > HEALTH.mend && p.warmth > HEALTH.mend) p.health += 0.012;
     p.health = clamp(p.health);
     if (p.health <= 0) {
       // whatever was doing the most harm (cold at its worst outweighs hunger)
-      const hungerHarm = p.food < 8 ? 0.045 : 0, coldHarm = p.warmth < 8 ? 0.17 : p.warmth < 22 ? 0.05 : 0;
+      const hungerHarm = p.food < HEALTH.starving ? 0.045 : 0, coldHarm = p.warmth < HEALTH.freezing ? 0.17 : p.warmth < HEALTH.cold ? 0.05 : 0;
       const cause = hungerHarm || coldHarm ? (coldHarm >= hungerHarm ? 'cold' : 'starvation') : p.sick > 0 ? 'fever' : 'weakness';
       this.kill(p, cause);
       return;
@@ -1531,7 +1531,7 @@ export class Sim {
       }
       // old age, illness, infancy
       let daily = annualMortality(age) / DAYS_PER_YEAR;
-      if (p.health < 40) daily *= 2;
+      if (p.health < HEALTH.weak) daily *= 2;
       if (p.hardy && age > 50) daily *= 0.3;
       if (r.next() < daily) {
         this.kill(p, age < 3 ? 'infancy' : age > 50 ? 'old age' : 'fever');
@@ -1770,7 +1770,7 @@ export class Sim {
     let leader: Person | null = null, best = -1e9;
     for (const p of adults) {
       const age = this.age(p);
-      if (age < 20 || age > 50 || p.health < 50 || p.id === c.leader) continue;
+      if (age < 20 || age > 50 || p.health < HEALTH.lead || p.id === c.leader) continue;
       let warmth = 0;
       for (const q of adults) if (q !== p) warmth += this.opinion(p, q);
       warmth /= Math.max(1, adults.length - 1);
