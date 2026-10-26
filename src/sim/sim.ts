@@ -1195,6 +1195,9 @@ export class Sim {
     // what is already being made at the fire counts too, or every crafter makes the same tool all day
     const have = (k: ItemKind) => this.toolsOf(c, k).length + ms.filter((p) => p.task?.kind === 'craft' && p.task.amount > 0 && RECIPE_KEYS[p.task.ref] === k).length;
     const axes = have('axe'), choppers = have('chopper');
+    // with nothing at all to fell with, the quickest thing first: an axe if the stores hold one, else a chopper
+    // (an axe takes wood, and there is no wood without something to fell with)
+    if (!axes && !choppers) return this.knows('axe', c) && this.canCraft('axe', c) ? 'axe' : 'chopper';
     if (this.knows('axe', c) && axes < 2 + Math.floor(ms.length / 8)) return 'axe';
     if (choppers < (this.knows('axe', c) && axes > 0 ? 1 : 2)) return 'chopper';
     if (this.knows('digstick', c) && have('stick') < (this.knows('daub', c) ? 2 : 1)) return 'stick';
@@ -2129,6 +2132,7 @@ export class Sim {
     const woodP = clamp01((fuelNeed + siteWood - c.stock.wood) / (fuelNeed + siteWood + 1) * 1.15, 0.08, 1.0);
     const logsLying = this.countProps(LOGS);
     const make = this.toolToMake(c);
+    const unarmed = !this.toolsOf(c).some((i) => i.kind !== 'stick');
     c.jobs = {
       food: foodP,
       wood: woodP + (logsLying > 0 ? 0.1 : 0),
@@ -2139,8 +2143,9 @@ export class Sim {
       // crafting by the fire, in a fixed order: cordage a building site is waiting on (or an axe needs),
       // then the tools today's work is missing, then a few lengths of cordage put by
       'craft.cordage': siteCord > c.stock.cordage || (make === 'axe' && c.stock.cordage < 1) ? 0.8 : c.stock.cordage < 4 ? 0.3 : 0,
-      'craft.chopper': make === 'chopper' ? 0.6 : 0,
-      'craft.axe': make === 'axe' ? 0.6 : 0,
+      // nothing left to fell with: that comes before any cordage
+      'craft.chopper': make === 'chopper' ? (unarmed ? 0.95 : 0.6) : 0,
+      'craft.axe': make === 'axe' ? (unarmed ? 0.95 : 0.6) : 0,
       'craft.stick': make === 'stick' ? 0.5 : 0,
       // mud and stone are fetched only for a site that needs them (mud can't be dug from frozen ground)
       dig: siteMud > c.stock.mud && !winterNow ? 0.75 : 0,
@@ -2340,8 +2345,13 @@ export class Sim {
         this.buildingsVersion++;
       }
     }
-    // children without a roof (their family stayed behind, or is gone) go in with kin, or with whoever takes them
     const members = this.members();
+    // someone without a roof whose partner has one moves in with them (a couple counts as housed once either is)
+    for (const p of members) {
+      const partner = p.home < 0 ? this.byId.get(p.partner) : undefined;
+      if (partner?.alive && partner.band === p.band && partner.home >= 0 && this.buildings.some((b) => b.id === partner.home && b.built)) p.home = partner.home;
+    }
+    // children without a roof (their family stayed behind, or is gone) go in with kin, or with whoever takes them
     for (const ch of members) {
       if (ch.home >= 0 || this.age(ch) >= 16 || this.age(ch) < 2) continue;
       const kin = [this.byId.get(ch.carer), this.byId.get(ch.mother), this.byId.get(ch.father)].find((q) => q && q.alive && q.band === ch.band && q.home >= 0);
