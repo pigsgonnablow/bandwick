@@ -1,6 +1,6 @@
-// The Chronicle: the history of the world, told four ways. Annals (each year in a few lines),
+// The Chronicle: the history of the world, told five ways. Annals (each year in a few lines),
 // a Timeline (the band's numbers over time, with what happened marked along it), the Family
-// (everyone who ever lived, by generation) and Records. Every name and mark leads back to the world.
+// (everyone who ever lived, by generation), Discoveries (what each band knows, and how it came to) and Records. Every name and mark leads back to the world.
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import type { Engine, Snapshot } from '../main';
@@ -8,6 +8,8 @@ import type { Chronicle as Chron, HistorySample } from '../sim/sim';
 import type { SimEvent, Ref } from '../sim/band';
 import { TICKS_PER_YEAR, TICKS_PER_SEASON } from '../sim/time';
 import { SEASON_NAMES } from '../render/env';
+import { bandDiscoveries, firstFound, Part } from './discoveries';
+import { bandCss } from './shared';
 
 type Person = Chron['people'][number];
 type Seg = string | { id: number; name: string; dead?: boolean };
@@ -32,7 +34,7 @@ const NUM = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight
 const num = (n: number) => NUM[n] ?? String(n);
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
 
-const TABS = [['annals', 'Annals'], ['timeline', 'Timeline'], ['family', 'Family'], ['records', 'Records']] as const;
+const TABS = [['annals', 'Annals'], ['timeline', 'Timeline'], ['family', 'Family'], ['discoveries', 'Discoveries'], ['records', 'Records']] as const;
 
 export function ChronicleView({ s, engine }: { s: Snapshot; engine: Engine }) {
   const c = s.chronicle;
@@ -66,6 +68,7 @@ export function ChronicleView({ s, engine }: { s: Snapshot; engine: Engine }) {
           {!c ? <p class="hint">Reading the past…</p>
             : s.chronicleTab === 'timeline' ? <Timeline c={c} events={s.events} engine={engine} byId={byId} />
             : s.chronicleTab === 'family' ? <Family c={c} go={go} />
+            : s.chronicleTab === 'discoveries' ? <Discoveries c={c} go={go} byId={byId} />
             : s.chronicleTab === 'records' ? <Records c={c} go={go} byId={byId} />
             : <Annals c={c} events={s.events} go={go} byId={byId} />}
         </div>
@@ -580,6 +583,62 @@ function layoutFamily(c: Chron) {
     couples.push({ x1: n.x + NW, x2: m.x, y: n.y + NH / 2, a: n.p.id, b: m.p.id });
   }
   return { rows, nodes: placed, edges, couples, width };
+}
+
+// ------------------------------------------------------------------ discoveries
+
+function Discoveries({ c, go, byId }: { c: Chron; go: (id: number) => void; byId: Map<number, Person> }) {
+  const bands = bandDiscoveries(c);
+  const firsts = firstFound(c);
+  const parts = (ps: Part[]) => ps.map((x, i) => {
+    if (typeof x === 'string') return x;
+    const p = byId.get(x.id);
+    return p ? <button key={i} class={`link${p.alive ? '' : ' gone'}`} onClick={() => go(p.id)}>{p.name}</button> : 'someone';
+  });
+  return (
+    <div class="discoveries">
+      {c.camps.length > 1 && (
+        <section>
+          <div class="label">Across the land</div>
+          <table class="disc-table">
+            <tbody>
+              {firsts.map((f) => (
+                <tr key={f.key} class={f.first || f.knownBy ? '' : 'muted'}>
+                  <th>{f.label}</th>
+                  <td>{f.first ? <>First worked out by {parts([{ id: f.first.by }])} of {f.first.band}, year {f.first.year}</> : f.knownBy ? 'Known, but no one remembers who first had the idea' : 'Not yet found'}</td>
+                  <td class="n">{f.knownBy} of {f.of} bands</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+      <div class="disc-bands">
+        {bands.map(({ camp, known, unknown }) => (
+          <section key={camp.id} class={`disc-band${camp.gone ? ' gone' : ''}`}>
+            <h3><i class="swatch" style={{ background: bandCss(camp.color) }} />{camp.name}{camp.gone ? <span class="small muted"> · left in year {yearOf(camp.gone)}</span> : null}</h3>
+            {known.length ? (
+              <ol class="disc-list">
+                {known.map((k) => (
+                  <li key={k.key}>
+                    <span class="what">{k.label}</span>
+                    <span class="when">{k.year ? `Year ${k.year}` : ''}</span>
+                    <span class="how small">{parts(typeof k.how[0] === 'string' ? [cap(k.how[0]), ...k.how.slice(1)] : k.how)}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : <p class="small muted">Only the old ways: fire, the chopper and spear, cordage, the lean-to.</p>}
+            {unknown.length > 0 && (
+              <p class="small muted">
+                Not yet: {unknown.map((u, i) => <span key={u.key} title={u.needs.length ? `Needs ${u.needs.join(', ')} first` : undefined}>{i ? ', ' : ''}{u.label}{u.needs.length ? '*' : ''}</span>)}
+              </p>
+            )}
+          </section>
+        ))}
+      </div>
+      {bands.some((b) => b.unknown.some((u) => u.needs.length)) && <p class="small muted">* has to wait for something else to be known first.</p>}
+    </div>
+  );
 }
 
 // ------------------------------------------------------------------ records

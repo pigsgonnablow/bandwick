@@ -9,3 +9,6 @@ export function randomSeed() {
   crypto.getRandomValues(a);
   return a[0] % 1_000_000;
 }
+
+/** CSS colour for a band's colour. */
+export const bandCss = (c: { h: number; s: number; l: number }) => `hsl(${Math.round(c.h)} ${Math.round(c.s * 100)}% ${Math.round(c.l * 100)}%)`;
