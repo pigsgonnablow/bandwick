@@ -16,7 +16,7 @@ const DOING: Record<string, string> = {
   fell: 'Felling a tree', haul: 'Hauling logs home', hunt: 'Hunting deer', fish: 'Fishing', build: 'Building',
   supply: 'Carrying materials to a building site', fuel: 'Feeding the fire', preserve: 'Drying meat and fish',
   bury: 'Burying the dead', explore: 'Exploring', deadwood: 'Gathering fallen branches', swim: 'Swimming to cool off',
-  reap: 'Cutting grass and reeds', craft: 'Making things by the fire', dig: 'Digging mud', quarry: 'Quarrying stone',
+  reap: 'Cutting grass and reeds', craft: 'Making things by the fire', dig: 'Digging mud', quarry: 'Quarrying stone', trap: 'Going round the traps',
 };
 const CARRYING: Record<number, string> = {
   [CARRY.Log]: 'a log', [CARRY.Berries]: 'berries', [CARRY.Meat]: 'meat', [CARRY.Fish]: 'fish',

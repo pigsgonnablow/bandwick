@@ -19,7 +19,10 @@ export type Practice =
   | 'thatch' // grass and reeds cut and carried in (per bundle)
   | 'fell_chopper' // a tree felled with a hand chopper
   | 'dig_hand' // a trip's digging done with bare hands
-  | 'grave'; // a grave dug with bare hands
+  | 'grave' // a grave dug with bare hands
+  | 'hunt' // a hunt, kill or no kill
+  | 'forage' // a basket of berries picked
+  | 'fish_fiber' // a fishing trip, with fiber in the stores to think of weaving with (more when the catch is thin)
 
 export interface Discovery {
   key: string;
@@ -80,6 +83,20 @@ export const DISCOVERIES: Discovery[] = [
     practice: { dig_hand: 1, grave: 3 },
     found: 'sharpened a stout stick, hardened its point in the fire, and found the ground gave way to it',
     taught: 'make digging sticks', memory: 'Made the first digging stick.',
+  },
+  {
+    key: 'snares', label: 'Snares', needs: [], skill: SK.hunt, need: 50,
+    practice: { hunt: 2, forage: 1 },
+    hurry: (_s, c) => (c.hungryWinters > 0 || c.famine ? 2.5 : 1),
+    found: 'noticed the hares keep to their runs, and set a loop of cord across one',
+    taught: 'set snares for hares', memory: 'Set the first snare.',
+  },
+  {
+    key: 'fishtraps', label: 'Fish traps', needs: [], skill: SK.fish, need: 220,
+    practice: { fish_fiber: 1 },
+    hurry: (_s, c) => (c.famine ? 2 : 1),
+    found: 'wove reeds into a funnel the fish swim into and cannot find their way out of',
+    taught: 'weave fish traps', memory: 'Wove the first fish trap.',
   },
   {
     key: 'preserving', label: 'Drying and smoking', needs: [], skill: SK.hide, need: 1600,

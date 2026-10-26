@@ -8,7 +8,7 @@ import {
 } from './types';
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
-  Item, ItemKind, ITEMS, ITEM_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
+  Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, TASK_KINDS, Ref, Card, CardLine, HEALTH,
 } from './band';
 import {
@@ -110,6 +110,8 @@ export interface Camp {
   hungryWinters: number;
   /** job weights from the planner, refreshed each morning */
   jobs: Record<string, number>;
+  /** the day someone last set out on the round of the band's traps */
+  trapRound?: number;
   plan: string[];
 }
 
@@ -178,6 +180,9 @@ export class Sim {
   unreachable = new Map<number, number>();
   fish: Float32Array;
   fishCap: Float32Array;
+  /** small game (hares) on each grass and forest tile, and what the land holds when left alone */
+  game: Float32Array;
+  gameCap: Float32Array;
   fishingSpots: number[] = [];
   /** dry land where mud can be dug: riverbank clay, and the banks of rivers and lakes */
   mudSpots: number[] = [];
@@ -221,6 +226,14 @@ export class Sim {
     const NN = this.N * this.N;
     this.fish = new Float32Array(NN);
     this.fishCap = new Float32Array(NN);
+    this.game = new Float32Array(NN);
+    this.gameCap = new Float32Array(NN);
+    for (let i = 0; i < NN; i++) {
+      if (world.water[i] !== WATER.None || !this.grid.walkable(i)) continue;
+      const cap = world.terrain[i] === T.Forest ? 3 : world.terrain[i] === T.Grass ? 2 : 0;
+      this.gameCap[i] = cap;
+      this.game[i] = cap;
+    }
     for (let i = 0; i < NN; i++) {
       if (world.water[i] === WATER.None) continue;
       const cap2 = world.water[i] === WATER.Lake ? 9 : world.water[i] === WATER.River ? 6 : world.terrain[i] === T.ShallowWater ? 7 : 0;
@@ -299,6 +312,7 @@ export class Sim {
       chopped: Array.from(this.chopped.entries()),
       deadwoodTaken: Array.from(this.deadwoodTaken.entries()),
       fish: b64(this.fish),
+      game: b64(this.game),
       stats: { ...this.stats },
       fortune: { plentyYear: this.plentyYear, blightYear: this.blightYear },
       history: this.history.map((h) => ({ ...h })),
@@ -307,7 +321,7 @@ export class Sim {
       events: this.events.map((e) => ({ ...e, people: e.people.slice() })),
       people: this.people.map((p) => ({
         ...p, skills: Array.from(p.skills), rel: rel(p.rel), path: p.path ? b64(p.path) : null,
-        task: p.task ? { ...p.task } : null, traits: p.traits.slice(), memories: p.memories.map((m) => ({ ...m })), children: p.children.slice(),
+        task: p.task ? { ...p.task, ...(p.task.route ? { route: p.task.route.slice() } : {}) } : null, traits: p.traits.slice(), memories: p.memories.map((m) => ({ ...m })), children: p.children.slice(),
       })),
       buildings: this.buildings.map((b) => ({ ...b, builders: b.builders.slice() })),
       items: this.items.map((i) => ({ ...i })),
@@ -353,6 +367,8 @@ export class Sim {
     this.chopped = new Map(d.chopped);
     this.deadwoodTaken = new Map(d.deadwoodTaken);
     this.fish.set(new Float32Array(unb64(d.fish).buffer as ArrayBuffer));
+    // (saves from before trapping: the land is full of hares)
+    if (d.game) this.game.set(new Float32Array(unb64(d.game).buffer as ArrayBuffer));
     this.stats = { ...this.stats, ...d.stats };
     this.history = d.history ?? [];
     this.plentyYear = d.fortune?.plentyYear ?? 0;
@@ -652,7 +668,7 @@ export class Sim {
         if (known.has(d.key) && d.needs.every((k) => camp.knows.includes(k)) && (d.key === 'huts' || this.rLife.chance(share))) this.learn(camp, d.key, 'strangers');
     }
     // a couple of hand choppers, and axes and a digging stick if they know how to make them
-    this.giveTools(camp, { chopper: 2, axe: giveAxes(), stick: camp.knows.includes('digstick') ? 1 : 0 });
+    this.giveTools(camp, { chopper: 2, axe: giveAxes(), stick: camp.knows.includes('digstick') ? 1 : 0, snare: camp.knows.includes('snares') ? 2 : 0 });
     const r = this.rLife;
     const y = TICKS_PER_YEAR;
     const band: Person[] = [];
@@ -1228,9 +1244,65 @@ export class Sim {
     if (this.knows('digstick', c) && have('stick') < (this.knows('daub', c) ? 2 : 1)) return 'stick';
     return null;
   }
+  /**
+   * How many snares and fish traps a band wants out: a few snares once it knows them, more when food
+   * is short or winter is coming, and a couple of fish traps if there is fishing water near camp.
+   */
+  trapsWanted(c: Camp, foodP: number) {
+    const ms = this.members(c).length;
+    const snare = this.knows('snares', c) ? Math.min(10, 3 + Math.floor(ms / 6) + (foodP > 0.6 ? 3 : 0) + (seasonPos(this.tick) >= 1.75 ? 2 : 0)) : 0;
+    const water = this.knows('fishtraps', c) && this.fishingSpots.some((i) => hyp((i % this.N) + 0.5 - c.x, Math.floor(i / this.N) + 0.5 - c.z) < 14);
+    return { snare, fishtrap: water ? 2 : 0 };
+  }
+  /** Whether the band has fewer of a kind of trap than the morning's plan wants (counting those being made). */
+  trapShort(kind: ItemKind, c = this.camp) {
+    const making = this.members(c).filter((p) => p.task?.kind === 'craft' && p.task.amount > 0 && RECIPE_KEYS[p.task.ref] === kind).length;
+    return this.toolsOf(c, kind).length + making < (c.jobs[`want.${kind}`] ?? 0);
+  }
+  /** A band leaving its camp takes up its traps and carries them along. */
+  takeUpTraps(c: Camp) {
+    for (const it of this.items) {
+      if (it.band !== c.id || it.tile === undefined) continue;
+      delete it.tile;
+      delete it.catch;
+    }
+  }
+  /** Each morning, the traps set out in the land: what they caught overnight, and wear. Then the hares come back. */
+  private traps() {
+    const r = this.rWild;
+    const winter = seasonOf(this.tick) === 3;
+    const frozen = freshFrozen(this.tick);
+    for (const it of [...this.items]) {
+      const w = it.tile ?? -1;
+      if (w < 0) continue;
+      if (it.kind === 'snare') {
+        // hare tracks in the snow make the runs easy to find
+        if (!it.catch && this.gameCap[w] > 0 && r.chance(0.32 * (this.game[w] / this.gameCap[w]) * (winter ? 1.4 : 1))) {
+          it.catch = 2;
+          this.game[w] = Math.max(0, this.game[w] - 1);
+        }
+      } else if (it.kind === 'fishtrap') {
+        if ((it.catch ?? 0) < 4 && this.fish[w] >= 1.5 && !(frozen && this.world.water[w] !== WATER.Sea) && r.chance(0.7)) {
+          const n = Math.min(this.fish[w] - 0.5, 1 + r.int(0, 3), 4 - (it.catch ?? 0));
+          it.catch = (it.catch ?? 0) + n;
+          this.fish[w] -= n;
+        }
+      }
+      // the cord rots or is chewed through; the basket comes apart
+      it.wear += 1 / ITEMS[it.kind].uses;
+      if (it.wear >= 0.999) {
+        this.items.splice(this.items.indexOf(it), 1);
+        this.book('tools.worn', 1, this.campById(it.band) ?? this.camp);
+      }
+    }
+    for (let i = 0; i < this.game.length; i++) {
+      const cap = this.gameCap[i];
+      if (cap > 0 && this.game[i] < cap) this.game[i] = Math.min(cap, this.game[i] + cap / 25);
+    }
+  }
   /** "2 stone axes (1 well worn), 1 hand chopper". */
   describeTools(list: Item[]) {
-    return (['axe', 'chopper', 'stick'] as const).map((k) => {
+    return ITEM_KINDS.map((k) => {
       const of = list.filter((i) => i.kind === k);
       if (!of.length) return '';
       const worn = of.filter((i) => i.wear >= 0.6).length;
@@ -1378,6 +1450,7 @@ export class Sim {
     this.grasses();
     this.trees(dayOfYear);
     this.herdsDaily(dayOfYear);
+    this.traps();
     // each band's own day: stores, births and deaths, and the morning plan
     for (const c of this.liveCamps()) {
       this.camp = c;
@@ -1866,6 +1939,7 @@ export class Sim {
     nc.practice = { ...c.practice };
     nc.learning = c.learning?.slice();
     nc.learned = c.learned?.slice();
+    this.takeUpTraps(c);
     for (const it of this.items) if (it.band === c.id && it.holder < 0) it.band = nc.id;
     // the same people, the same colour
     nc.color = c.color ?? nc.color;
@@ -1890,7 +1964,8 @@ export class Sim {
     const to = this.liveCamps().filter((o) => o !== c).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
     if (!to || !ms.length) return false;
     this.join(ms, to);
-    // their tools go on the pile there
+    // their tools go on the pile there, and their traps are taken up and go too
+    this.takeUpTraps(c);
     for (const it of this.items) if (it.band === c.id && it.holder < 0) it.band = to.id;
     // the band they join learns everything they knew
     const learned = this.unknownTo(c, to);
@@ -2192,7 +2267,9 @@ export class Sim {
     const woodP = clamp01((fuelNeed + siteWood - c.stock.wood) / (fuelNeed + siteWood + 1) * 1.15, 0.08, 1.0);
     const logsLying = this.countProps(LOGS);
     const make = this.toolToMake(c);
-    const unarmed = !this.toolsOf(c).some((i) => i.kind !== 'stick');
+    const unarmed = !this.toolsOf(c).some((i) => i.kind === 'axe' || i.kind === 'chopper');
+    const traps = this.trapsWanted(c, foodP);
+    const today = dayOf(this.tick);
     c.jobs = {
       food: foodP,
       wood: woodP + (logsLying > 0 ? 0.1 : 0),
@@ -2202,11 +2279,20 @@ export class Sim {
       fiber: fiberHave < fiberWant ? clamp01((fiberWant - fiberHave) / (fiberWant + 2) * 1.1 + (siteFiber > fiberHave ? 0.25 : 0), 0.1, 0.9) : 0,
       // crafting by the fire, in a fixed order: cordage a building site is waiting on (or an axe needs),
       // then the tools today's work is missing, then a few lengths of cordage put by
-      'craft.cordage': siteCord > c.stock.cordage || (make === 'axe' && c.stock.cordage < 1) ? 0.8 : c.stock.cordage < 4 ? 0.3 : 0,
+      'craft.cordage': siteCord > c.stock.cordage || (make === 'axe' && c.stock.cordage < 1) ? 0.8
+        // snares to make are cord too
+        : traps.snare > this.toolsOf(c, 'snare').length && c.stock.cordage < siteCord + 2 ? 0.5 : c.stock.cordage < 4 ? 0.3 : 0,
       // nothing left to fell with: that comes before any cordage
       'craft.chopper': make === 'chopper' ? (unarmed ? 0.95 : 0.6) : 0,
       'craft.axe': make === 'axe' ? (unarmed ? 0.95 : 0.6) : 0,
       'craft.stick': make === 'stick' ? 0.5 : 0,
+      // snares and fish traps: more of them when food is short
+      'want.snare': traps.snare,
+      'want.fishtrap': traps.fishtrap,
+      'craft.snare': traps.snare > 0 ? (foodP > 0.6 ? 0.55 : 0.35) : 0,
+      'craft.fishtrap': traps.fishtrap > 0 ? (foodP > 0.6 ? 0.5 : 0.3) : 0,
+      // the round of the traps: once a day, by one person, to empty them and set out new ones
+      trap: c.trapRound !== today && this.toolsOf(c).some((i) => TRAP_KINDS.includes(i.kind)) ? 0.75 + (foodP > 0.8 ? 0.25 : 0) : 0,
       // mud and stone are fetched only for a site that needs them (mud can't be dug from frozen ground)
       dig: siteMud > c.stock.mud && !winterNow ? 0.75 : 0,
       // stone for walls, and a lump or two for knapping tools
@@ -2844,8 +2930,10 @@ export class Sim {
         if (st.stone >= 0.5) lines.push(L('Stone', `${Math.floor(st.stone)} loads`));
         const owner = this.campById(b.band) ?? this.camp;
         const tools = this.toolsOf(owner);
-        lines.push(L('Tools', tools.length ? this.describeTools(tools.filter((i) => i.holder < 0)) || 'All out in someone\'s hands' : 'None'));
+        const out = (i: Item) => (i.tile ?? -1) !== -1;
+        lines.push(L('Tools', tools.length ? this.describeTools(tools.filter((i) => i.holder < 0 && !out(i))) || 'All out in someone\'s hands' : 'None'));
         if (tools.some((i) => i.holder >= 0)) lines.push(L('Out in use', this.describeTools(tools.filter((i) => i.holder >= 0))));
+        if (tools.some(out)) lines.push(L('Traps set', this.describeTools(tools.filter(out))));
         if (inside) lines.push(L('Food', `${Math.round(foodTotal(st))} meals, kept in the storehouse`));
         else {
           lines.push(L('Berries', `${Math.round(st.berries)} handfuls`));
@@ -2989,6 +3077,14 @@ export class Sim {
         if (w.clay[i]) lines.push(L('Clay', 'Good riverbank clay'));
         if (w.ore[i]) lines.push(L('Ore', `${['', 'Copper', 'Tin', 'Iron', 'Gold'][w.ore[i]]}, undiscovered`));
         lines.push(L('Trees', `${this.treesOnTile[i]}`));
+        if (this.gameCap[i] > 0) {
+          const g = this.game[i] / this.gameCap[i];
+          lines.push(L('Hares', g > 0.7 ? 'Plenty of runs' : g > 0.35 ? 'Some' : 'Few, trapped out'));
+        }
+      }
+      for (const it of this.items.filter((j) => j.tile === i)) {
+        const owner = this.campById(it.band);
+        lines.push(L(ITEMS[it.kind].label, `set by the people of ${owner?.name ?? 'a band long gone'}${it.catch ? (it.kind === 'snare' ? ', with a hare in it' : `, holding ${it.catch} fish`) : ''}`));
       }
       const here = this.people.filter((p) => p.alive && !p.indoors && this.tileOf(p) === i);
       for (const p of here) lines.push(L('Here now', p.name, pref(p.id)));
@@ -3216,6 +3312,7 @@ export interface SaveData {
   chopped: Entries<number, number>;
   deadwoodTaken: Entries<number, number>;
   fish: string;
+  game?: string;
   stats: Sim['stats'];
   /** absent in saves from before the chronicle */
   history?: HistorySample[];

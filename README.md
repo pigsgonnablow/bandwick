@@ -91,6 +91,18 @@ fetch one from the pile when there is one. With it a trip brings back three bask
 takes two-thirds of the time. A stick lasts about 15 trips. A band keeps one, or two once it raises
 wattle-and-daub.
 
+**Trapping.** Grass and forest hold hares, a hidden count on each tile that snares thin out and
+that comes back over a few weeks. Hunting and picking berries lead a band to snares, and fishing
+with reeds in the stores leads it to fish traps (both discoveries). A snare is made by the fire from
+1 cordage and lasts about a season; a fish trap takes 3 fiber and 2 wood and lasts about a year. The
+plan keeps a few snares out, more when food is short or winter is coming, and a couple of fish traps
+where there is fishing water near camp. Once a day one person goes round them all: each snare that
+caught a hare gives 2 meat, a fish trap up to 4 fish from the same stock spear-fishers use. Traps
+where the hares or fish are gone are taken up, and traps from the pile are set where the hares run
+thickest within about 10 tiles of camp, never two side by side. The catch comes home in one load.
+Traps work through winter, when hare tracks in the snow make snaring easier. A band that moves or
+joins another takes its traps up. A tile's card says what trap is set there and what it holds.
+
 **Crafting.** Everything made by the fire is one job with a list of recipes (`RECIPES` in
 `src/sim/band.ts`): cordage, the hand chopper and the stone axe so far. Each morning the plan says
 what is wanted, in a fixed order: cordage a building site is waiting on, then tools the day's work is

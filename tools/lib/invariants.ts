@@ -47,6 +47,9 @@ export class InvariantChecker {
       if (!(it.wear >= 0 && it.wear < 1)) flag('tool worn past breaking', `${at} ${it.kind} ${it.id} ${it.wear}`);
       const need = RECIPES[it.kind].knows;
       if (need && !c.knows.includes(need)) flag("tool the band doesn't know how to make", `${at} ${c.name}: ${it.kind}`);
+      if (it.tile === -2 && !sim.people.some((p) => p.alive && p.task?.kind === 'trap' && p.task.route?.includes(it.id)))
+        flag('trap in nobody\'s basket', `${at} ${it.kind} ${it.id}`);
+      if ((it.tile ?? -1) >= 0 && it.holder >= 0) flag('trap both set out and in hand', `${at} ${it.kind} ${it.id}`);
       if (it.holder >= 0) {
         const h = sim.byId.get(it.holder);
         if (!h) flag('tool held by nobody', `${at} ${it.kind} ${it.id}`);

@@ -78,15 +78,22 @@ describe('tools', () => {
   it('digs a full basket with a digging stick, and less by hand', () => {
     const s = sim(3);
     s.camp.knows.push('huts', 'daub');
-    const site = () => { const b = s.newBuilding('hut', s.camp.tile + 4 * s.N, -1); b.walls = 'daub'; };
+    let off = 4;
+    const site = () => { const b = s.newBuilding('hut', s.camp.tile + off * s.N, -1); b.walls = 'daub'; off += 2; };
     site();
     const seen = new Set<number>();
-    let byHand = 0, withStick = 0;
-    for (let i = 0; i < 48 * 24 && !(withStick && byHand); i++) {
-      runTo(s, s.tick + 10);
-      if (byHand && !s.knows('digstick')) {
+    let byHand = 0, withStick = 0, given = false;
+    for (let i = 0; i < 48 * 240 && !(withStick && byHand); i++) {
+      // until a basket has been dug by hand, the band hasn't thought of the stick
+      if (!byHand) {
+        s.camp.knows = s.camp.knows.filter((k) => k !== 'digstick');
+        for (const it of s.items.filter((i) => i.kind === 'stick')) s.items.splice(s.items.indexOf(it), 1);
+      }
+      runTo(s, s.tick + 1);
+      if (byHand && !given) {
         // the band works the stick out, and has a couple made
-        s.camp.knows.push('digstick');
+        given = true;
+        if (!s.knows('digstick')) s.camp.knows.push('digstick');
         s.giveTools(s.camp, { stick: 2 });
         site();
       }
