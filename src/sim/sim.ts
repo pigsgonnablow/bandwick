@@ -15,7 +15,7 @@ import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
   isDark, temperature, berriesRipe, freshFrozen, seasonPos, seasonOf, ageYears, yearOf, dayOf,
 } from './time';
-import { decide, runTask, abandon, sendHome, delivering } from './ai';
+import { decide, runTask, abandon, sendHome, delivering, FAR_GRAVE } from './ai';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor } from './know';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
@@ -962,13 +962,15 @@ export class Sim {
     const starveAt = 15 + Math.min(22, hyp(p.x - this.camp.x, p.z - this.camp.z) * 0.6);
     // (carrying food home, they eat from what they carry instead)
     const foodInHand = delivering(p) && p.carryAmt >= 1 && (p.carry === CARRY.Berries || p.carry === CARRY.Meat || p.carry === CARRY.Fish);
-    // (a grave begun far out is finished first, unless they are near to starving)
-    const graveDug = k === 'bury' && p.task!.stage >= 1 && p.food >= 10;
+    // (a burial far out on the land, or a grave begun, is seen through however tired they are, unless they are
+    // near to starving: turning back for the night only means the whole walk again tomorrow)
+    const body = k === 'bury' ? this.byId.get(p.task!.ref) : undefined;
+    const graveDug = !!body && p.food >= 10 && (p.task!.stage >= 1 || hyp(body.x - this.camp.x, body.z - this.camp.z) > FAR_GRAVE);
     if (p.food < starveAt && !foodInHand && !graveDug && k !== 'eat' && k !== 'eatwild' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
     const woodRun = (k === 'fell' || k === 'haul' || k === 'deadwood') && this.hearth().fuel < 2;
     if (p.warmth < (woodRun ? 8 : 18) && k !== 'warm' && k !== 'sleep') return true;
     // worn out on the way home with a load: the bed is at camp, where they're going anyway
-    if (p.rest < 8 && k !== 'sleep' && !delivering(p)) return true;
+    if (p.rest < 8 && k !== 'sleep' && !delivering(p) && !graveDug) return true;
     // at nightfall, workers who haven't started back yet call it a day
     // except wood runs in the cold when the store is low: coming home empty-handed means a cold night
     const emergency = (k === 'fell' || k === 'haul' || k === 'deadwood') && (this.hearth().fuel < 2 || this.camp.stock.wood < 20) && this.tempAt(p) < 12;

@@ -1,6 +1,7 @@
 // The camp fire's comforts: a roof over the woodpile keeps firewood dry, a windbreak keeps the warmth in.
 import { describe, it, expect } from 'vitest';
-import { DAMP_BURN, WARM_RADIUS, WARM_RADIUS_SHELTERED } from '../../src/sim/sim';
+import { DAMP_BURN, WARM_RADIUS, WARM_RADIUS_SHELTERED, LOGS } from '../../src/sim/sim';
+import { TICKS_PER_DAY } from '../../src/sim/time';
 import { seasonOf, TICKS_PER_YEAR } from '../../src/sim/time';
 import { sim, runTo, runYears } from '../helpers';
 
@@ -65,4 +66,18 @@ describe('fire', () => {
     expect(warmth(true)).toBeGreaterThan(warmth(false) + 1);
   });
 
+  it('fells trees near camp rather than chasing logs left far out on the land', () => {
+    const s = runYears(sim(1), 1);
+    const c = s.camp;
+    // logs left lying a long way off (by someone who died out there, say)
+    const far = s.addProp(LOGS, Math.min(s.N - 3, c.x + 50), 6, c.z, 0, 1);
+    s.propVal[far] = 15;
+    c.stock.wood = 0;
+    const felled = s.stats.felled;
+    for (let i = 0; i < 2 * TICKS_PER_DAY; i += 10) {
+      runTo(s, s.tick + 10);
+      for (const p of s.members()) expect(p.task?.kind === 'haul' && p.task.ref === far, `${p.name} off for the far logs`).toBe(false);
+    }
+    expect(s.stats.felled).toBeGreaterThan(felled);
+  });
 });

@@ -124,7 +124,7 @@ describe('the dead', () => {
     const p = s.members().find((q) => s.age(q) >= 20 && s.age(q) < 50)!;
     // somewhere walkable a good way out from camp
     let tile = -1;
-    for (let r = FAR_GRAVE + 6; r < 40 && tile < 0; r++)
+    for (let r = FAR_GRAVE + 30; r < 60 && tile < 0; r++)
       for (const [dx, dz] of [[r, 0], [-r, 0], [0, r], [0, -r]]) {
         const x = Math.floor(c.x) + dx, z = Math.floor(c.z) + dz;
         if (x < 2 || z < 2 || x >= s.N - 2 || z >= s.N - 2) continue;
@@ -135,7 +135,7 @@ describe('the dead', () => {
     Object.assign(p, { x: (tile % s.N) + 0.5, z: Math.floor(tile / s.N) + 0.5, task: null, path: null });
     s.kill(p, 'wolves');
     const at = { x: p.x, z: p.z };
-    for (let d = 0; d < 5 && !p.buried; d++) runTo(s, s.tick + TICKS_PER_DAY);
+    for (let d = 0; d < 6 && !p.buried; d++) runTo(s, s.tick + TICKS_PER_DAY);
     expect(p.buried).toBe(true);
     // a grave out there, not in the camp's burial ground
     expect(Math.hypot(p.x - at.x, p.z - at.z)).toBeLessThan(3);
