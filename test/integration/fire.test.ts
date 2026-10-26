@@ -1,6 +1,6 @@
 // The camp fire's comforts: a roof over the woodpile keeps firewood dry, a windbreak keeps the warmth in.
 import { describe, it, expect } from 'vitest';
-import { DAMP_BURN } from '../../src/sim/sim';
+import { DAMP_BURN, WARM_RADIUS, WARM_RADIUS_SHELTERED } from '../../src/sim/sim';
 import { seasonOf, TICKS_PER_YEAR } from '../../src/sim/time';
 import { sim, runTo, runYears } from '../helpers';
 
@@ -45,4 +45,24 @@ describe('fire', () => {
     }
     expect(checked).toBeGreaterThan(0);
   });
+
+  it('warms people further from the fire behind a windbreak', () => {
+    const s = sim(1);
+    while (seasonOf(s.tick) !== 3) runTo(s, s.tick + 200);
+    const h = s.hearth();
+    h.fuel = Math.max(h.fuel, 20);
+    expect(s.hearthLit()).toBe(true);
+    const p = s.members().find((q) => s.age(q) >= 20)!;
+    // standing just outside the bare fire's warmth, but inside a sheltered one's
+    const d = (WARM_RADIUS + WARM_RADIUS_SHELTERED) / 2;
+    const warmth = (sheltered: boolean) => {
+      for (const b of s.buildings.filter((b) => b.kind === 'windbreak' && b.band === s.camp.id)) b.built = sheltered;
+      if (sheltered && !s.hasBuilt('windbreak')) s.newBuilding('windbreak', h.tile, -1).built = true;
+      Object.assign(p, { x: s.camp.x + d, z: s.camp.z, indoors: false, warmth: 50 });
+      (s as any).needs(p);
+      return p.warmth;
+    };
+    expect(warmth(true)).toBeGreaterThan(warmth(false) + 1);
+  });
+
 });

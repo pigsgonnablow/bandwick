@@ -87,3 +87,19 @@ describe('saving and loading', () => {
     });
   }
 });
+
+describe('a band that leaves its camp', () => {
+  it('leaves its half-built sites to the land, and what it finished standing', () => {
+    const s = runYears(sim(2), 1);
+    const c = s.camp;
+    const site = s.newBuilding('hut', c.tile + 5 * s.N + 2, -1);
+    const built = s.buildings.filter((b) => b.band === c.id && b.built).map((b) => b.id);
+    for (const p of s.members(c)) s.kill(p, 'fever');
+    (s as any).emptied(c);
+    expect(c.gone).toBeGreaterThan(0);
+    expect(s.buildings.includes(site)).toBe(false);
+    expect(s.buildings.filter((b) => b.band === c.id && !b.built)).toEqual([]);
+    for (const id of built) expect(s.buildings.some((b) => b.id === id)).toBe(true);
+    expect(s.buildings.some((b) => b.band === c.id && b.kind === 'hearth')).toBe(true);
+  });
+});

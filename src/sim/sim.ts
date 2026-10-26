@@ -1191,11 +1191,13 @@ export class Sim {
    * choppers, and a digging stick or two (two where there is mud to dig for walls).
    */
   toolToMake(c = this.camp): ItemKind | null {
-    const pop = this.members(c).length;
-    const axes = this.toolsOf(c, 'axe').length, choppers = this.toolsOf(c, 'chopper').length;
-    if (this.knows('axe', c) && axes < 2 + Math.floor(pop / 8)) return 'axe';
+    const ms = this.members(c);
+    // what is already being made at the fire counts too, or every crafter makes the same tool all day
+    const have = (k: ItemKind) => this.toolsOf(c, k).length + ms.filter((p) => p.task?.kind === 'craft' && p.task.amount > 0 && RECIPE_KEYS[p.task.ref] === k).length;
+    const axes = have('axe'), choppers = have('chopper');
+    if (this.knows('axe', c) && axes < 2 + Math.floor(ms.length / 8)) return 'axe';
     if (choppers < (this.knows('axe', c) && axes > 0 ? 1 : 2)) return 'chopper';
-    if (this.knows('digstick', c) && this.toolsOf(c, 'stick').length < (this.knows('daub', c) ? 2 : 1)) return 'stick';
+    if (this.knows('digstick', c) && have('stick') < (this.knows('daub', c) ? 2 : 1)) return 'stick';
     return null;
   }
   /** "2 stone axes (1 well worn), 1 hand chopper". */
@@ -1761,7 +1763,7 @@ export class Sim {
     this.book('carried', foodTotal(take) + take.wood, from);
     const nc = this.foundCamp(site, take, from.id, leader.id);
     // and their share of the tools on the pile: at least one of each, where the band has two or more to spare
-    for (const kind of ['axe', 'chopper'] as const) {
+    for (const kind of ['axe', 'chopper', 'stick'] as const) {
       const pile = this.items.filter((i) => i.band === from.id && i.holder < 0 && i.kind === kind);
       const n = Math.min(pile.length - 1, Math.max(1, Math.round(pile.length * share)));
       for (const it of pile.slice(0, Math.max(0, n))) it.band = nc.id;
@@ -1826,6 +1828,7 @@ export class Sim {
     nc.origin = 'moved';
     this.join(ms, nc);
     c.gone = this.tick;
+    this.dropSites(c);
     c.stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
     this.hearth(c).fuel = 0;
     nc.settled = this.tick;
@@ -1852,6 +1855,7 @@ export class Sim {
       for (const k of learned) delete to.practice[k];
     }
     c.gone = this.tick;
+    this.dropSites(c);
     this.hearth(c).fuel = 0;
     for (const p of ms) this.remember(p, 'moved_camp', -8, 2, -1, `Left ${c.name}, too few to go on, for ${to.name}.`);
     this.event('merge', `${ms.length === 1 ? `${ms[0].name}, the last of the people of ${c.name},` : `The last ${num(ms.length)} of the people of ${c.name}`} went to live at ${to.name}.`,
@@ -1864,9 +1868,17 @@ export class Sim {
     return true;
   }
 
+  /** A band that leaves its camp leaves its half-built sites to fall back to the land (what is finished stands). */
+  private dropSites(c: Camp) {
+    const n = this.buildings.length;
+    this.buildings = this.buildings.filter((b) => b.band !== c.id || b.built || b.kind === 'hearth' || b.kind === 'stockpile');
+    if (this.buildings.length !== n) this.buildingsVersion++;
+  }
+
   /** No one left: the camp goes back to the land. */
   private emptied(c: Camp) {
     c.gone = this.tick;
+    this.dropSites(c);
     this.hearth(c).fuel = 0;
     this.buildingsVersion++;
     this.event('gone', `No one is left at ${c.name}.`, [], c.x, c.z, 5);

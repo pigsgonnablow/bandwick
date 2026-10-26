@@ -73,7 +73,8 @@ function craftFor(s: Sim, p: Person): { key: RecipeKey; score: number } | null {
   let best: { key: RecipeKey; score: number } | null = null;
   for (const key of RECIPE_KEYS) {
     const w = s.camp.jobs[`craft.${key}`] ?? 0;
-    if (w <= 0 || !s.canCraft(key)) continue;
+    // the morning's plan may be met already: a tool only while the band is still short of it
+    if (w <= 0 || !s.canCraft(key) || (key !== 'cordage' && s.toolToMake() !== key)) continue;
     const score = w * fit(p, RECIPES[key].skill);
     if (!best || score > best.score) best = { key, score };
   }
@@ -1596,12 +1597,13 @@ function completeBuilding(s: Sim, b: Building, p: Person) {
   const owner = s.byId.get(b.owner);
   if (b.kind === 'hut' || b.kind === 'leanto') {
     if (owner && owner.alive) {
-      const household = [owner, s.byId.get(owner.partner)].filter((q): q is Person => !!q && q.alive);
+      // (only those living in this band: a grown child who stayed behind when the family split off keeps their own)
+      const household = [owner, s.byId.get(owner.partner)].filter((q): q is Person => !!q && q.alive && q.band === owner.band);
       for (const h of [...household]) for (const cid of h.children) {
         const ch = s.byId.get(cid);
-        if (ch && ch.alive && ch.partner < 0 && s.age(ch) < 22 && !household.includes(ch)) household.push(ch);
+        if (ch && ch.alive && ch.band === owner.band && ch.partner < 0 && s.age(ch) < 22 && !household.includes(ch)) household.push(ch);
       }
-      for (const q of s.living()) if (household.some((h) => h.id === q.carer) && s.age(q) < 14 && !household.includes(q)) household.push(q);
+      for (const q of s.living()) if (q.band === owner.band && household.some((h) => h.id === q.carer) && s.age(q) < 14 && !household.includes(q)) household.push(q);
       for (const h of household) {
         h.home = b.id;
         s.remember(h, 'home', 20, 2, b.id, `Moved into a new ${label}.`);
