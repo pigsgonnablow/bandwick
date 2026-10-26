@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { Sim, SaveData } from '../../src/sim/sim';
 import { generateWorld } from '../../src/sim/worldgen';
-import { TICKS_PER_DAY, TICKS_PER_YEAR, START_TICK } from '../../src/sim/time';
+import { TICKS_PER_DAY, TICKS_PER_YEAR, START_TICK, seasonOf } from '../../src/sim/time';
+import { FAR_GRAVE } from '../../src/sim/ai';
 import { runChecked } from '../../tools/lib/invariants';
 import { sim, world, runTo, runYears } from '../helpers';
 
@@ -112,5 +113,48 @@ describe('homes', () => {
     p.home = -1;
     runTo(s, s.tick + TICKS_PER_DAY);
     expect(p.home).toBe(s.byId.get(p.partner)!.home);
+  });
+});
+
+describe('the dead', () => {
+  it('buries someone who died far out on the land where they fell, even in winter', () => {
+    const s = sim(1);
+    while (seasonOf(s.tick) !== 3) runTo(s, s.tick + 200);
+    const c = s.camp;
+    const p = s.members().find((q) => s.age(q) >= 20 && s.age(q) < 50)!;
+    // somewhere walkable a good way out from camp
+    let tile = -1;
+    for (let r = FAR_GRAVE + 30; r < 60 && tile < 0; r++)
+      for (const [dx, dz] of [[r, 0], [-r, 0], [0, r], [0, -r]]) {
+        const x = Math.floor(c.x) + dx, z = Math.floor(c.z) + dz;
+        if (x < 2 || z < 2 || x >= s.N - 2 || z >= s.N - 2) continue;
+        const i = z * s.N + x;
+        if (s.grid.walkable(i) && s.world.water[i] === 0) { tile = i; break; }
+      }
+    expect(tile).toBeGreaterThanOrEqual(0);
+    Object.assign(p, { x: (tile % s.N) + 0.5, z: Math.floor(tile / s.N) + 0.5, task: null, path: null });
+    s.kill(p, 'wolves');
+    const at = { x: p.x, z: p.z };
+    for (let d = 0; d < 6 && !p.buried; d++) runTo(s, s.tick + TICKS_PER_DAY);
+    expect(p.buried).toBe(true);
+    // a grave out there, not in the camp's burial ground
+    expect(Math.hypot(p.x - at.x, p.z - at.z)).toBeLessThan(3);
+  });
+});
+
+describe('children left on their own', () => {
+  it('go to live with the nearest band at once, whatever the season', () => {
+    const s = runYears(sim(2), 1);
+    while (seasonOf(s.tick) !== 2) runTo(s, s.tick + 200);
+    const home = s.camp;
+    const kids = s.members().filter((p) => s.age(p) < 14).slice(0, 2);
+    expect(kids.length).toBeGreaterThan(0);
+    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
+    const lone = s.foundCamp(home.tile + 30, stock, -1, -1);
+    (s as any).join(kids, lone);
+    s.camp = home;
+    runTo(s, s.tick + TICKS_PER_DAY + 1);
+    for (const k of kids) expect(k.band).toBe(home.id);
+    expect(lone.gone).toBeGreaterThan(0);
   });
 });

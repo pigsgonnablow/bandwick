@@ -152,9 +152,11 @@ export function decide(s: Sim, p: Person) {
       const pick = craftFor(s, p);
       if (pick) add('craft', pick.score * drive * (dark ? (s.hearthLit() ? 0.4 : 0.06) : 0.85) * crowd('craft'));
     }
+    // logs lying within a walk of camp are fetched before another tree comes down
+    const logsNear = logsNearCamp(s);
     if (age >= 13) {
       const wood = (j.wood ?? 0.3) * drive * night * fit(p, SK.wood);
-      add(s.countProps(LOGS) > 0 ? 'haul' : 'fell', wood * crowd('fell') * crowd('haul'));
+      add(logsNear ? 'haul' : 'fell', wood * crowd('fell') * crowd('haul'));
       // fallen branches near camp: a little wood at a time, and no tree has to come down
       add('deadwood', wood * 0.8 * crowd('deadwood'));
       add('build', (j.build ?? 0) * drive * night * fit(p, SK.build) * crowd('build') * 1.05);
@@ -168,7 +170,7 @@ export function decide(s: Sim, p: Person) {
       else if (c.stock.wood < 3) {
         const fetching = busyWith(s, 'fell') + busyWith(s, 'haul') + busyWith(s, 'deadwood');
         if (fetching < 4) {
-          add(s.countProps(LOGS) > 0 ? 'haul' : 'fell', 1.95 - fetching * 0.3);
+          add(logsNear ? 'haul' : 'fell', 1.95 - fetching * 0.3);
           add('deadwood', 2.0 - fetching * 0.3); // quickest way to get the fire going again
         }
       }
@@ -405,7 +407,7 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       return newTask(s, kind, s.propTile[k], s.propX[k] + 0.3, s.propZ[k] + 0.25, k);
     }
     case 'haul': {
-      const k = s.nearestProp(c.x, c.z, 52, (k) => s.propType[k] === LOGS && s.propVal[k] > 0);
+      const k = s.nearestProp(c.x, c.z, HAUL_RANGE, (k) => s.propType[k] === LOGS && s.propVal[k] > 0);
       if (k < 0) return setup(s, p, 'fell');
       s.reserved.set(k, p.id);
       p.thought = 'Hauling logs back to camp.';
@@ -519,6 +521,8 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
     case 'bury': {
       const body = s.people.find((q) => !q.alive && !q.buried && q.band === p.band && !s.people.some((o) => o.alive && o.task?.kind === 'bury' && o.task.ref === q.id));
       if (!body) return null;
+      // a body far out on the land is a long walk: not on an empty stomach, or hunger turns them back halfway
+      if (hyp(body.x - c.x, body.z - c.z) > FAR_GRAVE && p.food < 80) return null;
       p.thought = `Preparing ${body.name} for burial.`;
       const t = newTask(s, kind, s.tileOf(body), body.x, body.z, body.id, true);
       // a digging stick for the grave, if there's one on the pile
@@ -1502,17 +1506,24 @@ export function runTask(s: Sim, p: Person) {
         p.act = ACT.Mourn;
         face(p, body.x, body.z);
         if (--t.timer > 0) return;
-        // lift the body and carry it to the burial ground
-        p.carry = CARRY.Body;
-        body.indoors = true;
-        const spot = graveSpot(s);
-        t.goal = s.tileOf(spot);
-        t.gx = spot.x;
-        t.gz = spot.z;
-        t.near = false;
-        t.stage = 2;
-        p.path = null;
-        p.thought = `Carrying ${body.name} to the burial ground.`;
+        // far from camp, they are buried where they fell
+        if (hyp(body.x - c.x, body.z - c.z) > FAR_GRAVE) {
+          t.stage = 3;
+          t.timer = s.heldBy(p)?.kind === 'stick' ? 30 : 45;
+          p.thought = `Burying ${body.name} where they fell.`;
+        } else {
+          // lift the body and carry it to the burial ground
+          p.carry = CARRY.Body;
+          body.indoors = true;
+          const spot = graveSpot(s);
+          t.goal = s.tileOf(spot);
+          t.gx = spot.x;
+          t.gz = spot.z;
+          t.near = false;
+          t.stage = 2;
+          p.path = null;
+          p.thought = `Carrying ${body.name} to the burial ground.`;
+        }
       }
       if (t.stage === 2) {
         body.x = p.x;
@@ -1547,6 +1558,30 @@ export function runTask(s: Sim, p: Person) {
     }
   }
 }
+
+/**
+ * How far out logs are worth fetching. Logs left further away (by someone who died out there, or a band
+ * that moved on) are left to rot: every woodcutter setting out for them turns back before getting there.
+ */
+const HAUL_RANGE = 30;
+
+const logsSeen = new WeakMap<object, { v: number; near: boolean }>();
+/** Logs lying within reach of the current camp (asked again only when the props change). */
+function logsNearCamp(s: Sim) {
+  const c = s.camp;
+  const hit = logsSeen.get(c);
+  if (hit && hit.v === s.propsVersion) return hit.near;
+  // (whoever has them reserved, or could not reach them, is left to the haul itself: this only asks what is lying there)
+  let near = false;
+  if (s.countProps(LOGS) > 0)
+    for (let k = 0; k < s.propCount && !near; k++)
+      near = !!s.propAlive[k] && s.propType[k] === LOGS && s.propVal[k] > 0 && hyp(s.propX[k] - c.x, s.propZ[k] - c.z) <= HAUL_RANGE;
+  logsSeen.set(c, { v: s.propsVersion, near });
+  return near;
+}
+
+/** Beyond this far from camp, the dead are buried where they lie rather than carried home. */
+export const FAR_GRAVE = 18;
 
 function graveSpot(s: Sim) {
   const c = s.camp;
