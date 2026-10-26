@@ -379,3 +379,22 @@ export interface SimEvent {
 }
 
 export const foodTotal = (s: Stock) => s.berries + s.meat + s.fish + s.preserved;
+
+/** The health levels the sim acts on (the info window's health tooltip reads them too). */
+export const HEALTH = {
+  /** must be above this to go swimming */
+  swim: 50,
+  /** below this, can't lead a band that splits off */
+  lead: 50,
+  /** below this, isn't sent hunting */
+  hunt: 45,
+  /** below this: half the work, a slower walk and twice the daily chance of dying */
+  weak: 40,
+  /** health mends only while food and warmth are both above this */
+  mend: 30,
+  /** food below this hurts */
+  starving: 8,
+  /** warmth below this hurts, and below `freezing` much more */
+  cold: 22,
+  freezing: 8,
+} as const;
