@@ -103,3 +103,14 @@ describe('a band that leaves its camp', () => {
     expect(s.buildings.some((b) => b.band === c.id && b.kind === 'hearth')).toBe(true);
   });
 });
+
+describe('homes', () => {
+  it('puts someone without a roof in with their partner', () => {
+    const s = runYears(sim(1), 2);
+    const p = s.members().find((q) => q.partner >= 0 && q.home >= 0 && s.byId.get(q.partner)?.home === q.home)!;
+    expect(p).toBeTruthy();
+    p.home = -1;
+    runTo(s, s.tick + TICKS_PER_DAY);
+    expect(p.home).toBe(s.byId.get(p.partner)!.home);
+  });
+});

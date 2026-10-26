@@ -176,4 +176,20 @@ describe('tools', () => {
     expect(t.items).toEqual(s.items);
     expect(t.describeTools(t.toolsOf())).toBe(s.describeTools(s.toolsOf()));
   });
+
+  it('knaps a chopper first when it has nothing left to fell with, even if it knows the axe', () => {
+    const s = sim(2);
+    const c = s.camp;
+    c.knows.push('axe');
+    for (const it of s.toolsOf(c)) s.items.splice(s.items.indexOf(it), 1);
+    // no wood for a haft, and no wood to be had without something to cut it
+    Object.assign(c.stock, { wood: 0, stone: 1, cordage: 2 });
+    expect(s.toolToMake()).toBe('chopper');
+    c.stock.wood = 5;
+    expect(s.toolToMake()).toBe('axe');
+    // and it gets one made within a couple of days
+    c.stock.wood = 0;
+    runTo(s, s.tick + 2 * TICKS_PER_DAY);
+    expect(s.toolsOf(c).some((i) => i.kind !== 'stick')).toBe(true);
+  });
 });

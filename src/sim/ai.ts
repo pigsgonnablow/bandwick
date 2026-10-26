@@ -133,7 +133,8 @@ export function decide(s: Sim, p: Person) {
     const share = Math.max(1, workers / 8);
     const crowd = (k: TaskKind) => 1 / (1 + (0.33 * busyWith(s, k)) / share);
     const j = c.jobs;
-    const food = (j.food ?? 0.5) * drive * night;
+    // with nothing in the store, the hungry go and find their own (a child left alone would otherwise play until they starve)
+    const food = (j.food ?? 0.5) * drive * night * (stock < 0.4 && p.food < 35 ? 1 + hunger : 1);
     if (berriesRipe(s.tick)) add('forage', food * fit(p, SK.forage) * (child ? 1.3 : 1) * crowd('forage'));
     // a hunt can mean a day's walk: not for the sick, the weak or the half-starved
     if (age >= 16 && age < 56 && p.sick === 0 && p.health >= 45 && (p.food >= 50 || stock < 0.4)) {
