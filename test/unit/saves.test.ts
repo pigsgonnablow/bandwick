@@ -17,9 +17,9 @@ describe('unpack', () => {
   });
 
   it('refuses files that are not saves', async () => {
-    await expect(unpack(new TextEncoder().encode('not json'))).rejects.toThrow(/not a Living World save/);
-    await expect(unpack(new TextEncoder().encode('{"hello":1}'))).rejects.toThrow(/not a Living World save/);
-    await expect(unpack(new TextEncoder().encode('null'))).rejects.toThrow(/not a Living World save/);
+    await expect(unpack(new TextEncoder().encode('not json'))).rejects.toThrow(/not a Bandwick save/);
+    await expect(unpack(new TextEncoder().encode('{"hello":1}'))).rejects.toThrow(/not a Bandwick save/);
+    await expect(unpack(new TextEncoder().encode('null'))).rejects.toThrow(/not a Bandwick save/);
   });
 });
 

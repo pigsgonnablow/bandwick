@@ -472,7 +472,8 @@ function Loading({ s, engine }: { s: Snapshot; engine: Engine }) {
   return (
     <div class={`loading${show ? '' : ' done'}`} aria-hidden={!show}>
       <div class="card">
-        <h1>Living World</h1>
+        <h1>Bandwick</h1>
+        <div class="tagline">small bands, and the places they settle</div>
         {s.error ? <p class="error">{s.error}</p> : <p>{s.loading ?? 'Ready'}…</p>}
         {!s.error && <div class="bar"><i /></div>}
         {s.error && (

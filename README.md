@@ -108,7 +108,7 @@ years some worlds hold one small band hanging on and some hold four thriving one
 land is left empty until strangers come.
 
 ## Open it
-Double-click `Living World M1.html`. It is one self-contained file and runs offline from disk in
+Run `npm run build`, then double-click `dist/index.html`. It is one self-contained file and runs offline from disk in
 current Chrome, Edge, Firefox (114+) or Safari (15+) on Windows, macOS or Linux. A desktop or laptop
 with any WebGL2 GPU will do; integrated graphics are fine (quality adjusts itself).
 Fonts come from Google Fonts when online; offline the page falls back to system fonts.
