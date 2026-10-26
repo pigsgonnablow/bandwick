@@ -73,7 +73,8 @@ function craftFor(s: Sim, p: Person): { key: RecipeKey; score: number } | null {
   let best: { key: RecipeKey; score: number } | null = null;
   for (const key of RECIPE_KEYS) {
     const w = s.camp.jobs[`craft.${key}`] ?? 0;
-    if (w <= 0 || !s.canCraft(key)) continue;
+    // the morning's plan may be met already: a tool only while the band is still short of it
+    if (w <= 0 || !s.canCraft(key) || (key !== 'cordage' && s.toolToMake() !== key)) continue;
     const score = w * fit(p, RECIPES[key].skill);
     if (!best || score > best.score) best = { key, score };
   }

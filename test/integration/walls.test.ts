@@ -1,7 +1,8 @@
 // Huts and storehouses can be raised in wood, wattle-and-daub or stone, chosen by the band.
 import { describe, it, expect } from 'vitest';
 import { specOf, labelOf, MATERIALS } from '../../src/sim/band';
-import { sim, runYears } from '../helpers';
+import { seasonPos, TICKS_PER_DAY } from '../../src/sim/time';
+import { sim, runTo, runYears } from '../helpers';
 
 describe('walls', () => {
   it('names and costs each kind of wall', () => {
@@ -50,5 +51,36 @@ describe('walls', () => {
     expect(t.camp.stock.stone).toBe(0);
     runYears(t, 1);
     expect(Object.values(t.camp.stock).every((v) => Number.isFinite(v as number))).toBe(true);
+  });
+
+  it('never chooses walls the band does not know, nor daub once the ground is freezing', () => {
+    const s = sim(3);
+    // mud and stone right by camp
+    for (let k = 1; k < 6; k++) { s.mudSpots.push(s.camp.tile + k); s.quarryTiles.push(s.camp.tile - k); }
+    const b = s.newBuilding('hut', s.camp.tile + 3 * s.N, -1);
+    s.camp.knows.push('huts');
+    for (let i = 0; i < 20; i++) {
+      s.chooseWalls(b, i % 2 === 0);
+      expect(b.walls).toBe('wood');
+    }
+    s.camp.knows.push('daub', 'stonework');
+    const seen = new Set<string>();
+    // through a year: daub is never picked from late autumn on
+    for (let d = 0; d < 48; d++) {
+      runTo(s, s.tick + TICKS_PER_DAY);
+      s.chooseWalls(b, false);
+      seen.add(b.walls!);
+      if (seasonPos(s.tick) >= 2.5) expect(b.walls).not.toBe('daub');
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it('builds a stone hut stronger and slower than a wooden one, and daub in between', () => {
+    const wood = specOf({ kind: 'hut' }), daub = specOf({ kind: 'hut', walls: 'daub' }), stone = specOf({ kind: 'hut', walls: 'stone' });
+    expect(stone.shelter).toBeGreaterThan(daub.shelter);
+    expect(daub.shelter).toBeGreaterThan(wood.shelter);
+    expect(stone.work).toBeGreaterThan(wood.work);
+    expect(stone.stone).toBeGreaterThan(0);
+    expect(wood.mud + wood.stone).toBe(0);
   });
 });
