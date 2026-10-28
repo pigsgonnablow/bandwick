@@ -16,7 +16,7 @@ const SWIM = 19, TREAD = 20;
 const FISH_TASK = TASK_KINDS.indexOf('fish') + 1;
 /** Drawn in a woodcutter's hands while they chop: an axe, or a hand chopper (a knapped stone in the fist). */
 const AXE = 99, CHOPPER = 98;
-/** How walls that are not wood colour a building (multiplied over its own colours). */
+/** How walls that are not wood colour a building that has no model of its own for them (multiplied over its own colours). */
 const WALL_TINT: Record<string, [number, number, number]> = { daub: [1.0, 0.86, 0.68], stone: [0.8, 0.82, 0.86] };
 /** A box of one colour, turned about its own centre and set down at (x, y, z) (y is its foot). */
 function plank(w: number, h: number, d: number, x: number, y: number, z: number, rx: number, ry: number, hex: number) {
@@ -225,7 +225,7 @@ export class BandLayer {
     }
     // buildings
     const works = fireWorks();
-    for (const kind of ['hearth', 'leanto', 'hut0', 'hut1', 'storehouse', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed']) {
+    for (const kind of ['hearth', 'leanto', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed']) {
       const g0 = geoms.get(`bld__${kind}`) ?? works.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -1105,11 +1105,19 @@ export class BandLayer {
     return this.buildings;
   }
 
+  /** Which model draws a building: huts come in two shapes, each with wattle, daub and stone walls. */
+  private modelOf(b: { kind: string; id: number; walls?: string }) {
+    if (b.kind !== 'hut') return b.kind;
+    const shape = b.id % 2 ? 'hut1' : 'hut0';
+    const own = shape + (b.walls === 'daub' ? 'd' : b.walls === 'stone' ? 's' : '');
+    return this.buildingMeshes.has(own) ? own : shape;
+  }
+
   private drawBuildings(night: number, camTarget: THREE.Vector3) {
     const counts = new Map<string, number>();
     const need = new Map<string, number>();
     for (const b of this.buildings) {
-      const kind = b.kind === 'hut' ? (b.id % 2 ? 'hut1' : 'hut0') : b.kind;
+      const kind = this.modelOf(b);
       need.set(kind, (need.get(kind) ?? 0) + 1);
       if (!b.built) need.set('site', (need.get('site') ?? 0) + 1);
     }
@@ -1129,8 +1137,8 @@ export class BandLayer {
       // in colour mode a building takes on its band's colour; otherwise it is as built
       if (!m.instanceColor) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3).fill(1), 3);
       const bc = this.colorMode && band >= 0 ? this.bandColors.get(band) : undefined;
-      // daubed walls take on the colour of dried mud, stone ones go grey
-      const wt = WALL_TINT[walls];
+      // daubed walls take on the colour of dried mud, stone ones go grey (huts have their own models)
+      const wt = /^hut\d[ds]$/.test(kind) ? undefined : WALL_TINT[walls];
       if (wt) tint.setRGB(wt[0], wt[1], wt[2]);
       else tint.setRGB(1, 1, 1);
       if (bc) tint.lerp(bc.light, bc.gone ? 0.25 : 0.65);
@@ -1148,7 +1156,7 @@ export class BandLayer {
     for (const b of this.buildings) {
       const cx = b.x + 0.5, cz = b.z + 0.5;
       const rot = (b.rot * Math.PI) / 2;
-      const kind = b.kind === 'hut' ? (b.id % 2 ? 'hut1' : 'hut0') : b.kind;
+      const kind = this.modelOf(b);
       put(kind, cx, cz, rot, b.built ? 1 : Math.max(0.02, b.progress), 1, b.band, b.walls);
       const bc = this.colorMode ? this.bandColors.get(b.band) : undefined;
       if (bc) this.auraList.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, r: b.kind === 'hearth' ? 3 : 2.2, c: bc.color, k: bc.gone ? 0.12 : 0.42 });
