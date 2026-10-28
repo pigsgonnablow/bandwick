@@ -78,6 +78,99 @@ describe('a birth', () => {
   });
 });
 
+/**
+ * A birth with its luck fixed: whether it is twins, and for each child in turn whether it is born
+ * still. The mother always lives through it.
+ */
+function birthWith(twins: boolean, still: boolean[]) {
+  const s = sim(1);
+  const [mother, father] = couple(s);
+  mother.pregnantUntil = s.tick;
+  mother.babyFather = father.id;
+  s.camp = s.campOf(mother);
+  const r = (s as any).rLife;
+  const chance = r.chance.bind(r);
+  const born = still.slice();
+  r.chance = (p: number) => p === 0.025 ? twins : p === 0.035 ? born.shift()! : p === 0.018 ? false : chance(p);
+  const before = s.people.length, events = s.events.length;
+  const kids = [...father.children];
+  const fatherWas = { id: father.id, name: father.name, birth: father.birth };
+  (s as any).birth(mother);
+  r.chance = chance;
+  return { s, mother, father, fatherWas, kids, babies: s.people.slice(before), told: s.events.slice(events) };
+}
+
+describe('a child born still', () => {
+  it('is mourned, and no one is born in its place', () => {
+    const { s, mother, father, fatherWas, kids, babies, told } = birthWith(false, [true]);
+    expect(babies).toEqual([]);
+    expect(told.map((e) => e.kind)).toEqual(['stillbirth']);
+    expect(told[0].text).toBe(`${mother.name}'s child was born still.`);
+    expect(told[0].people).toEqual([mother.id, father.id]);
+    expect(mother.memories.at(-1)!.kind).toBe('lost_child');
+    expect(father.memories.at(-1)!.kind).toBe('lost_child');
+    // the father is untouched: alive, himself, with no new child
+    expect(father.alive).toBe(true);
+    expect({ id: father.id, name: father.name, birth: father.birth }).toEqual(fatherWas);
+    expect(father.children).toEqual(kids);
+    expect(s.byId.get(father.id)).toBe(father);
+  });
+
+  it('as one of twins, is told apart from the twin who lives', () => {
+    // the bug: "Mara's child was born still" and then "Odo was born to Mara and Brek" read as the
+    // stillborn child living after all
+    const { mother, father, fatherWas, kids, babies, told } = birthWith(true, [true, false]);
+    expect(babies.length).toBe(1);
+    const [b] = babies;
+    expect(told.map((e) => e.kind)).toEqual(['stillbirth', 'birth']);
+    expect(told[0].text).toBe(`One of ${mother.name}'s twins was born still.`);
+    expect(told[1].text).toBe(`${b.name} was born to ${mother.name} and ${father.name}; their twin did not live.`);
+    expect(told[1].people).toEqual([mother.id, father.id, b.id]);
+    // the twin who lives is a newborn of its own, not its father
+    expect(b.alive).toBe(true);
+    expect(b.id).not.toBe(father.id);
+    expect(b.name).not.toBe(father.name);
+    expect(b.birth).toBe(told[1].tick);
+    expect(b.father).toBe(father.id);
+    expect(b.mother).toBe(mother.id);
+    expect({ id: father.id, name: father.name, birth: father.birth }).toEqual(fatherWas);
+    expect(father.children).toEqual([...kids, b.id]);
+  });
+
+  it('as both twins, is one loss told once, with no birth', () => {
+    const { mother, father, kids, babies, told } = birthWith(true, [true, true]);
+    expect(babies).toEqual([]);
+    expect(told.map((e) => e.kind)).toEqual(['stillbirth']);
+    expect(told[0].text).toBe(`${mother.name}'s twins were both born still.`);
+    expect(mother.memories.filter((m) => m.kind === 'lost_child').length).toBe(1);
+    expect(father.children).toEqual(kids);
+  });
+
+  it('leaves live twins told as twins', () => {
+    const { mother, father, babies, told } = birthWith(true, [false, false]);
+    expect(babies.length).toBe(2);
+    expect(told.map((e) => e.kind)).toEqual(['twins']);
+    expect(told[0].text).toBe(`Twins! ${babies[0].name} and ${babies[1].name}, born to ${mother.name} and ${father.name}.`);
+  });
+});
+
+describe('a newborn\'s name', () => {
+  it('is never one the living already have, even when the tongue keeps offering the father\'s', () => {
+    const s = sim(1);
+    const [mother, father] = couple(s);
+    s.camp = s.campOf(mother);
+    const tongue = (s as any).tongue;
+    const name = tongue.name.bind(tongue);
+    let offered = 0;
+    // a crowded world: every name sounds like someone's, and the first fifty are the father's own
+    tongue.name = (sex: 0 | 1) => (offered++ < 50 ? father.name : name(sex));
+    const b = s.newPerson(1, s.tick, mother.id, father.id);
+    tongue.name = name;
+    expect(b.name).not.toBe(father.name);
+    expect(s.living().filter((p) => p.name === b.name)).toEqual([b]);
+  });
+});
+
 describe('a death', () => {
   it('leaves the partner free, passes the home to them, and grieves the kin', () => {
     const s = sim(1);
