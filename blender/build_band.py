@@ -160,40 +160,6 @@ def limb(q, a, b, r0, r1, color, segs=6):
     q.cyl(segs, r0, r1, B(a), B(b), color, raw=True)
 
 
-for side, sx in (("L", -1), ("R", 1)):
-    hip, knee = J["hip" + side], J["knee" + side]
-    ankle = (hip[0], 0.024, 0.0)
-    q = Part()  # thigh: leggings, slightly overlapping the hip and knee so bends never open a gap
-    limb(q, (hip[0], hip[1] + 0.012, 0), (knee[0], knee[1] - 0.004, knee[2]), 0.021, 0.0165, LEGS)
-    q.finish(f"villager__thigh{side}")
-    q = Part()  # shin and a soft leather shoe
-    limb(q, (knee[0], knee[1] + 0.006, knee[2]), ankle, 0.016, 0.0125, LEGS)
-    q.box(B((hip[0], 0.013, 0.009)), (0.03, 0.05, 0.026), DARK, raw=True, taper=0.85)
-    q.finish(f"villager__shin{side}")
-    sh, el = J["shoulder" + side], J["elbow" + side]
-    wrist = (el[0] + sx * 0.002, 0.152, 0.004)
-    q = Part()  # upper arm: a sleeve, rounded at the shoulder
-    limb(q, (sh[0], sh[1] + 0.006, 0), (el[0], el[1] - 0.004, 0), 0.0165, 0.0135, CLOTH)
-    sph = bmesh.ops.create_uvsphere(q.bm, u_segments=8, v_segments=5, radius=1.0)  # a soft shoulder
-    for v in sph["verts"]:
-        v.co = Vector((v.co.x * 0.0165, v.co.y * 0.0165, v.co.z * 0.0145)) + Vector(B((sh[0] - sx * 0.001, sh[1] - 0.001, 0)))
-    q.paint(q._faces_of(sph["verts"]), CLOTH, raw=True)
-    q.finish(f"villager__arm{side}")
-    q = Part()  # forearm: sleeve to mid-forearm, then bare skin and a hand
-    mid = (el[0] + sx * 0.001, 0.182, 0.002)
-    limb(q, (el[0], el[1] + 0.005, 0), mid, 0.0138, 0.0125, CLOTH)
-    limb(q, mid, wrist, 0.0105, 0.0095, SKIN)
-    hand = bmesh.ops.create_uvsphere(q.bm, u_segments=6, v_segments=4, radius=1.0)
-    for v in hand["verts"]:
-        v.co = Vector((v.co.x * 0.0085, v.co.y * 0.0075, v.co.z * 0.0125)) + Vector(B((wrist[0], wrist[1] - 0.011, wrist[2] + 0.002)))
-    q.paint(q._faces_of(hand["verts"]), SKIN, raw=True)
-    q.finish(f"villager__fore{side}")
-
-q = Part()  # torso: a belted tunic flaring over the hips
-belt = lambda i: DARK if i == 2 else CLOTH
-loft(q, [(0.128, 0.064, 0.048, 0.002), (0.156, 0.060, 0.045, 0.0), (0.186, 0.052, 0.037, 0.0), (0.198, 0.053, 0.038, 0.0),
-         (0.236, 0.058, 0.040, 0.0), (0.266, 0.064, 0.036, 0.002), (0.284, 0.046, 0.030, 0.002), (0.292, 0.022, 0.020, 0.0)], 8, belt)
-q.finish("villager__torso")
 
 # The head is a shaped skull (jaw, chin, cheeks, brow, eye sockets) lofted from rings, and every hair
 # piece is laid over that same skull surface, so they fit it whatever its proportions.
@@ -466,6 +432,114 @@ for sx in (-1, 1):  # moustache: drooping from under the nose to the corners of 
               (sx * 0.009, -0.0345, 0.3135), (sx * 0.001, -0.0370, 0.3155), (sx * 0.006, -0.0320, 0.3170)],
           [(0, 1, 5), (1, 2, 5), (2, 3, 5), (3, 4, 5), (4, 0, 5), (0, 4, 3, 2, 1)], HAIR)
 q.finish("villager__beard")
+
+def tube(q, a, b, r0, r1, color, segs=7, cap=True):
+    """A limb from a to b (game space) with no seam lined up on the front."""
+    return q.cyl(segs, r0, r1, B(a), B(b), color, raw=True, cap=cap)
+
+
+def hand(q, wrist, sx):
+    """A hand hanging from the wrist, palm in: a tapered palm, fingers curled a little forward, a thumb."""
+    w = Vector(B(wrist))
+    q.box(w + Vector((0, -0.0005, -0.0075)), (0.0068, 0.0118, 0.0135), SKIN, raw=True, taper=0.85)
+    q.box(w + Vector((sx * 0.0004, -0.0018, -0.0178)), (0.0058, 0.0108, 0.0085), SKIN, raw=True, taper=1.15,
+          rot=Matrix.Rotation(0.22, 3, "X"))
+    q.box(w + Vector((-sx * 0.0018, -0.0068, -0.0085)), (0.0042, 0.0042, 0.0095), SKIN, raw=True,
+          rot=Matrix.Rotation(-0.35, 3, "X") @ Matrix.Rotation(sx * 0.25, 3, "Y"))
+
+
+def shoe(q, x):
+    """A soft hide shoe: a heel, a high cuff round the ankle, a low rounded toe; front is -y."""
+    bm = q.bm
+    # sections heel to toe: (y, half-width, top)
+    secs = [(0.0150, 0.0105, 0.019), (0.0050, 0.0135, 0.028), (-0.0095, 0.0140, 0.0185), (-0.0250, 0.0120, 0.0110), (-0.0335, 0.0060, 0.0065)]
+    rings = []
+    for y, hw, top in secs:
+        bot = 0.0 if y > -0.03 else 0.0012
+        rings.append([bm.verts.new(p) for p in [(x - hw, y, bot), (x - hw, y, top * 0.55), (x - hw * 0.65, y, top),
+                                                  (x + hw * 0.65, y, top), (x + hw, y, top * 0.55), (x + hw, y, bot)]])
+    for i in range(len(rings) - 1):
+        a, b = rings[i], rings[i + 1]
+        q.paint([bm.faces.new((a[k], a[(k + 1) % 6], b[(k + 1) % 6], b[k])) for k in range(6)], DARK, raw=True)
+    q.paint([bm.faces.new(rings[0]), bm.faces.new(list(reversed(rings[-1])))], DARK, raw=True)
+
+
+WRAP = (0.30, 0, 0)  # leg bindings: a strip of hide, mostly leather with a little of the cloth through it
+for side, sx in (("L", -1), ("R", 1)):
+    hip, knee = J["hip" + side], J["knee" + side]
+    ankle = (hip[0], 0.024, 0.0)
+    q = Part()  # thigh: leggings, slightly overlapping the hip and knee so bends never open a gap
+    tube(q, (hip[0], hip[1] + 0.012, 0), (knee[0], knee[1] - 0.004, knee[2]), 0.0215, 0.0165, LEGS)
+    q.finish(f"villager__thigh{side}")
+    q = Part()  # shin: leggings bound with two wraps of hide below the knee and above the ankle, and a shoe
+    tube(q, (knee[0], knee[1] + 0.006, knee[2]), (hip[0], 0.052, 0.002), 0.0163, 0.0142, LEGS)
+    tube(q, (hip[0], 0.052, 0.002), ankle, 0.0142, 0.0118, LEGS, cap=False)
+    tube(q, (knee[0], 0.066, 0.003), (knee[0], 0.058, 0.003), 0.0158, 0.0156, WRAP, cap=False)
+    tube(q, (hip[0], 0.040, 0.001), (hip[0], 0.031, 0.0005), 0.0135, 0.0130, WRAP, cap=False)
+    shoe(q, hip[0])
+    q.finish(f"villager__shin{side}")
+    sh, el = J["shoulder" + side], J["elbow" + side]
+    wrist = (el[0] + sx * 0.002, 0.152, 0.004)
+    q = Part()  # upper arm: a sleeve, rounded at the shoulder
+    tube(q, (sh[0], sh[1] + 0.006, 0), (el[0], el[1] - 0.004, 0), 0.0165, 0.0135, CLOTH)
+    sph = bmesh.ops.create_uvsphere(q.bm, u_segments=8, v_segments=4, radius=1.0)  # a soft shoulder
+    for v in sph["verts"]:
+        v.co = Vector((v.co.x * 0.0168, v.co.y * 0.0168, v.co.z * 0.0150)) + Vector(B((sh[0] - sx * 0.001, sh[1] - 0.001, 0)))
+    q.paint(q._faces_of(sph["verts"]), CLOTH, raw=True)
+    q.finish(f"villager__arm{side}")
+    q = Part()  # forearm: a sleeve to mid-forearm ending in a loose turned-back cuff, bare wrist, a hand
+    mid = (el[0] + sx * 0.001, 0.180, 0.002)
+    tube(q, (el[0], el[1] + 0.005, 0), mid, 0.0138, 0.0128, CLOTH)
+    tube(q, (mid[0], mid[1] + 0.006, mid[2]), (mid[0], mid[1] - 0.002, mid[2]), 0.0150, 0.0156, CLOTH)
+    tube(q, mid, wrist, 0.0104, 0.0088, SKIN, segs=6)
+    hand(q, wrist, sx)
+    q.finish(f"villager__fore{side}")
+
+# torso: a tunic, chest and shoulders over a waist, belted, flaring to a ragged hem, open at the throat.
+# rings bottom to top: (z, half-width, depth to the front, depth to the back); 'belt' rows stand proud
+TSEG = 10
+TORSO = [(0.121, 0.068, 0.052, 0.050), (0.140, 0.064, 0.048, 0.046), (0.163, 0.058, 0.043, 0.041),
+         (0.183, 0.0535, 0.039, 0.037), (0.1855, 0.0565, 0.042, 0.040), (0.1975, 0.0565, 0.042, 0.040),
+         (0.2000, 0.0535, 0.039, 0.037), (0.228, 0.057, 0.0415, 0.037), (0.251, 0.0615, 0.0425, 0.036),
+         (0.267, 0.064, 0.038, 0.034), (0.282, 0.049, 0.031, 0.029), (0.292, 0.026, 0.021, 0.021)]
+BELT_ROWS = (3, 4, 5)
+q = Part()
+sqv = lambda v: math.copysign(abs(v) ** 0.8, v)
+rows = []
+for i, (z, rx, yf, yb) in enumerate(TORSO):
+    row = []
+    for k in range(TSEG):
+        t = -math.pi / 2 + k / TSEG * math.tau
+        c, s = math.cos(t), math.sin(t)
+        zz = z
+        if i == 0:
+            zz -= 0.0065 if k % 2 else 0.0  # the hem hangs unevenly
+        if i == len(TORSO) - 2 and k == 0:
+            zz -= 0.007  # the neck opening dips at the front
+        row.append((sqv(c) * rx, sqv(s) * (yb if s > 0 else yf), zz))
+    rows.append(row)
+
+
+def torso_col(i, k):
+    if i in BELT_ROWS:
+        return DARK
+    if i == len(TORSO) - 2 and k in (0, TSEG - 1):
+        return SKIN  # the throat, where the tunic falls open
+    return CLOTH
+
+
+vs, _ = grid(q, rows, torso_col)
+fan(q, vs[-1], (0, 0.001, 0.294), CLOTH)
+fan(q, vs[0], (0, 0.0, 0.128), CLOTH, flip=True)
+for f in q.bm.faces:  # the fan at the neck is open at the front too
+    cen = f.calc_center_median()
+    if cen.z > 0.289 and cen.y < -0.006 and abs(cen.x) < 0.009:
+        q.paint([f], SKIN, raw=True)
+# a hide pouch hanging from the belt at the right hip, and the belt's knot at the front
+q.box((0.040, -0.030, 0.171), (0.017, 0.009, 0.021), DARK, raw=True, taper=0.85, rot=Matrix.Rotation(0.5, 3, "Z"))
+q.box((-0.010, -0.0425, 0.190), (0.008, 0.004, 0.009), DARK, raw=True)
+q.box((-0.012, -0.0420, 0.180), (0.004, 0.003, 0.012), DARK, raw=True, rot=Matrix.Rotation(0.3, 3, "Y"))
+q.finish("villager__torso")
 
 # ---------------------------------------------------------------- deer
 DEER = (150, 102, 62)
