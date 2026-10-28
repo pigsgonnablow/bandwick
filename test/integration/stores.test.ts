@@ -1,0 +1,148 @@
+// What happens to the band's stores and fire without anyone touching them: food going off by the
+// season (slower in a storehouse, hardly at all once dried), the fire eating wood, and fished-out
+// water filling again.
+import { describe, it, expect } from 'vitest';
+import { DAMP_BURN } from '../../src/sim/sim';
+import { Stock, specOf } from '../../src/sim/band';
+import { TICKS_PER_SEASON, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR, isDark, seasonOf } from '../../src/sim/time';
+import { sim } from '../helpers';
+import type { Sim } from '../../src/sim/sim';
+
+const full = (): Stock => ({ berries: 100, meat: 100, fish: 100, preserved: 100, wood: 100, fiber: 100, cordage: 100, mud: 100, stone: 100 });
+
+/** One morning's spoilage of a full store, in a given season (0 spring .. 3 winter). */
+function spoilIn(s: Sim, season: number): Stock {
+  s.tick = TICKS_PER_YEAR + season * TICKS_PER_SEASON + 6 * TICKS_PER_HOUR;
+  const st = full();
+  (s as any).spoilNow(st);
+  return st;
+}
+
+describe('spoilage', () => {
+  it('rots berries fastest, then fish, then meat, and the warmer the faster', () => {
+    const s = sim(1);
+    // fraction kept each morning, by season (spring, summer, autumn, winter)
+    const cold = [0.75, 1, 0.75, 0.4];
+    for (let season = 0; season < 4; season++) {
+      const st = spoilIn(s, season);
+      expect(st.berries, `season ${season}`).toBeCloseTo(100 * (1 - 0.06 * cold[season]), 6);
+      expect(st.fish, `season ${season}`).toBeCloseTo(100 * (1 - 0.05 * cold[season]), 6);
+      expect(st.meat, `season ${season}`).toBeCloseTo(100 * (1 - 0.035 * cold[season]), 6);
+      expect(st.preserved, `season ${season}`).toBeCloseTo(99.6, 6);
+    }
+  });
+
+  it('never touches wood, fiber, cordage, mud or stone', () => {
+    const s = sim(1);
+    for (let season = 0; season < 4; season++) {
+      const st = spoilIn(s, season);
+      for (const k of ['wood', 'fiber', 'cordage', 'mud', 'stone'] as const) expect(st[k]).toBe(100);
+    }
+  });
+
+  it('keeps food longer in a storehouse, and longer still behind daub or stone', () => {
+    const s = sim(1);
+    const open = spoilIn(s, 1);
+    const house = s.newBuilding('storehouse', s.camp.tile + 2, -1);
+    house.built = true;
+    for (const walls of ['wood', 'daub', 'stone'] as const) {
+      house.walls = walls;
+      const st = spoilIn(s, 1);
+      const keep = specOf(house).keep;
+      expect(st.berries, walls).toBeCloseTo(100 * (1 - 0.06 * keep), 6);
+      expect(100 - st.berries).toBeLessThan(100 - open.berries);
+    }
+    expect([specOf({ kind: 'storehouse' }).keep, specOf({ kind: 'storehouse', walls: 'daub' }).keep, specOf({ kind: 'storehouse', walls: 'stone' }).keep]).toEqual([0.6, 0.5, 0.4]);
+    // half-built is no use yet
+    house.built = false;
+    expect(spoilIn(s, 1).berries).toBeCloseTo(open.berries, 6);
+  });
+
+  it('books what went off in the band ledger, each morning', () => {
+    const s = sim(1);
+    s.camp.stock.berries = 50;
+    s.camp.stock.preserved = 0;
+    const was = s.camp.ledger?.total['spoiled.berries'] ?? 0;
+    (s as any).spoil();
+    expect(s.camp.ledger!.total['spoiled.berries'] - was).toBeCloseTo(50 - s.camp.stock.berries, 6);
+    expect(s.camp.ledger!.total['spoiled.preserved'] ?? 0).toBe(0);
+  });
+});
+
+describe('the camp fire', () => {
+  it('burns more at night and in winter, least on summer days', () => {
+    const s = sim(1);
+    const h = s.hearth();
+    for (const b of s.buildings.filter((b) => b.kind === 'woodshed')) b.built = false;
+    const rate = (season: number, hour: number) => {
+      s.tick = TICKS_PER_YEAR + season * TICKS_PER_SEASON + 3 * TICKS_PER_DAY + hour * TICKS_PER_HOUR;
+      expect(isDark(s.tick)).toBe(hour < 4);
+      return s.burnRate(h);
+    };
+    const k = [0.75, 0.45, 0.75, 1.35];
+    for (let season = 0; season < 4; season++) {
+      const damp = season >= 2 ? DAMP_BURN : 1;
+      expect(rate(season, 1), `night, season ${season}`).toBeCloseTo(0.34 * k[season] * damp, 6);
+      expect(rate(season, 12), `day, season ${season}`).toBeCloseTo(0.19 * k[season] * damp, 6);
+    }
+  });
+
+  it('goes out once the wood is gone, and never below empty', () => {
+    const s = sim(1);
+    const h = s.hearth();
+    h.fuel = 0.05;
+    (s as any).burn(h);
+    expect(h.fuel).toBe(0);
+    expect(s.hearthLit()).toBe(false);
+    (s as any).burn(h);
+    expect(h.fuel).toBe(0);
+  });
+
+  it('eats about nine wood through a winter day and night, with dry wood, burning once an hour', () => {
+    // a whole day of burn, hour by hour, with dry wood: what the woodcutters have to keep up with
+    const s = sim(1);
+    const h = s.hearth();
+    s.tick = TICKS_PER_YEAR + 3 * TICKS_PER_SEASON + 4 * TICKS_PER_DAY;
+    expect(seasonOf(s.tick)).toBe(3);
+    const roof = s.newBuilding('woodshed', s.buildings.find((b) => b.kind === 'stockpile' && b.band === s.camp.id)!.tile, -1);
+    roof.built = true;
+    h.fuel = 12;
+    for (let t = 0; t < TICKS_PER_DAY; t++) {
+      s.tick++;
+      if (s.tick % TICKS_PER_HOUR === 0) (s as any).hourly();
+    }
+    const used = 12 - h.fuel;
+    expect(used).toBeGreaterThan(8);
+    expect(used).toBeLessThan(10);
+  });
+});
+
+describe('fish', () => {
+  it('fill fished-out water again, a little every six hours, never past what it holds', () => {
+    const s = sim(1);
+    const i = s.fishCap.findIndex((c) => c > 0);
+    const cap = s.fishCap[i];
+    s.fish[i] = 0;
+    s.tick = TICKS_PER_YEAR;
+    const seen: number[] = [];
+    for (let k = 0; k < 400; k++) {
+      s.tick += TICKS_PER_HOUR * 6;
+      (s as any).hourly();
+      seen.push(s.fish[i]);
+    }
+    for (let k = 1; k < seen.length; k++) expect(seen[k]).toBeGreaterThanOrEqual(seen[k - 1]);
+    expect(seen[0]).toBeGreaterThan(0);
+    expect(seen[0]).toBeLessThan(cap * 0.1);
+    expect(Math.max(...seen)).toBeLessThanOrEqual(cap);
+    expect(seen.at(-1)).toBeGreaterThan(cap * 0.95);
+  });
+
+  it('do not come back between the six-hour marks', () => {
+    const s = sim(1);
+    const i = s.fishCap.findIndex((c) => c > 0);
+    s.fish[i] = 0;
+    s.tick = TICKS_PER_YEAR + TICKS_PER_HOUR;
+    (s as any).hourly();
+    expect(s.fish[i]).toBe(0);
+  });
+});
