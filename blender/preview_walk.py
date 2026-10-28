@@ -29,9 +29,10 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=os.path.join(ASSETS, "band.glb"))
 parts = {o.name.split("__")[1]: o for o in bpy.context.scene.objects if o.name.startswith("villager__")}
 for name, o in list(bpy.context.scene.objects.items()):
-    if not name.startswith("villager__") or name == "villager__hairL":
+    if not name.startswith("villager__") or name in ("villager__hairL", "villager__hairB", "villager__hairU", "villager__beard"):
         bpy.data.objects.remove(o)
-parts.pop("hairL", None)
+for extra in ("hairL", "hairB", "hairU", "beard"):
+    parts.pop(extra, None)
 
 # region codes -> a sample person's colours (the game does this per person in the shader)
 PAL = {"cloth": (0.32, 0.17, 0.08), "skin": (0.76, 0.48, 0.30), "hair": (0.05, 0.03, 0.02), "dark": (0.015, 0.01, 0.007)}

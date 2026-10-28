@@ -2,7 +2,8 @@
 
 Run headless:  python3 blender/build_band.py [out.glb]
 Conventions (read by src/render/band.ts):
-  villager__{torso,head,armL,armR,legL,legR,hairS,hairL}  one body in parts, animated in the shader.
+  villager__{torso,head,arm*,fore*,thigh*,shin*,hairS,hairL,hairB,hairU,beard}  one body in parts, animated in the shader;
+      the game shows one of the four hair pieces (short, long, braids, bun) and, on some men, the beard.
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
   deer__{body,head,legFL,legFR,legBL,legBR}               animated in parts, real colours.
@@ -194,40 +195,277 @@ loft(q, [(0.128, 0.064, 0.048, 0.002), (0.156, 0.060, 0.045, 0.0), (0.186, 0.052
          (0.236, 0.058, 0.040, 0.0), (0.266, 0.064, 0.036, 0.002), (0.284, 0.046, 0.030, 0.002), (0.292, 0.022, 0.020, 0.0)], 8, belt)
 q.finish("villager__torso")
 
-q = Part()  # head: neck, a rounded skull, nose, ears and dark eyes
-limb(q, (0, 0.282, 0), (0, 0.306, 0.002), 0.0175, 0.016, SKIN)
-hb = bmesh.ops.create_uvsphere(q.bm, u_segments=10, v_segments=7, radius=1.0)
-for v in hb["verts"]:
-    v.co = Vector((v.co.x * 0.036, v.co.y * 0.035 - 0.002, v.co.z * 0.040 + 0.334))
-q.paint(q._faces_of(hb["verts"]), SKIN, raw=True)
-q.box(B((0, 0.329, 0.036)), (0.011, 0.012, 0.016), SKIN, raw=True, taper=0.7)  # nose
-for ex in (-0.0135, 0.0135):
-    q.box(B((ex, 0.337, 0.0318)), (0.0075, 0.004, 0.0065), DARK, raw=True)  # eyes
-    q.box(B((ex * 2.7, 0.332, 0.0)), (0.006, 0.012, 0.014), SKIN, raw=True)  # ears
+# The head is a shaped skull (jaw, chin, cheeks, brow, eye sockets) lofted from rings, and every hair
+# piece is laid over that same skull surface, so they fit it whatever its proportions.
+# Angles go round the head from the right: -pi/2 is the face (-y), +pi/2 the back of the head.
+HEAD_Y = -0.002  # the skull sits a touch forward of the neck
+# skull rings, bottom to top: (z, half-width, depth to the face, depth to the back)
+SKULL = [(0.299, 0.012, 0.025, 0.004), (0.305, 0.022, 0.031, 0.012), (0.314, 0.029, 0.034, 0.025),
+         (0.324, 0.034, 0.034, 0.033), (0.334, 0.036, 0.0315, 0.036), (0.344, 0.036, 0.035, 0.038),
+         (0.355, 0.034, 0.033, 0.037), (0.365, 0.028, 0.025, 0.032), (0.372, 0.017, 0.013, 0.020)]
+HEAD_TOP = 0.3755
+HAIR_DIM = (0, 0, 0.72)  # hair in shadow: under a lock, inside a parting, the underside of a fall
+LIP = (0, 0.55, 0)       # skin darkened towards leather brown
+
+
+def skull_at(z):
+    """The skull ring at height z: (half-width, face depth, back depth), shrinking to nothing at the crown."""
+    if z <= SKULL[0][0]:
+        return SKULL[0][1:]
+    if z >= SKULL[-1][0]:
+        k = min(1.0, (z - SKULL[-1][0]) / (HEAD_TOP - SKULL[-1][0]))
+        k = math.sqrt(max(0.0, 1 - k * k))
+        return tuple(v * k for v in SKULL[-1][1:])
+    for (z0, *a), (z1, *b) in zip(SKULL, SKULL[1:]):
+        if z <= z1:
+            k = (z - z0) / (z1 - z0)
+            return tuple(u + (w - u) * k for u, w in zip(a, b))
+
+
+def on_skull(z, t, grow=0.0):
+    """A point on the skull (or `grow` outside it) at height z and angle t: a squarish ellipse."""
+    rx, yf, yb = skull_at(z)
+    c, s = math.cos(t), math.sin(t)
+    sq = lambda v: math.copysign(abs(v) ** 0.8, v)
+    return Vector((sq(c) * (rx + grow), sq(s) * ((yb if s > 0 else yf) + grow) + HEAD_Y, z))
+
+
+def smooth(pts, x):
+    """Piecewise-linear lookup in [(x, y), ...]."""
+    if x <= pts[0][0]:
+        return pts[0][1]
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        if x <= x1:
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    return pts[-1][1]
+
+
+def from_face(t):
+    """How far round from the middle of the face an angle is, 0 (face) to pi (nape)."""
+    return abs(math.atan2(math.sin(t + math.pi / 2), math.cos(t + math.pi / 2)))
+
+
+def grid(q, rows, color_of, wrap=True):
+    """Quads between rows of points (each row a list, same length); returns the faces."""
+    bm = q.bm
+    vs = [[bm.verts.new(p) for p in row] for row in rows]
+    n = len(rows[0])
+    faces = []
+    for i in range(len(vs) - 1):
+        for k in range(n if wrap else n - 1):
+            k1 = (k + 1) % n
+            f = bm.faces.new((vs[i][k], vs[i][k1], vs[i + 1][k1], vs[i + 1][k]))
+            q.paint([f], color_of(i, k), raw=True)
+            faces.append(f)
+    return vs, faces
+
+
+def fan(q, ring, apex, color, flip=False):
+    a = q.bm.verts.new(apex)
+    for k in range(len(ring)):
+        tri = (ring[k], ring[(k + 1) % len(ring)], a)
+        q.paint([q.bm.faces.new(tri[::-1] if flip else tri)], color, raw=True)
+
+
+def solid(q, verts, faces, color):
+    """A small closed shape from a vertex list and index faces."""
+    vs = [q.bm.verts.new(v) for v in verts]
+    q.paint([q.bm.faces.new([vs[i] for i in f]) for f in faces], color, raw=True)
+
+
+SEG = 12
+q = Part()  # head: neck, skull, nose, brows, eyes, mouth and ears
+limb(q, (0, 0.282, 0), (0, 0.306, 0.004), 0.0172, 0.0158, SKIN)
+ts = [-math.pi / 2 + k / SEG * math.tau for k in range(SEG)]  # a column runs down the middle of the face
+rows, _ = grid(q, [[on_skull(z, t) for t in ts] for z, *_ in SKULL], lambda i, k: SKIN)
+fan(q, rows[-1], (0, HEAD_Y + 0.002, HEAD_TOP), SKIN)
+fan(q, rows[0], (0, HEAD_Y - 0.012, 0.2975), SKIN, flip=True)
+# nose: a wedge from the brow to a tip, with a little underside
+solid(q, [(0, -0.0335, 0.341), (0, -0.0425, 0.3225), (-0.0068, -0.0335, 0.3205), (0.0068, -0.0335, 0.3205), (0, -0.026, 0.326)],
+      [(0, 2, 1), (0, 1, 3), (2, 3, 1), (0, 4, 2), (0, 3, 4), (2, 4, 3)], SKIN)
+for sx in (-1, 1):
+    # eyes: dark, set into the sockets under the brow
+    q.box((sx * 0.0128, -0.0318, 0.3355), (0.0072, 0.003, 0.0058), DARK, raw=True)
+    # brows: a slanted ridge of hair colour, thicker over the eye's outer end
+    solid(q, [(sx * 0.0045, -0.0368, 0.3449), (sx * 0.0205, -0.0345, 0.3449), (sx * 0.0200, -0.0340, 0.3422),
+              (sx * 0.0050, -0.0363, 0.3434), (sx * 0.0120, -0.0310, 0.3448)],
+          [(0, 1, 2, 3), (0, 4, 1), (1, 4, 2), (2, 4, 3), (3, 4, 0)], HAIR)
+    # ears: a cupped flap, wider at the top, set back from the cheek
+    ex = sx * 0.0352
+    solid(q, [(ex, 0.0005, 0.3435), (ex + sx * 0.0052, 0.0035, 0.3415), (ex + sx * 0.0048, 0.0075, 0.3335),
+              (ex + sx * 0.0032, 0.0055, 0.3245), (ex, 0.0010, 0.3245), (ex - sx * 0.002, 0.0070, 0.3340)],
+          [(0, 1, 5), (1, 2, 5), (2, 3, 5), (3, 4, 5), (4, 0, 5), (0, 4, 3, 2, 1)], SKIN)
+# mouth: a short dark line under the nose
+q.box((0, -0.0331, 0.3122), (0.012, 0.0024, 0.0022), LIP, raw=True, taper=0.75)
 q.finish("villager__head")
 
 
-def cap(q, lift, scale, back, color):
-    """Hair as a shell over the top and back of the skull."""
-    hb = bmesh.ops.create_uvsphere(q.bm, u_segments=10, v_segments=7, radius=1.0)
-    keep = []
-    for v in hb["verts"]:
-        v.co = Vector((v.co.x * scale[0], v.co.y * scale[1] + back, v.co.z * scale[2] + 0.334 + lift))
-    # cut away the face: anything low and in front goes
-    faces = list({f for v in hb["verts"] for f in v.link_faces})
-    edges = list({e for v in hb["verts"] for e in v.link_edges})
-    bmesh.ops.bisect_plane(q.bm, geom=hb["verts"] + edges + faces,
-                           plane_co=(0, -0.006, 0.322), plane_no=(0, -0.55, -1.0), clear_outer=True)
-    q.paint([f for f in q.bm.faces], color, raw=True)
+def cap(q, hairline, thick, rnd, jag=0.0, part=False, flat=0.0):
+    """Hair over the skull from `hairline(t)` up to the crown, `thick` out from it, its edge tucked
+    into the skull so the shell never shows a rim. jag ruffles the fringe; part draws a parting;
+    flat lays it down smooth (less tousle)."""
+    n = 14
+    ts = [-math.pi / 2 + (k + 0.5) / n * math.tau for k in range(n)]
+    us = [0.0, 0.3, 0.6, 0.86]
+    rows = []
+    edge = []
+    for k, t in enumerate(ts):
+        z0 = hairline(t)
+        if jag and from_face(t) < 1.3:  # a ragged fringe across the forehead
+            z0 += (-jag if k % 2 else jag * 0.4) * (1 - from_face(t) / 1.3)
+        edge.append(z0)
+    for j, u in enumerate(us):
+        row = []
+        for k, t in enumerate(ts):
+            z = edge[k] + (HEAD_TOP - edge[k]) * u
+            g = thick * (0.55 + 0.45 * u) + rnd.uniform(-1, 1) * thick * 0.3 * (1 - flat)
+            if part and abs(math.cos(t)) < 0.15 and u > 0.1 and from_face(t) < 1.6:
+                g *= 0.45  # the parting, down the middle from the brow
+            p = on_skull(z, t, g)
+            p.z += g * u * 0.9  # the top sits up off the crown too
+            row.append(p)
+        rows.append(row)
+    tuck = [on_skull(edge[k] + 0.002, t, -0.003) for k, t in enumerate(ts)]
+    dim = lambda i, k: HAIR_DIM if i == 0 else (HAIR if (k + i) % 3 or flat else (0, 0, 0.88))
+    vs, _ = grid(q, [tuck] + rows, dim)
+    fan(q, vs[-1], (0, HEAD_Y + 0.004, HEAD_TOP + thick * 1.05), HAIR)
+    return ts, rows
 
 
-q = Part()  # short hair
-cap(q, 0.004, (0.0395, 0.0385, 0.041), 0.003, HAIR)
+def hairline(front, temple, ear, nape):
+    return lambda t: smooth([(0, front), (0.75, temple), (1.25, temple - 0.002), (1.6, ear), (2.1, ear - 0.006), (math.pi, nape)], from_face(t))
+
+
+def slab(q, outer, inner, color_out, color_in):
+    """A thick sheet between an outer and an inner grid of points (rows x cols), closed round its edges."""
+    vo, _ = grid(q, outer, lambda i, k: color_out(i, k), wrap=False)
+    vi, _ = grid(q, inner, lambda i, k: color_in, wrap=False)
+    for f in [f for f in q.bm.faces if all(v in set(sum(vi, [])) for v in f.verts)]:
+        f.normal_flip()
+    bm = q.bm
+    R, C = len(outer), len(outer[0])
+    ring = [(0, k) for k in range(C)] + [(i, C - 1) for i in range(1, R)] + [(R - 1, k) for k in range(C - 2, -1, -1)] + [(i, 0) for i in range(R - 2, 0, -1)]
+    for a, b in zip(ring, ring[1:] + ring[:1]):
+        f = bm.faces.new((vo[a[0]][a[1]], vo[b[0]][b[1]], vi[b[0]][b[1]], vi[a[0]][a[1]]))
+        q.paint([f], color_in, raw=True)
+
+
+def braid(q, path, r, rnd):
+    """A plait: a four-sided tube along the path, swelling and pinching at each twist, tied at the end."""
+    bm = q.bm
+    pts = [Vector(p) for p in path]
+    rings = []
+    steps = 9
+    for i in range(steps):
+        u = i / (steps - 1) * (len(pts) - 1)
+        a = min(int(u), len(pts) - 2)
+        f = u - a
+        c = pts[a].lerp(pts[a + 1], f)
+        d = (pts[a + 1] - pts[a]).normalized()
+        side = d.cross(Vector((0, 0, 1)))
+        if side.length < 1e-6:
+            side = Vector((1, 0, 0))
+        side.normalize()
+        up = side.cross(d).normalized()
+        rr = r * (1.0 if i % 2 == 0 else 0.68) * (1 - 0.35 * i / steps)
+        twist = (i % 2) * math.pi / 4
+        rings.append([bm.verts.new(c + (side * math.cos(twist + k * math.pi / 2) + up * math.sin(twist + k * math.pi / 2)) * rr) for k in range(4)])
+    for i in range(steps - 1):
+        a, b = rings[i], rings[i + 1]
+        for k in range(4):
+            f = bm.faces.new((a[k], a[(k + 1) % 4], b[(k + 1) % 4], b[k]))
+            q.paint([f], HAIR if i % 2 == 0 else HAIR_DIM, raw=True)
+    q.paint([bm.faces.new(list(reversed(rings[0])))], HAIR, raw=True)
+    tip = pts[-1] + (pts[-1] - pts[-2]).normalized() * r * 1.6
+    fan(q, rings[-1], tip, HAIR)
+    tie = pts[-1].lerp(pts[-2], 0.12)
+    q.box(tuple(tie), (r * 1.25, r * 1.25, r * 0.8), DARK, raw=True)
+
+
+# short hair: cropped and a little ragged over the brow
+q = Part()
+cap(q, hairline(0.3525, 0.347, 0.341, 0.3165), 0.0042, random.Random(51), jag=0.0035)
 q.finish("villager__hairS")
-q = Part()  # long hair: the same cap with a fall down the back and over the shoulders
-cap(q, 0.004, (0.041, 0.040, 0.042), 0.004, HAIR)
-loft(q, [(0.262, 0.030, 0.012, 0.030), (0.300, 0.036, 0.014, 0.030), (0.336, 0.037, 0.016, 0.022)], 8, lambda i: HAIR)
+
+# long hair: the cap, falling thick down the back to the shoulder blades, with a ragged end
+q = Part()
+rnd = random.Random(52)
+cap(q, hairline(0.3535, 0.3465, 0.334, 0.322), 0.0048, rnd, jag=0.002, flat=0.4)
+fall_t = [math.pi / 2 + (k / 8 - 0.5) * 2.5 for k in range(9)]
+fall_z = [0.338, 0.318, 0.297, 0.276, 0.258]
+outer, inner = [], []
+for j, z in enumerate(fall_z):
+    ro, ri = [], []
+    for k, t in enumerate(fall_t):
+        zz = z - (0.006 if (k % 2 and j == len(fall_z) - 1) else 0)
+        zs = max(z, 0.318)
+        o = on_skull(zs, t, 0.0062)
+        # below the skull the fall hangs down the upper back, widening and lying back off the neck
+        drop = max(0.0, 0.318 - z)
+        o.x *= 1 + drop * 5.5
+        o.y += drop * 0.30 + (0.0016 * rnd.uniform(-1, 1))
+        o.z = zz
+        i_ = o.copy()
+        i_.y -= 0.0055 * math.sin(t) if j else 0.0
+        i_.x -= 0.0055 * math.cos(t) if j else 0.0
+        if j == 0:
+            i_ = on_skull(zs, t, -0.002)
+        ro.append(o)
+        ri.append(i_)
+    outer.append(ro)
+    inner.append(ri)
+slab(q, outer, inner, lambda i, k: HAIR if (i + k) % 3 else (0, 0, 0.88), HAIR_DIM)
 q.finish("villager__hairL")
+
+# braids: hair drawn smooth from a middle parting into two plaits that hang over the shoulders
+q = Part()
+cap(q, hairline(0.354, 0.347, 0.333, 0.321), 0.0032, random.Random(53), part=True, flat=0.8)
+for sx in (-1, 1):
+    braid(q, [(sx * 0.031, 0.010, 0.328), (sx * 0.037, -0.006, 0.304), (sx * 0.035, -0.030, 0.284),
+              (sx * 0.031, -0.043, 0.264), (sx * 0.029, -0.046, 0.247)], 0.0062, rnd)
+q.finish("villager__hairB")
+
+# bun: hair pulled back smooth and knotted at the back of the head
+q = Part()
+cap(q, hairline(0.3545, 0.3475, 0.337, 0.322), 0.0030, random.Random(54), flat=0.9)
+bun = bmesh.ops.create_uvsphere(q.bm, u_segments=8, v_segments=5, radius=1.0)
+br = random.Random(55)
+for v in bun["verts"]:
+    k = 1 + br.uniform(-0.08, 0.08)
+    v.co = Vector((v.co.x * 0.0185 * k, v.co.y * 0.0150 * k, v.co.z * 0.0165 * k)) + Vector((0, HEAD_Y + 0.0440, 0.3500))
+q.paint(q._faces_of(bun["verts"]), HAIR, raw=True)
+for f in q._faces_of(bun["verts"]):
+    if f.calc_center_median().z < 0.3445:
+        q.paint([f], (0, 0, 0.88), raw=True)
+q.box((0, HEAD_Y + 0.0345, 0.3500), (0.024, 0.005, 0.006), DARK, raw=True)  # the tie
+q.finish("villager__hairU")
+
+# beard: worn by some men on their own; jaw to chin, up the cheeks into sideburns, and a moustache
+q = Part()
+rnd = random.Random(56)
+bt = [-math.pi / 2 + (k / 8 - 0.5) * 2.9 for k in range(9)]
+outer, inner = [], []
+for j, v in enumerate([0.0, 0.5, 1.0]):
+    ro, ri = [], []
+    for k, t in enumerate(bt):
+        f = from_face(t)
+        lo = smooth([(0, 0.289), (0.7, 0.297), (1.2, 0.305), (1.45, 0.312)], f)
+        hi = smooth([(0, 0.309), (0.45, 0.3115), (0.8, 0.322), (1.2, 0.331), (1.45, 0.337)], f)
+        z = lo + (hi - lo) * v
+        g = smooth([(0, 0.0058), (0.9, 0.0042), (1.45, 0.0025)], f) * (0.5 + 0.5 * math.sin(v * math.pi) + 0.2)
+        o = on_skull(max(z, 0.300), t, g + rnd.uniform(-0.0006, 0.0006))
+        o.z = z - (0.0025 if j == 0 and k % 2 else 0)
+        ri.append(on_skull(max(z, 0.300), t, -0.002))
+        ri[-1].z = z + (0.004 if j == 0 else 0)
+        ro.append(o)
+    outer.append(ro)
+    inner.append(ri)
+slab(q, outer, inner, lambda i, k: HAIR if (i + k) % 3 else (0, 0, 0.88), HAIR_DIM)
+for sx in (-1, 1):  # moustache: drooping from under the nose to the corners of the mouth
+    solid(q, [(sx * 0.001, -0.0395, 0.3178), (sx * 0.0105, -0.0365, 0.3150), (sx * 0.0135, -0.0335, 0.3085),
+              (sx * 0.009, -0.0345, 0.3135), (sx * 0.001, -0.0370, 0.3155), (sx * 0.006, -0.0320, 0.3170)],
+          [(0, 1, 5), (1, 2, 5), (2, 3, 5), (3, 4, 5), (4, 0, 5), (0, 4, 3, 2, 1)], HAIR)
+q.finish("villager__beard")
 
 # ---------------------------------------------------------------- deer
 DEER = (150, 102, 62)
