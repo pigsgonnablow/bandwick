@@ -838,7 +838,16 @@ export class Sim {
       // avoid names that sound alike within the band
       if (!this.people.some((p) => p.alive && p.name.slice(0, 3) === n.slice(0, 3))) return n;
     }
-    return this.tongue.name(sex);
+    // a crowded world can't always manage that, but no two of the living ever share a name outright
+    // (a newborn named for its own father reads as the father born again)
+    const taken = (n: string) => this.people.some((p) => p.alive && p.name === n);
+    for (let k = 0; k < 40; k++) {
+      const n = this.tongue.name(sex);
+      if (!taken(n)) return n;
+    }
+    let n = this.tongue.name(sex);
+    while (taken(n)) n += 'a';
+    return n;
   }
 
   pair(a: Person, b: Person, announce = true) {
@@ -1752,11 +1761,10 @@ export class Sim {
     const father = this.byId.get(mother.babyFather);
     const twins = r.chance(0.025);
     const babies: Person[] = [];
+    let still = 0;
     for (let k = 0; k < (twins ? 2 : 1); k++) {
       if (r.chance(0.035)) {
-        this.event('stillbirth', `${mother.name}'s child was born still.`, [mother.id], mother.x, mother.z, 2);
-        this.remember(mother, 'lost_child', -45, 3, -1, 'Lost a child at birth.');
-        if (father) this.remember(father, 'lost_child', -35, 3, -1, 'Lost a child at birth.');
+        still++;
         continue;
       }
       const b = this.newPerson(r.chance(0.5) ? 0 : 1, this.tick, mother.id, father?.id ?? -1);
@@ -1771,13 +1779,21 @@ export class Sim {
       babies.push(b);
       this.stats.births++;
     }
+    // a stillborn child is told as one (of twins, saying so), never as the living twin born beside it
+    if (still) {
+      const text = !twins ? `${mother.name}'s child was born still.`
+        : still === 2 ? `${mother.name}'s twins were both born still.` : `One of ${mother.name}'s twins was born still.`;
+      this.event('stillbirth', text, [mother.id, ...(father ? [father.id] : [])], mother.x, mother.z, 2);
+      this.remember(mother, 'lost_child', -45, 3, -1, still === 2 ? 'Lost both twins at birth.' : 'Lost a child at birth.');
+      if (father) this.remember(father, 'lost_child', -35, 3, -1, still === 2 ? 'Lost both twins at birth.' : 'Lost a child at birth.');
+    }
     if (babies.length) {
       const names = babies.map((b) => b.name).join(' and ');
       const parents = father ? `${mother.name} and ${father.name}` : mother.name;
-      this.event(twins && babies.length === 2 ? 'twins' : 'birth', twins && babies.length === 2
+      this.event(babies.length === 2 ? 'twins' : 'birth', babies.length === 2
         ? `Twins! ${names}, born to ${parents}.`
-        : `${names} was born to ${parents}.`, [mother.id, ...(father ? [father.id] : []), ...babies.map((b) => b.id)],
-      mother.x, mother.z, twins ? 4 : 2);
+        : `${names} was born to ${parents}${still ? '; their twin did not live' : ''}.`, [mother.id, ...(father ? [father.id] : []), ...babies.map((b) => b.id)],
+      mother.x, mother.z, babies.length === 2 ? 4 : 2);
       this.remember(mother, 'birth', 35, 3, babies[0].id, `Gave birth to ${names}.`);
       if (father) this.remember(father, 'birth', 30, 3, babies[0].id, `Became a parent to ${names}.`);
     }
