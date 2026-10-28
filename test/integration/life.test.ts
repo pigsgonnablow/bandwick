@@ -96,13 +96,24 @@ describe('a death', () => {
     expect(s.camp.lastDeath).toBe(s.tick);
     const grief = b.memories.find((m) => m.kind === 'death' && m.subject === a.id)!;
     expect(grief.weight).toBe(-55);
-    // a child losing a parent grieves like other kin (-40); only a partner, or a parent losing a child, feels -55
+    // a child still growing up takes it as hard as the partner does
     expect(kid).toBeTruthy();
-    expect(kid!.memories.find((m) => m.kind === 'death' && m.subject === a.id)?.weight).toBe(-40);
+    expect(s.age(kid!)).toBeLessThan(14);
+    expect(kid!.memories.find((m) => m.kind === 'death' && m.subject === a.id)?.weight).toBe(-55);
     const e = s.events.at(-1)!;
     expect(e.kind).toBe('death');
     expect(e.text).toBe(`${a.name}, ${Math.floor(s.age(a))}, died of fever.`);
     expect(e.weight).toBe(3);
+  });
+
+  it('grieves a grown child like other kin, and a young one like a partner', () => {
+    const s = sim(1);
+    const [a] = couple(s);
+    const kid = s.people.find((p) => p.mother === a.id || p.father === a.id)!;
+    kid.birth = s.tick - 20 * TICKS_PER_YEAR;
+    s.camp = s.campOf(a);
+    s.kill(a, 'fever');
+    expect(kid.memories.find((m) => m.kind === 'death' && m.subject === a.id)?.weight).toBe(-40);
   });
 
   it('passes a home with no partner left to the eldest grown-up living in it', () => {

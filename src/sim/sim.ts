@@ -1006,6 +1006,8 @@ export class Sim {
     if (p.food < starveAt && !foodInHand && !graveDug && k !== 'eat' && k !== 'eatwild' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
     const woodRun = (k === 'fell' || k === 'haul' || k === 'deadwood') && this.hearth().fuel < 2;
     if (p.warmth < (woodRun ? 8 : 18) && k !== 'warm' && k !== 'sleep') return true;
+    // the fire keeper wakes in the night when the fire will not last till morning
+    if (k === 'sleep' && isDark(this.tick) && this.fireShort() && !this.people.some((q) => q.alive && q.band === p.band && q.task?.kind === 'fuel') && this.fireKeeper() === p) return true;
     // worn out on the way home with a load: the bed is at camp, where they're going anyway
     if (p.rest < 8 && k !== 'sleep' && !delivering(p) && !graveDug) return true;
     // at nightfall, workers who haven't started back yet call it a day
@@ -1106,7 +1108,9 @@ export class Sim {
       const op = this.opinion(q, p);
       const kin = this.isKin(q, p) || q.id === p.partner;
       if (kin || op > 40) {
-        const w = kin ? (q.id === p.partner || p.mother === q.id || p.father === q.id ? -55 : -40) : -20;
+        // a partner, a parent, and a child still growing up take it hardest; a grown child like other kin
+        const orphaned = (q.mother === p.id || q.father === p.id) && this.age(q) < 14;
+        const w = kin ? (q.id === p.partner || p.mother === q.id || p.father === q.id || orphaned ? -55 : -40) : -20;
         this.remember(q, 'death', w, kin ? 4 : 2, p.id, `${p.name} died (${cause}).`);
       }
     }
@@ -1159,11 +1163,41 @@ export class Sim {
     }
   }
 
-  /** Wood a fire eats each tick: a big fire through winter nights, in warm weather just a cooking fire; damp wood goes faster. */
-  burnRate(h: Building) {
-    const season = seasonOf(this.tick);
+  /** Wood a fire eats each hour: a big fire through winter nights, in warm weather just a cooking fire; damp wood goes faster. */
+  burnRate(h: Building, t = this.tick) {
+    const season = seasonOf(t);
     const k = season === 3 ? 1.35 : season === 1 ? 0.45 : 0.75;
-    return (isDark(this.tick) ? 0.34 : 0.19) * k * (this.dampWood(h.band) ? DAMP_BURN : 1);
+    return (isDark(t) ? 0.34 : 0.19) * k * (this.dampWood(h.band, t) ? DAMP_BURN : 1);
+  }
+
+  /** The wood a band's fire will burn from now until the next morning light. */
+  fuelToMorning(c = this.camp) {
+    const h = this.hearth(c);
+    let need = 0, night = false;
+    for (let t = Math.ceil((this.tick + 1) / TICKS_PER_HOUR) * TICKS_PER_HOUR, i = 0; i < 24; i++, t += TICKS_PER_HOUR) {
+      const dark = isDark(t);
+      if (night && !dark) break;
+      night ||= dark;
+      need += this.burnRate(h, t);
+    }
+    return need;
+  }
+
+  /** Whether the fire needs more wood to last the night, and there is wood to give it. */
+  fireShort(c = this.camp) {
+    const h = this.hearth(c);
+    return c.stock.wood >= 1 && h.fuel < 12 && h.fuel < this.fuelToMorning(c) + 0.5;
+  }
+
+  /**
+   * Who gets up in the night to feed the fire: the band's eldest grown-up who is fit to, so that it is
+   * always the same person and the rest sleep through.
+   */
+  fireKeeper(c = this.camp) {
+    let keeper: Person | undefined;
+    for (const p of this.people)
+      if (p.alive && p.band === c.id && this.age(p) >= 16 && this.age(p) < 60 && p.health > HEALTH.weak && p.sick === 0 && (!keeper || p.birth < keeper.birth)) keeper = p;
+    return keeper;
   }
 
   /** Whether a band has finished building something of this kind. */
@@ -1172,8 +1206,8 @@ export class Sim {
   }
 
   /** Firewood stacked in the open is damp through autumn and winter, unless the woodpile has a roof. */
-  dampWood(band = this.camp.id) {
-    return seasonOf(this.tick) >= 2 && !this.hasBuilt('woodshed', band);
+  dampWood(band = this.camp.id, t = this.tick) {
+    return seasonOf(t) >= 2 && !this.hasBuilt('woodshed', band);
   }
 
   /** Whether a band has discovered something. */

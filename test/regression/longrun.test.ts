@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { InvariantChecker } from '../../tools/lib/invariants';
 import { DISCOVERY } from '../../src/sim/know';
-import { START_TICK, TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, seasonOf, ageYears } from '../../src/sim/time';
+import { START_TICK, TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, seasonOf, ageYears, isDark } from '../../src/sim/time';
 import { sim } from '../helpers';
 
 const YEARS = 12;
@@ -17,8 +17,8 @@ describe('a dozen years', () => {
       const s = sim(seed);
       const checker = new InvariantChecker(s);
       const end = s.tick + YEARS * TICKS_PER_YEAR;
-      let winterNights = 0, winterNightsLit = 0, people = 0;
-      const outAtNoon: string[] = [];
+      let winterNights = 0, people = 0;
+      const outAtNight: string[] = [], outAtNoon: string[] = [];
       while (s.tick < end) {
         s.step();
         if (s.tick % TICKS_PER_DAY === 0) {
@@ -27,13 +27,13 @@ describe('a dozen years', () => {
           expect(s.people.length).toBeGreaterThanOrEqual(people);
           people = s.people.length;
         }
-        // two in the morning, every winter night: is each band's fire burning?
-        if (seasonOf(s.tick) === 3 && s.tick % TICKS_PER_DAY === 2 * TICKS_PER_HOUR)
+        // every hour of every winter night: a band with wood in the stores keeps its fire burning
+        if (seasonOf(s.tick) === 3 && s.tick % TICKS_PER_HOUR === 0 && isDark(s.tick))
           for (const c of s.liveCamps()) {
             const h = s.hearth(c);
             expect(h.fuel).toBeGreaterThanOrEqual(0);
             winterNights++;
-            if (h.fuel > 0) winterNightsLit++;
+            if (h.fuel <= 0 && c.stock.wood >= 4) outAtNight.push(`${c.name} t${s.tick} wood ${c.stock.wood}`);
           }
         // and by the middle of any day, a band with wood in the stores has it going again
         if (s.tick % TICKS_PER_DAY === 13 * TICKS_PER_HOUR)
@@ -47,7 +47,9 @@ describe('a dozen years', () => {
       expect(s.stats.deaths).toBe(dead.length);
       expect(s.stats.starved).toBe(dead.filter((p) => p.cause === 'starvation').length);
       expect(s.stats.froze).toBe(dead.filter((p) => p.cause === 'cold').length);
-      const born = s.people.filter((p) => p.birth >= START_TICK);
+      // (strangers can bring a child born since the start: only those born here count)
+      const told = new Set(s.events.filter((e) => e.kind === 'birth' || e.kind === 'twins').flatMap((e) => e.people.map((id) => `${id}@${e.tick}`)));
+      const born = s.people.filter((p) => p.birth >= START_TICK && told.has(`${p.id}@${p.birth}`));
       expect(s.stats.births).toBe(born.length);
       expect(s.stats.births).toBeGreaterThan(0);
       expect(s.stats.peak).toBeGreaterThanOrEqual(s.living().length);
@@ -93,10 +95,9 @@ describe('a dozen years', () => {
           for (const n of DISCOVERY.get(k)?.needs ?? []) expect(c.knows.indexOf(n), `${c.name}: ${k} before ${n}`).toBeLessThan(i);
         });
 
-      // the fire is kept through most winter nights. (Today about one night in six it burns down while
-      // everyone sleeps, even with wood in the stores, and is lit again in the morning: see the PR notes.)
+      // the fire is kept through the winter nights
       expect(winterNights).toBeGreaterThan(0);
-      expect(winterNightsLit / winterNights).toBeGreaterThan(0.75);
+      expect(outAtNight).toEqual([]);
       expect(outAtNoon).toEqual([]);
 
       // every part of the food chain works: berries, meat and fish come in, are eaten, and some go off; wood burns

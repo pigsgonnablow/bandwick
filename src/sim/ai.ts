@@ -167,6 +167,8 @@ export function decide(s: Sim, p: Person) {
       add('preserve', (j.preserve ?? 0) * drive * night * fit(p, SK.hide) * crowd('preserve'));
     }
     if ((j.fuel ?? 0) > 0.5 && c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', j.fuel * (dark ? 1.1 : 1));
+    // from late afternoon, bank the fire with enough to see the night through (in the dark, ahead of sleep)
+    if ((dark || hour >= 15) && age >= 13 && busyWith(s, 'fuel') === 0 && s.fireShort()) add('fuel', dark ? 2.0 : 1.0);
     // a dying fire in the cold is everyone's problem: a few go for wood whatever the hour
     const fireLow = s.hearth().fuel < 2;
     if (fireLow && temp < 9 && age >= 13 && p.health > 30) {
