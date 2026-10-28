@@ -8,7 +8,8 @@ Conventions (read by src/render/band.ts):
       blue = hair, black = leather/shoes. The game tints each person individually.
   deer__{body,head,legFL,legFR,legBL,legBR}               animated in parts, real colours.
   carry__{log,berries,meat,fish,spear,axe,body,baby}           attached to a person's hands or shoulder.
-  bld__{hearth,flame,leanto,hut0,hut1,storehouse,rack,site}  one tile footprint, centred on the origin.
+  bld__{hearth,flame,leanto,hut0,hut1,storehouse,rack,site}  one tile footprint, centred on the origin;
+      huts also come as bld__hut0d/hut1d (wattle-and-daub) and bld__hut0s/hut1s (drystone).
 Models face -Y in Blender (= +Z in the game). 1 unit = one 6 m tile; an adult is 0.4 tall.
 """
 import math
@@ -673,59 +674,202 @@ q.blob((0, 0.06, 0.03), (0.2, 0.11, 0.025), (92, 110, 58), rnd, 0.08, noise=0.25
 q.finish("bld__leanto")
 
 
-def thatch_cone(q, segs, r, z0, h, col, rnd, jag=0.02):
-    """A cone of thatch with a ragged, uneven eave."""
+# Huts: two shapes (hut0 a round wall under a tiered cone of thatch, hut1 a beehive dome on a low wall),
+# each built three ways: woven wattle (bld__hut0), wattle-and-daub (bld__hut0d) and drystone (bld__hut0s).
+# The door faces -y. Anything as dark as DOORWAY is lit by firelight at night, so only the doorway is.
+DAUB = (178, 142, 102)
+DAUB_DK = (146, 112, 78)
+STONES = [(132, 126, 117), (118, 114, 108), (146, 138, 124), (108, 102, 96)]
+DOORWAY = (40, 30, 22)
+ROPE = (120, 96, 60)
+THATCH_UNDER = (112, 88, 52)
+FRONT = -math.pi / 2
+
+
+def at(r, a, z):
+    return (math.cos(a) * r, math.sin(a) * r, z)
+
+
+def in_door(a, half):
+    return abs(math.atan2(math.sin(a - FRONT), math.cos(a - FRONT))) < half
+
+
+def ring_loft(q, rings, color_of, rnd, amt=0.06):
+    """Faces between rings of points (each a closed loop of the same length); color_of(i, k) per face."""
     bm = q.bm
-    ring = []
-    for k in range(segs):
-        a = k / segs * math.tau
-        rr = r * (1 + rnd.uniform(-jag, jag))
-        ring.append(bm.verts.new((math.cos(a) * rr, math.sin(a) * rr, z0 + rnd.uniform(-0.012, 0.012))))
-    apex = bm.verts.new((0, 0, z0 + h))
-    fs = [bm.faces.new((ring[k], ring[(k + 1) % segs], apex)) for k in range(segs)]
-    fs.append(bm.faces.new(list(reversed(ring))))
-    q.paint(fs, col, rnd, 0.08)
+    vs = [[bm.verts.new(p) for p in ring] for ring in rings]
+    n = len(rings[0])
+    for i in range(len(vs) - 1):
+        for k in range(n):
+            f = bm.faces.new((vs[i][k], vs[i][(k + 1) % n], vs[i + 1][(k + 1) % n], vs[i + 1][k]))
+            q.paint([f], color_of(i, k), rnd, amt)
+    return vs
 
 
-rnd = random.Random(30)
-q = Part()  # hut 0: round, stake-and-wattle wall, door frame and hide flap, two-tier thatch, smoke hole sticks
-segs, R = 11, 0.33
-q.cyl(segs, R, R * 0.97, (0, 0, 0), (0, 0, 0.21), WATTLE, rnd, 0.07)
-for k in range(segs):  # the stakes the wattle is woven through
-    a = (k + 0.5) / segs * math.tau
-    if abs(math.sin(a) + 1) < 0.25:
-        continue  # leave the doorway clear
-    q.cyl(4, 0.011, 0.009, (math.cos(a) * R * 1.01, math.sin(a) * R * 1.01, 0), (math.cos(a) * R * 0.98, math.sin(a) * R * 0.98, 0.175), POLE, rnd, 0.06)
-q.box((0, -R + 0.006, 0.085), (0.11, 0.03, 0.17), (40, 30, 22))
-for dx in (-0.065, 0.065):
-    q.cyl(4, 0.012, 0.011, (dx, -R - 0.005, 0), (dx, -R - 0.005, 0.2), POLE, rnd)
-q.cyl(4, 0.011, 0.011, (-0.085, -R - 0.006, 0.195), (0.085, -R - 0.006, 0.195), POLE, rnd)
-q.box((0.035, -R - 0.012, 0.11), (0.06, 0.008, 0.15), HIDE, rnd, 0.05, rot=Matrix.Rotation(0.25, 3, "Z"))  # door flap, pulled aside
-thatch_cone(q, segs + 3, R + 0.1, 0.17, 0.2, THATCH_DK, rnd, 0.05)  # lower tier, the eaves
-thatch_cone(q, segs + 3, R - 0.01, 0.29, 0.25, THATCH, rnd, 0.03)
-for k in range(3):  # sticks lashed at the smoke hole
-    a = k / 3 * math.tau
-    q.cyl(4, 0.006, 0.005, (0, 0, 0.5), (math.cos(a) * 0.05, math.sin(a) * 0.05, 0.6), POLE, rnd)
-q.finish("bld__hut0")
+def wattle_wall(q, R, h, rnd, half):
+    """Rods woven in and out between stakes; each course swaps sides, so the weave shows."""
+    n = 18
+    step = math.tau / n
+    stakes = [FRONT + (k + 0.5) * step for k in range(n)]
+    courses = 6
+    for j in range(courses):
+        z0, z1 = 0.004 + j * h / courses, (j + 1) * h / courses - 0.0012
+        col = jit(WATTLE, rnd, 0.1)
+        for k in range(n - 1):  # the segment between the last stake and the first is the doorway
+            a0, a1 = stakes[k], stakes[k + 1]
+            am = (a0 + a1) / 2
+            rm = R + (0.008 if (k + j) % 2 else -0.004)
+            pts = [at(R, a0, z0), at(rm, am, z0), at(R, a1, z0), at(R, a1, z1), at(rm, am, z1), at(R, a0, z1)]
+            vs = [q.bm.verts.new(p) for p in pts]
+            q.paint([q.bm.faces.new((vs[0], vs[1], vs[4], vs[5])), q.bm.faces.new((vs[1], vs[2], vs[3], vs[4]))], col, rnd, 0.05)
+    for a in stakes:
+        q.cyl(4, 0.008, 0.007, at(R + 0.003, a, 0), at(R + 0.001, a, h + 0.02), POLE, rnd, 0.06)
+    # the far side of the weave, seen through the gaps between rods
+    q.cyl(n, R - 0.006, R - 0.006, (0, 0, 0), (0, 0, h), (96, 72, 46), rnd, 0.04, cap=False)
 
-rnd = random.Random(31)
-q = Part()  # hut 1: a beehive dome of thatch on a low stone footing, roped down
-R = 0.35
-for k in range(14):
-    a = k / 14 * math.tau
-    q.blob((math.cos(a) * R, math.sin(a) * R, 0.025), (0.045, 0.04, 0.03), jit(STONE, rnd, 0.12), rnd, 0.05, noise=0.2)
-q.cyl(12, R * 0.97, R * 0.95, (0, 0, 0), (0, 0, 0.1), WATTLE, rnd, 0.06)
-dome = bmesh.ops.create_uvsphere(q.bm, u_segments=14, v_segments=8, radius=1.0)
-for v in dome["verts"]:
-    z = max(v.co.z, -0.05)
-    v.co = Vector((v.co.x * (R + 0.04) * (1 + rnd.uniform(-0.03, 0.03)), v.co.y * (R + 0.04) * (1 + rnd.uniform(-0.03, 0.03)), 0.08 + z * 0.4))
-q.paint(q._faces_of(dome["verts"]), THATCH, rnd, 0.07)
-for zr in (0.2, 0.34):  # rope bands holding the thatch down
-    rr = (R + 0.045) * math.sqrt(max(0.0, 1 - ((zr - 0.08) / 0.4) ** 2))
-    q.cyl(14, rr + 0.004, rr + 0.004, (0, 0, zr - 0.006), (0, 0, zr + 0.006), (120, 96, 60), rnd, 0.03, cap=False)
-q.box((0, -R + 0.01, 0.075), (0.12, 0.05, 0.15), (40, 30, 22))  # low doorway
-q.box((0, -R - 0.012, 0.158), (0.16, 0.05, 0.022), THATCH_DK, rnd, 0.05, rot=Matrix.Rotation(0.35, 3, "X"))  # thatch hood over the door
-q.finish("bld__hut1")
+
+def daub_wall(q, R, h, rnd, half):
+    """Mud plastered thick over the wattle: a soft bulging wall on a darker splash-stained foot, cracked in
+    a few places to show the rods inside."""
+    n = 20
+    angles = [FRONT + half + k * (math.tau - 2 * half) / n for k in range(n + 1)]
+    profile = [(R + 0.016, 0.0), (R + 0.017, 0.028), (R + 0.015, 0.034), (R + 0.019, 0.09), (R + 0.016, h - 0.03), (R + 0.006, h)]
+    bm = q.bm
+    rows = [[bm.verts.new(at(r * (1 + rnd.uniform(-0.012, 0.012)), a, z)) for a in angles] for r, z in profile]
+    for i in range(len(rows) - 1):
+        for k in range(n):
+            f = bm.faces.new((rows[i][k], rows[i][k + 1], rows[i + 1][k + 1], rows[i + 1][k]))
+            col = DAUB_DK if i < 2 else (WATTLE if (i == 3 and k % 7 == 3) else DAUB)
+            q.paint([f], col, rnd, 0.07)
+    for k in (0, n):  # wall ends at the door: a face across the thickness
+        a = angles[k]
+        q.box(at(R + 0.004, a, h / 2), (0.014, 0.034, h), DAUB, rnd, 0.05, rot=Matrix.Rotation(a + math.pi / 2, 3, "Z"))
+
+
+def stone_wall(q, R, h, rnd, half, courses=5):
+    """Drystone: courses of rough blocks, each course's joints set over the middle of the blocks below."""
+    for c in range(courses):
+        ch = h / courses
+        m = 15 - c // 2
+        off = (c % 2) * 0.5
+        for k in range(m):
+            a = FRONT + (k + off) / m * math.tau + math.pi / m
+            if in_door(a, half + 0.06):
+                continue
+            arc = math.tau * R / m
+            size = (arc * rnd.uniform(0.86, 0.98), 0.05 * rnd.uniform(0.9, 1.15), ch * rnd.uniform(0.82, 0.96))
+            if c == 0:
+                size = (size[0] * 1.05, size[1] * 1.2, size[2] * 1.1)
+            q.box(at(R + 0.012 + rnd.uniform(-0.004, 0.004), a, c * ch + ch / 2), size, rnd.choice(STONES), rnd, 0.08,
+                  rot=Matrix.Rotation(a + math.pi / 2 + rnd.uniform(-0.04, 0.04), 3, "Z"), taper=0.92)
+    # a lintel over the doorway, and the door's side stones set upright
+    q.box(at(R + 0.012, FRONT, h - 0.012), (2 * math.sin(half) * R + 0.09, 0.06, 0.03), STONES[1], rnd, 0.05)
+    for s in (-1, 1):
+        a = FRONT + s * (half + 0.035)
+        q.box(at(R + 0.012, a, (h - 0.024) / 2), (0.04, 0.055, h - 0.024), STONES[0], rnd, 0.06, rot=Matrix.Rotation(a + math.pi / 2, 3, "Z"))
+
+
+def doorway(q, R, half, h, walls, rnd):
+    """The dark opening (it glows at night), its frame, a hide flap pulled aside and a threshold stone."""
+    w = 2 * math.sin(half) * R
+    y = math.sin(FRONT) * R
+    q.box((0, y + 0.025, h / 2), (w + 0.01, 0.05, h), DOORWAY)
+    if walls != "stone":
+        for dx in (-1, 1):
+            q.cyl(5, 0.013, 0.011, (dx * (w / 2 + 0.006), y - 0.006, 0), (dx * (w / 2 + 0.006), y - 0.006, h + 0.012), POLE, rnd)
+        q.cyl(5, 0.012, 0.012, (-w / 2 - 0.025, y - 0.008, h + 0.006), (w / 2 + 0.025, y - 0.008, h + 0.006), POLE, rnd)
+    q.box((w * 0.3, y - 0.014, h * 0.55), (w * 0.5, 0.008, h * 0.86), HIDE, rnd, 0.05, rot=Matrix.Rotation(0.3, 3, "Z"))
+    q.blob((0, y - 0.03, 0.006), (w * 0.55, 0.035, 0.012), STONES[2], rnd, 0.05, noise=0.15)
+
+
+def thatch_roof(q, tiers, n, rnd, under=None):
+    """A thatched roof in overlapping tiers. tiers: [(r_bottom, z_bottom, r_top, z_top)], eaves out, apex last.
+    Each tier hangs a ragged edge over the one below; `under` = (r, z) closes the eave from beneath."""
+    rings = []
+    tier_of = []
+    ph = rnd.uniform(0, math.tau)
+    for t, (rb, zb, rt, zt) in enumerate(tiers):
+        rings.append([at(rb * (1 + rnd.uniform(-0.03, 0.03)), ph + k / n * math.tau, zb - (0.014 if k % 2 else 0) + rnd.uniform(-0.006, 0.006)) for k in range(n)])
+        tier_of.append(t)
+        rings.append([at(rt * (1 + rnd.uniform(-0.015, 0.015)), ph + k / n * math.tau, zt) for k in range(n)])
+        tier_of.append(t)
+    shades = [THATCH_DK, THATCH, (206, 176, 108), THATCH]
+
+    def col(i, k):
+        if i % 2 == 1:
+            return THATCH_DK  # the step down onto the next tier, in the shade of its overhang
+        return jit(shades[tier_of[i] % len(shades)], rnd, 0.05)
+    vs = ring_loft(q, rings, col, rnd, 0.07)
+    apex = q.bm.verts.new((0, 0, tiers[-1][3] + 0.035))
+    q.paint([q.bm.faces.new((vs[-1][k], vs[-1][(k + 1) % n], apex)) for k in range(n)], THATCH, rnd, 0.06)
+    if under:
+        inner = [q.bm.verts.new(at(under[0], ph + k / n * math.tau, under[1])) for k in range(n)]
+        q.paint([q.bm.faces.new((vs[0][(k + 1) % n], vs[0][k], inner[k], inner[(k + 1) % n])) for k in range(n)], THATCH_UNDER, rnd, 0.05)
+
+
+def hut0(walls, rnd):
+    """Round hut: wall to shoulder height, a doorway, three tiers of thatch rising to a smoke hole."""
+    q = Part()
+    R, h, half = 0.32, 0.2, 0.2
+    {"wood": wattle_wall, "daub": daub_wall, "stone": stone_wall}[walls](q, R, h, rnd, half)
+    doorway(q, R, half, 0.165 if walls != "stone" else 0.17, walls, rnd)
+    thatch_roof(q, [(R + 0.075, 0.232, R - 0.005, 0.32), (R + 0.01, 0.308, R - 0.105, 0.41), (R - 0.09, 0.398, 0.06, 0.5)], 20, rnd,
+                under=(R - 0.01, 0.222))
+    q.cyl(10, 0.07, 0.062, (0, 0, 0.48), (0, 0, 0.494), ROPE, rnd, 0.03, cap=False)  # binding at the crown
+    for k in range(3):  # sticks lashed at the smoke hole
+        a = k / 3 * math.tau + 0.4
+        q.cyl(4, 0.006, 0.005, (0, 0, 0.49), (math.cos(a) * 0.05, math.sin(a) * 0.05, 0.61), POLE, rnd)
+    # firewood leant against the wall by the door, out of the rain under the eave
+    for k in range(3):
+        a = FRONT + 0.75 + k * 0.1
+        base = Vector(at(R + 0.075, a, 0.0))
+        top = Vector(at(R + 0.03, a + 0.03, 0.15 + k * 0.012))
+        q.cyl(5, 0.013, 0.011, tuple(base), tuple(top), BARK, rnd, 0.06)
+    if walls == "stone":  # spare stones from the building, heaped at the side
+        for k in range(4):
+            a = FRONT - 0.95 - k * 0.07
+            q.blob(at(R + 0.07 + rnd.uniform(-0.01, 0.02), a, 0.016), (0.026, 0.022, 0.018), rnd.choice(STONES), rnd, 0.06, noise=0.2)
+    return q
+
+
+def hut1(walls, rnd):
+    """Beehive hut: a low wall under a dome of thatch in courses, held down by ropes weighted with stones."""
+    q = Part()
+    R, half = 0.34, 0.19
+    h = {"wood": 0.12, "daub": 0.13, "stone": 0.14}[walls]
+    {"wood": wattle_wall, "daub": daub_wall, "stone": stone_wall}[walls](q, R, h, rnd, half)
+    if walls != "stone":  # the old footing of stones the wall stands on
+        for k in range(16):
+            a = FRONT + (k + 0.5) / 16 * math.tau
+            if not in_door(a, half + 0.08):
+                q.blob(at(R + 0.03, a, 0.018), (0.04, 0.034, 0.024), rnd.choice(STONES), rnd, 0.05, noise=0.2)
+    door_h = h + 0.03
+    doorway(q, R, half, door_h, walls, rnd)
+    # dome courses: (r at the bottom of the course, z) up to the crown
+    z0, H, Rd = h + 0.012, 0.33, R + 0.03
+    tiers = []
+    for t, (th0, th1) in enumerate([(0.0, 0.42), (0.36, 0.8), (0.74, 1.2)]):
+        tiers.append((Rd * math.cos(th0) + 0.012, z0 + H * math.sin(th0), Rd * math.cos(th1), z0 + H * math.sin(th1)))
+    thatch_roof(q, tiers, 18, rnd, under=(R - 0.02, h + 0.004))
+    # two ropes round the dome, and ropes over it weighted with stones that hang at the eave
+    for th in (0.5, 0.95):
+        rr, zr = Rd * math.cos(th) + 0.008, z0 + H * math.sin(th)
+        q.cyl(16, rr, rr, (0, 0, zr - 0.006), (0, 0, zr + 0.006), ROPE, rnd, 0.03, cap=False)
+    for k in range(6):
+        a = FRONT + (k + 0.5) / 6 * math.tau
+        top = at(Rd * math.cos(0.5) + 0.01, a, z0 + H * math.sin(0.5))
+        bot = at(Rd + 0.018, a, z0 - 0.02)
+        q.cyl(3, 0.003, 0.003, top, bot, ROPE, rnd, 0.03)
+        q.blob(at(Rd + 0.02, a, z0 - 0.04), (0.022, 0.02, 0.024), rnd.choice(STONES), rnd, 0.05, noise=0.2)
+    # a hood of thatch over the low door
+    y = math.sin(FRONT) * R
+    q.box((0, y - 0.03, door_h + 0.02), (0.18, 0.08, 0.022), THATCH_DK, rnd, 0.05, rot=Matrix.Rotation(0.35, 3, "X"))
+    return q
+
+
+for walls, suffix in (("wood", ""), ("daub", "d"), ("stone", "s")):
+    hut0(walls, random.Random(30)).finish(f"bld__hut0{suffix}")
+    hut1(walls, random.Random(31)).finish(f"bld__hut1{suffix}")
 
 rnd = random.Random(40)
 q = Part()  # storehouse raised on posts against damp and vermin
