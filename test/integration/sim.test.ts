@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Sim, SaveData } from '../../src/sim/sim';
 import { generateWorld } from '../../src/sim/worldgen';
-import { TICKS_PER_DAY, TICKS_PER_YEAR, START_TICK, seasonOf } from '../../src/sim/time';
+import { TICKS_PER_DAY, TICKS_PER_YEAR, START_TICK, DAYS_PER_SEASON, seasonOf } from '../../src/sim/time';
 import { FAR_GRAVE, completeBuilding, standOn } from '../../src/sim/ai';
 import { runChecked } from '../../tools/lib/invariants';
 import { sim, world, runTo, runYears } from '../helpers';
@@ -198,7 +198,8 @@ describe('the dead', () => {
     Object.assign(p, { x: (tile % s.N) + 0.5, z: Math.floor(tile / s.N) + 0.5, task: null, path: null });
     s.kill(p, 'wolves');
     const at = { x: p.x, z: p.z };
-    for (let d = 0; d < 6 && !p.buried; d++) runTo(s, s.tick + TICKS_PER_DAY);
+    // (within the time the daily checks allow a body far out: someone has to be well fed and the day mild enough)
+    for (let d = 0; d < DAYS_PER_SEASON + 6 && !p.buried; d++) runTo(s, s.tick + TICKS_PER_DAY);
     expect(p.buried).toBe(true);
     // a grave out there, not in the camp's burial ground
     expect(Math.hypot(p.x - at.x, p.z - at.z)).toBeLessThan(3);
