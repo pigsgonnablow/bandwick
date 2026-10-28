@@ -1283,9 +1283,12 @@ export class Sim {
         }
       } else if (it.kind === 'fishtrap') {
         if ((it.catch ?? 0) < 4 && this.fish[w] >= 1.5 && !(frozen && this.world.water[w] !== WATER.Sea) && r.chance(0.7)) {
-          const n = Math.min(this.fish[w] - 0.5, 1 + r.int(0, 3), 4 - (it.catch ?? 0));
-          it.catch = (it.catch ?? 0) + n;
-          this.fish[w] -= n;
+          // whole fish: the stock is fractional, a catch is counted and told
+          const n = Math.min(Math.floor(this.fish[w] - 0.5), 1 + r.int(0, 3), 4 - (it.catch ?? 0));
+          if (n >= 1) {
+            it.catch = (it.catch ?? 0) + n;
+            this.fish[w] -= n;
+          }
         }
       }
       // the cord rots or is chewed through; the basket comes apart

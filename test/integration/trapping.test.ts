@@ -54,6 +54,24 @@ describe('trapping', () => {
     for (const it of set) expect(s.fishCap[it.tile!]).toBeGreaterThan(0);
   });
 
+  it('catches whole fish, even from a stock that has been fished down to a fraction', () => {
+    const s = sim(1);
+    // sea water, which never freezes; and nobody's trap, so no round empties it before we look
+    const w = s.fishCap.findIndex((c, i) => c > 0 && s.world.water[i] === WATER.Sea);
+    expect(w).toBeGreaterThanOrEqual(0);
+    s.items.push({ id: s.newId(), kind: 'fishtrap', band: -1, holder: -1, wear: 0, made: s.tick, maker: -1, tile: w, catch: 0 });
+    const trap = s.items[s.items.length - 1];
+    const catches: number[] = [];
+    for (let d = 0; d < 12; d++) {
+      s.fish[w] = 2.37 + d * 0.11;
+      runTo(s, s.tick + TICKS_PER_DAY);
+      if (trap.catch) catches.push(trap.catch);
+      trap.catch = 0;
+    }
+    expect(catches.length).toBeGreaterThan(0);
+    for (const n of catches) expect(Number.isInteger(n)).toBe(true);
+  });
+
   it('takes the traps up when the band leaves, and loads saves from before trapping', () => {
     const s = sim(1);
     s.camp.knows.push('snares');
