@@ -383,6 +383,7 @@ export class BandLayer {
       ['hairS', 6, JT.neck, none], ['hairL', 7, JT.neck, none],
       ['foreL', 8, JT.shoulderL, JT.elbowL], ['foreR', 9, JT.shoulderR, JT.elbowR],
       ['shinL', 10, JT.hipL, JT.kneeL], ['shinR', 11, JT.hipR, JT.kneeR],
+      ['hairB', 12, JT.neck, none], ['hairU', 13, JT.neck, none], ['beard', 14, JT.neck, none],
     ];
     const list: THREE.BufferGeometry[] = [];
     for (const [name, id, p1, p2] of parts) {
@@ -886,10 +887,14 @@ export class BandLayer {
       this.villagers.setMatrixAt(n, m4);
       const look = s.look;
       const elder = s.age >= 58 ? 1 : 0;
-      const longHair = s.sex === 0 ? ((look >>> 4) % 10 < 8 ? 1 : 0) : ((look >>> 4) % 10 < 1 ? 1 : 0);
+      // hair: 0 short, 1 long, 2 braids, 3 a bun; most women wear it long, plaited or tied up,
+      // most men short; about half the grown men have a beard
+      const cut = (look >>> 4) % 10;
+      const hairStyle = s.sex === 0 ? (cut < 4 ? 1 : cut < 6 ? 2 : cut < 8 ? 3 : 0) : (cut < 1 ? 1 : 0);
+      const beard = s.sex === 1 && s.age >= 18 && (look >>> 24) % 10 < 5 ? 1 : 0;
       const dead = s.act === ACT.Dead ? 1 : 0;
       const blend = Math.min(1, Math.max(0, (now - s.actAt) / 220));
-      anim.setXYZW(n, s.shownAct, s.prevAct, blend, longHair + elder * 2 + dead * 4);
+      anim.setXYZW(n, s.shownAct, s.prevAct, blend, hairStyle + elder * 4 + dead * 8 + beard * 16);
       // a one-off move under way
       let gpr = -1;
       const held = this.debugHold.get(id);
@@ -1540,8 +1545,8 @@ void poseVertex(vec3 pos, out vec3 v, out mat3 R) {
   float k = smoothstep(0.0, 1.0, iAnim.z);
   Pose p = blendPose(poseFor(iAnim.y, t, iAnim2.x, iAnim2.y), poseFor(iAnim.x, t, iAnim2.x, iAnim2.y), k);
   float style = iAnim.w;
-  float hairLong = mod(style, 2.0);
-  p.lean += step(1.5, mod(style, 4.0)) * 0.18;   // elders stoop
+  float hairStyle = mod(style, 4.0);
+  p.lean += step(3.5, mod(style, 8.0)) * 0.18;   // elders stoop
   // hands that are carrying something hold it (codes as CARRY in sim/band.ts)
   float carry = iAnim2.w;
   if (p.lie < 0.5 && carry > 0.5) {
@@ -1560,14 +1565,15 @@ void poseVertex(vec3 pos, out vec3 v, out mat3 R) {
   v = pos; R = mat3(1.0);
   float part = aPart;
   bool left = part > 1.5 && part < 2.5 || part > 3.5 && part < 4.5 || part > 7.5 && part < 8.5 || part > 9.5 && part < 10.5;
-  bool leg = part > 3.5 && part < 5.5 || part > 9.5;
+  bool leg = part > 3.5 && part < 5.5 || part > 9.5 && part < 11.5;
   bool arm = part > 1.5 && part < 3.5 || part > 7.5 && part < 9.5;
-  bool headish = part > 0.5 && part < 1.5 || part > 5.5 && part < 7.5;
-  // only one of the two hair styles is shown
-  if ((part > 5.5 && part < 6.5 && hairLong > 0.5) || (part > 6.5 && part < 7.5 && hairLong < 0.5)) { v = vec3(0.0, -1.0, 0.0); R = mat3(0.0); return; }
+  bool headish = part > 0.5 && part < 1.5 || part > 5.5 && part < 7.5 || part > 11.5;
+  // only one hair style is shown (parts 6, 7, 12, 13 are styles 0-3), and the beard only on the bearded
+  float hairPart = part > 5.5 && part < 7.5 ? part - 6.0 : part > 11.5 && part < 13.5 ? part - 10.0 : -1.0;
+  if ((hairPart > -0.5 && abs(hairPart - hairStyle) > 0.5) || (part > 13.5 && style < 15.5)) { v = vec3(0.0, -1.0, 0.0); R = mat3(0.0); return; }
   // lower joint first (knee, elbow), then the limb it hangs from
-  if (part > 9.5) turn(v, R, rx(left ? p.knL : p.knR), aPivot2);
-  else if (part > 7.5) turn(v, R, rx(left ? p.elL : p.elR), aPivot2);
+  if (part > 9.5 && part < 11.5) turn(v, R, rx(left ? p.knL : p.knR), aPivot2);
+  else if (part > 7.5 && part < 9.5) turn(v, R, rx(left ? p.elL : p.elR), aPivot2);
   if (leg) turn(v, R, rx(left ? p.thL : p.thR), aPivot);
   if (arm) turn(v, R, rx(left ? p.shL : p.shR), aPivot);
   if (headish) turn(v, R, rx(p.head), aPivot);
