@@ -2288,8 +2288,8 @@ export class Sim {
     // from late summer on, the store has to carry the band through to the end of winter
     const need = meals * (winterNow ? daysToWinterEnd + 2 : s >= 1.75 ? daysToWinterEnd : Math.min(daysToWinterEnd, 20));
     const foodP = clamp01(1.15 - (lasting / Math.max(1, need)) * 0.9, winterNow ? 0.3 : 0.1, 1.2);
-    // the fire burns about 6 loads a day in winter: lay in enough before the cold comes
-    const fuelNeed = (winterNow ? Math.max(14, daysToWinterEnd * 6.5) : s > 2.0 ? 80 : s > 1.4 ? 40 : 12) * (this.hasBuilt('woodshed') ? 1 : s > 1.6 ? DAMP_BURN : 1);
+    // kept burning through the night, the fire eats about 9 loads a winter day: lay in enough before the cold comes
+    const fuelNeed = (winterNow ? Math.max(14, daysToWinterEnd * 9) : s > 2.0 ? 110 : s > 1.4 ? 55 : 12) * (this.hasBuilt('woodshed') ? 1 : s > 1.6 ? DAMP_BURN : 1);
     const sites = mine.filter((b) => !b.built);
     // daub can't wait on frozen ground: a site still short of mud as winter comes is raised in wood
     if (s >= 2.75) for (const b of sites) this.fallBackToWood(b);
