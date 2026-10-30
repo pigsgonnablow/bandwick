@@ -930,16 +930,6 @@ THATCH_DK = (160, 128, 72)
 POLE = (104, 78, 52)
 HIDE = (168, 132, 96)
 
-rnd = random.Random(21)
-q = Part()  # hearth: stone ring, logs, ash
-for k in range(8):
-    a = k / 8 * math.tau
-    q.blob((math.cos(a) * 0.2, math.sin(a) * 0.2, 0.025), (0.05, 0.045, 0.035), jit(STONE, rnd, 0.1), rnd, 0.06, noise=0.2)
-q.cyl(8, 0.17, 0.17, (0, 0, 0.0), (0, 0, 0.012), (60, 52, 46), rnd, 0.05)
-for k in range(3):
-    a = k / 3 * math.tau + 0.3
-    q.cyl(5, 0.022, 0.016, (math.cos(a) * 0.15, math.sin(a) * 0.15, 0.02), (math.cos(a) * 0.02, math.sin(a) * 0.02, 0.09), BARK, rnd, 0.05)
-q.finish("bld__hearth")
 q = Part()  # flame (white; tinted and animated in the shader)
 q.cone(5, 0.075, 0.03, 0.22, (255, 255, 255))
 q.cone(4, 0.05, 0.05, 0.27, (255, 255, 255), center=(0.03, 0.02))
@@ -1474,43 +1464,118 @@ for k in range(5):  # chips
           rot=Matrix.Rotation(rnd.uniform(0, math.pi), 3, "Z"))
 q.finish("bld__woodshed")
 
+rnd = random.Random(20)
+ASH = (150, 146, 140)
+CHARRED = (44, 38, 34)
+EMBER = (232, 112, 40)
+SOOT = (70, 64, 60)
+q = Part()  # hearth: a ring of fire-cracked stones bedded in the ground, blackened on the inside; a bed of
+for k in range(11):  # ash with a charred heart; logs laid in a star, burnt at the inner ends with embers in
+    a = k / 11 * math.tau + rnd.uniform(-0.08, 0.08)  # the cracks; a spit on forked sticks; firewood to hand
+    r = 0.205 + rnd.uniform(-0.01, 0.01)
+    c = Vector((math.cos(a) * r, math.sin(a) * r, 0.018))
+    size = (0.038 + rnd.uniform(0, 0.014), 0.03 + rnd.uniform(0, 0.012), 0.026 + rnd.uniform(0, 0.012))
+    m = Matrix.Rotation(a, 3, "Z")
+    for v in q.blob((0, 0, 0), size, jit(STONE, rnd, 0.12), rnd, 0.06, noise=0.2):
+        v.co = c + m @ Vector((v.co.y, v.co.x, v.co.z))
+for f in q.bm.faces:  # soot on the faces turned to the fire
+    cen = f.calc_center_median()
+    if cen.length > 0.05 and f.normal.dot(Vector((-cen.x, -cen.y, 0)).normalized()) > 0.3 and cen.z > 0.012:
+        q.paint([f], SOOT, rnd, 0.06)
+ash = [[at(r * (1 + rnd.uniform(-0.04, 0.04)), k / 12 * math.tau, z) for k in range(12)] for r, z in ((0.185, 0.002), (0.12, 0.009), (0.05, 0.012))]
+vs = ring_loft(q, ash, lambda i, k: ASH if i == 0 else (120, 116, 110), rnd, 0.06)
+fan(q, vs[-1], (0, 0, 0.012), CHARRED, raw=False)
+for k in range(5):  # logs in a star, burnt down at the middle
+    a = k / 5 * math.tau + 0.4 + rnd.uniform(-0.1, 0.1)
+    outer, inner = Vector(at(0.2, a, 0.022)), Vector(at(0.04, a, 0.05))
+    mid = outer.lerp(inner, 0.55)
+    q.cyl(6, 0.02, 0.019, outer, mid, BARK, rnd, 0.05)
+    q.cyl(6, 0.019, 0.014, mid, inner, CHARRED, rnd, 0.05)
+    q.box(mid.lerp(inner, 0.5) + Vector((0, 0, 0.012)), (0.012, 0.008, 0.004), EMBER, rnd, 0.1, rot=Matrix.Rotation(a, 3, "Z"))
+for s_ in (-1, 1):  # forked sticks and a spit across
+    forked_post(q, (s_ * 0.27, 0.04, 0), (s_ * 0.27, 0.04, 0.21), rnd, r=0.008)
+q.cyl(5, 0.006, 0.006, (-0.31, 0.04, 0.232), (0.31, 0.04, 0.232), POLE, rnd)
+for k in range(4):  # firewood stacked ready, behind the ring
+    y = 0.31 + (k % 2) * 0.045
+    z = 0.02 + (k // 2) * 0.036
+    q.cyl(6, 0.02, 0.018, (-0.13, y + (k // 2) * 0.022, z), (0.13, y + (k // 2) * 0.022, z), BARK, rnd, 0.05)
+q.finish("bld__hearth")
+
 rnd = random.Random(41)
-q = Part()  # drying rack: two A-frames, a pole, strips of fish and meat
-for x in (-0.25, 0.25):
-    q.cyl(4, 0.012, 0.01, (x, -0.1, 0), (x, 0, 0.34), POLE, rnd)
-    q.cyl(4, 0.012, 0.01, (x, 0.1, 0), (x, 0, 0.34), POLE, rnd)
-q.cyl(4, 0.01, 0.01, (-0.3, 0, 0.33), (0.3, 0, 0.33), POLE, rnd)
-for k in range(6):
-    x = -0.2 + k * 0.08
-    col = (164, 76, 60) if k % 2 else (176, 170, 150)
-    q.box((x, 0, 0.26), (0.03, 0.012, 0.12), col, rnd, 0.1)
-q.cyl(6, 0.08, 0.06, (0, 0.25, 0), (0, 0.25, 0.02), (70, 60, 52), rnd)
+MEAT_DRY = (104, 56, 44)
+FISH_DRY = (184, 170, 140)
+q = Part()  # drying rack: two splayed A-frames lashed at the top, two cross poles, strips of meat and split
+for x in (-0.26, 0.26):  # fish hung over them to dry in the smoke of a smouldering pit underneath
+    for y in (-0.12, 0.12):
+        q.cyl(4, 0.011, 0.009, (x + 0.02 * (1 if x > 0 else -1), y, 0), (x, 0, 0.35), POLE, rnd)
+    q.cyl(6, 0.014, 0.014, (x, 0, 0.32), (x, 0, 0.336), ROPE, rnd, 0.03, cap=False)  # the lashing
+q.cyl(5, 0.01, 0.009, (-0.32, 0, 0.345), (0.32, 0, 0.345), POLE, rnd)
+for y in (-0.06, 0.06):
+    q.cyl(4, 0.008, 0.007, (-0.3, y, 0.22), (0.3, y, 0.22), POLE, rnd)
+for k in range(7):  # meat in strips over the top pole
+    x = -0.21 + k * 0.07 + rnd.uniform(-0.01, 0.01)
+    for sy in (-1, 1):
+        q.box((x, sy * 0.008, 0.3 + rnd.uniform(-0.012, 0.012)), (0.02 + rnd.uniform(0, 0.008), 0.006, 0.08), jit(MEAT_DRY, rnd, 0.12), rnd, 0.08,
+              rot=Matrix.Rotation(sy * 0.15, 3, "X") @ Matrix.Rotation(rnd.uniform(-0.12, 0.12), 3, "Y"), taper=0.7)
+for y in (-0.06, 0.06):  # fish split open and hung by the tail from the lower poles
+    for k in range(4):
+        x = -0.19 + k * 0.125 + rnd.uniform(-0.01, 0.01)
+        q.box((x, y, 0.17), (0.034, 0.006, 0.09), FISH_DRY, rnd, 0.06, taper=0.45)
+        q.box((x, y, 0.218), (0.03, 0.004, 0.012), (150, 140, 120), rnd, 0.0)  # the tail
+for k in range(6):  # the smoke pit: a shallow ring of stones round a smoulder of green wood
+    a = k / 6 * math.tau
+    q.blob(at(0.085, a, 0.012), (0.026, 0.022, 0.018), jit(STONE, rnd, 0.1), rnd, 0.06, noise=0.2)
+q.cyl(8, 0.07, 0.07, (0, 0, 0), (0, 0, 0.008), ASH, rnd, 0.05)
+q.blob((0, 0, 0.014), (0.045, 0.04, 0.012), (78, 84, 52), rnd, 0.1, noise=0.3)  # damp leaves for smoke
 q.finish("bld__rack")
 
 rnd = random.Random(43)
-q = Part()  # stockpile: a bark mat for food in front; at the back, stakes and sleepers that hold a woodstack
-q.box((0, -0.13, 0.006), (0.52, 0.28, 0.012), (138, 108, 72), rnd, 0.08)
-q.box((0, -0.13, 0.004), (0.56, 0.32, 0.008), (96, 74, 50), rnd, 0.05)
+REED = (176, 150, 96)
+REED_DK = (162, 136, 86)
+q = Part()  # stockpile: a woven reed mat for food at the front, bound at the edges; at the back two sleepers
+mx, my = 0.26, 0.14   # to keep the woodstack off the ground, held in by four stakes
+rows = [[(-mx + 2 * mx * k / 12, -0.13 - my + 2 * my * i / 6, 0.008) for k in range(13)] for i in range(7)]
+bot = [[(x, y, 0.001) for x, y, _ in row] for row in rows]
+shell(q, rows, bot, lambda i, k: REED if (i + k) % 2 else REED_DK, lambda i, k: REED_DK, (120, 96, 60), rnd, 0.06)
+for y in (-0.13 - my, -0.13 + my):  # bound edges
+    q.cyl(5, 0.007, 0.007, (-mx, y, 0.006), (mx, y, 0.006), ROPE, rnd, 0.03)
 for sx in (-0.12, 0.12):
-    q.cyl(5, 0.012, 0.012, (sx, 0.12, 0.012), (sx, 0.32, 0.012), BARK, rnd, 0.04)
+    q.cyl(5, 0.013, 0.013, (sx, 0.115, 0.013), (sx, 0.325, 0.013), BARK, rnd, 0.04)
 for sx in (-0.215, 0.215):
     for sy in (0.14, 0.30):
-        q.cyl(4, 0.009, 0.007, (sx, sy, 0), (sx, sy, 0.2), POLE, rnd, 0.05)
+        q.cyl(4, 0.009, 0.007, (sx, sy, -0.01), (sx + (0.012 if sx > 0 else -0.012), sy, 0.21), POLE, rnd, 0.05)
+    q.cyl(3, 0.0035, 0.0035, (sx * 1.03, 0.14, 0.19), (sx * 1.03, 0.30, 0.19), ROPE, rnd, 0.0)  # tied across the tops
 q.finish("bld__stockpile")
 
-q = Part()  # one split log of firewood, for stacking on the stockpile
-q.cyl(6, 0.021, 0.02, (-0.19, 0, 0), (0.19, 0, 0), BARK, rnd, 0.05)
-for ex in (-0.191, 0.191):
-    q.cyl(6, 0.017, 0.017, (ex - 0.001, 0, 0), (ex + 0.001, 0, 0), (196, 160, 112), rnd, 0.02)
+q = Part()  # one split log of firewood, for stacking on the stockpile: bark round, the pale split face up
+segs = 7
+bm = q.bm
+ends = []
+for x in (-0.19, 0.19):
+    ring = [bm.verts.new((x, math.cos(math.pi * k / (segs - 1)) * 0.021, -math.sin(math.pi * k / (segs - 1)) * 0.021 + 0.004)) for k in range(segs)]
+    ends.append(ring)
+for k in range(segs - 1):
+    q.paint([bm.faces.new((ends[0][k], ends[0][k + 1], ends[1][k + 1], ends[1][k]))], jit(BARK, rnd, 0.06), rnd, 0.05)
+q.paint([bm.faces.new((ends[0][-1], ends[0][0], ends[1][0], ends[1][-1]))], (196, 160, 112), rnd, 0.04)  # the split face
+q.paint([bm.faces.new(list(reversed(ends[0]))), bm.faces.new(ends[1])], (186, 150, 104), rnd, 0.03)
 q.finish("pile__log")
 
 rnd = random.Random(42)
-q = Part()  # construction site: stacked logs and a marking pole
-for k in range(4):
-    z = 0.025 + (k // 2) * 0.04
-    y = -0.04 + (k % 2) * 0.08 - (k // 2) * 0.0
-    q.cyl(5, 0.022, 0.02, (-0.2, y, z), (0.2, y, z), BARK, rnd, 0.06)
-q.cyl(4, 0.01, 0.008, (0.26, 0.2, 0), (0.26, 0.2, 0.3), POLE, rnd)
+q = Part()  # building site: poles laid ready across two sleepers, a bundle of withies, a marker pole with a
+for sx in (-0.12, 0.12):  # rag tied on, and a stone maul for driving stakes
+    q.cyl(5, 0.014, 0.014, (sx, -0.1, 0.014), (sx, 0.1, 0.014), BARK, rnd, 0.05)
+for k in range(5):
+    z = 0.042 + (k // 3) * 0.036
+    y = -0.07 + (k % 3) * 0.05 + (k // 3) * 0.025
+    q.cyl(6, 0.018, 0.016, (-0.22, y, z), (0.22 + rnd.uniform(-0.03, 0.03), y, z), POLE if k % 2 else BARK, rnd, 0.06)
+for k in range(9):  # withies for weaving, tied in a bundle
+    a, r = rnd.uniform(0, math.tau), rnd.uniform(0, 0.012)
+    q.cyl(3, 0.004, 0.003, (-0.2, 0.17 + math.cos(a) * r, 0.014 + math.sin(a) * r), (0.2, 0.17 + math.cos(a) * r * 1.6, 0.014 + math.sin(a) * r), WATTLE, rnd, 0.08, cap=False)
+q.cyl(6, 0.015, 0.015, (-0.004, 0.17, 0.014), (0.004, 0.17, 0.014), ROPE, rnd, 0.03, cap=False)
+q.cyl(4, 0.01, 0.008, (0.27, 0.22, 0), (0.27, 0.22, 0.34), POLE, rnd)  # the marker pole
+q.box((0.29, 0.22, 0.3), (0.04, 0.004, 0.05), (196, 72, 52), rnd, 0.06, rot=Matrix.Rotation(0.3, 3, "Z"))  # a rag tied on
+q.cyl(4, 0.006, 0.005, (-0.26, -0.18, 0), (-0.25, -0.12, 0.13), POLE, rnd)  # the maul, leant on the poles
+q.blob((-0.25, -0.12, 0.135), (0.022, 0.018, 0.028), STONES[1], rnd, 0.05, noise=0.15)
 q.finish("bld__site")
 
 # ---------------------------------------------------------------- walk and run cycles
