@@ -16,6 +16,8 @@ const SWIM = 19, TREAD = 20;
 const FISH_TASK = TASK_KINDS.indexOf('fish') + 1;
 /** Drawn in a woodcutter's hands while they chop: an axe, or a hand chopper (a knapped stone in the fist). */
 const AXE = 99, CHOPPER = 98;
+/** Tools carried when the hands are otherwise free: a digging stick held low, a trap on the way to be set. */
+const STICK = 97, SNARE = 96, FISHTRAP = 95;
 /** How walls that are not wood colour a building that has no model of its own for them (multiplied over its own colours). */
 const WALL_TINT: Record<string, [number, number, number]> = { daub: [1.0, 0.86, 0.68], stone: [0.8, 0.82, 0.86] };
 /** A box of one colour, turned about its own centre and set down at (x, y, z) (y is its foot). */
@@ -160,7 +162,7 @@ interface Shown {
   fx: number; fz: number;
   /** their band */
   band: number;
-  /** the tool in hand: 0 none, 1 chopper, 2 axe */
+  /** the tool in hand: 0 none, 1 chopper, 2 axe, 3 digging stick, 4 snare, 5 fish trap */
   tool: number;
   /** where the axe swing had got to last frame; whether this stab has hit the water yet */
   swing: number; splashed: boolean;
@@ -178,6 +180,9 @@ export class BandLayer {
   /** what lies on each stockpile (by building id), and the meshes that show it */
   private piles = new Map<number, { wood: number; berries: number; meat: number; fish: number; preserved: number }>();
   private pileMeshes = new Map<string, THREE.InstancedMesh>();
+  /** the snares and fish traps standing in the world, and their meshes (set, and holding a catch) */
+  private traps: NonNullable<Frame['traps']> = [];
+  private trapMeshes = new Map<string, THREE.InstancedMesh>();
   private glow: THREE.Sprite[] = [];
   private lights: THREE.PointLight[] = [];
   private smoke: THREE.Points;
@@ -207,6 +212,7 @@ export class BandLayer {
     const carryNames: [number, string][] = [
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
       [CARRY.Spear, 'spear'], [CARRY.Body, 'body'], [CARRY.Baby, 'baby'], [AXE, 'axe'], [CHOPPER, 'chopper'],
+      [STICK, 'stick'], [SNARE, 'snare'], [FISHTRAP, 'fishtrap'],
       // cut grass and cordage go home in a basket like berries
       [CARRY.Fiber, 'berries'], [CARRY.Mud, 'berries'], [CARRY.Stone, 'berries'],
     ];
@@ -214,7 +220,7 @@ export class BandLayer {
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
     carryMat.customProgramCacheKey = () => 'carry';
     for (const [id, name] of carryNames) {
-      const g = geoms.get(`carry__${name}`) ?? (name === 'chopper' ? plank(0.045, 0.06, 0.035, 0, -0.03, 0, 0.3, 0.2, 0x8a8478) : undefined);
+      const g = geoms.get(`carry__${name}`) ?? geoms.get(`trap__${name}`) ?? (name === 'chopper' ? plank(0.045, 0.06, 0.035, 0, -0.03, 0, 0.3, 0.2, 0x8a8478) : undefined);
       if (!g) continue;
       const m = new THREE.InstancedMesh(g, carryMat, 128);
       m.count = 0;
@@ -256,6 +262,17 @@ export class BandLayer {
         m.castShadow = true;
         m.receiveShadow = true;
         this.pileMeshes.set(key, m);
+        this.group.add(m);
+      }
+      for (const key of ['snare', 'snareFull', 'fishtrap', 'fishtrapFull']) {
+        const g = geoms.get(`trap__${key}`);
+        if (!g) continue;
+        const m = new THREE.InstancedMesh(g, pm, 32);
+        m.count = 0;
+        m.frustumCulled = false;
+        m.castShadow = true;
+        m.receiveShadow = true;
+        this.trapMeshes.set(key, m);
         this.group.add(m);
       }
     }
@@ -930,7 +947,10 @@ export class BandLayer {
       // a fisher's catch comes home on the spear it was caught with
       const onSpear = carry === CARRY.Fish && s.task === FISH_TASK;
       if (onSpear) carry = CARRY.Spear;
-      anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, carry);
+      // with free hands on the move, a digging stick is held low like a spear and a trap swings like a basket
+      const loose = carry === CARRY.None && !s.gesture && (s.act === ACT.Walk || s.act === ACT.Run || s.act === ACT.Idle);
+      const toolCarry = loose ? (s.tool === 3 ? STICK : s.tool === 4 ? SNARE : s.tool === 5 ? FISHTRAP : 0) : 0;
+      anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, toolCarry === STICK ? CARRY.Spear : toolCarry ? CARRY.Berries : carry);
       col.set(CLOTH[(look >>> 8) % CLOTH.length]).convertSRGBToLinear();
       const bc = this.colorMode ? this.bandColors.get(s.band) : undefined;
       if (bc) col.lerp(bc.color, 0.7);
@@ -972,6 +992,26 @@ export class BandLayer {
               }
             }
           }
+        }
+      }
+      if (toolCarry && s.act !== ACT.Dead) {
+        const tm = this.carryMeshes.get(toolCarry);
+        const tk = carryCount.get(toolCarry) ?? 0;
+        if (tm && tk < tm.instanceMatrix.count) {
+          tm.setMatrixAt(tk, m4.clone().multiply(carryOffset(toolCarry, s.act)));
+          carryCount.set(toolCarry, tk + 1);
+        }
+      }
+      // a digging stick in both hands, stabbed down as the arms drop (as the digging pose in POSE_GLSL)
+      if (s.shownAct === ACT.Dig && s.tool === 3 && s.act !== ACT.Dead) {
+        const dm = this.carryMeshes.get(STICK);
+        const dk = carryCount.get(STICK) ?? 0;
+        if (dm && dk < dm.instanceMatrix.count) {
+          const c = Math.abs(Math.sin((U.uTime.value + (look % 997) * 0.37) * 5));
+          const hand = handAt(-1.75 + 0.95 * c, -0.45, 0.5 + (elder ? 0.18 : 0), 0);
+          // held at a slant, point down and forward: it reaches the ground as the hands come down
+          dm.setMatrixAt(dk, m4.clone().multiply(new THREE.Matrix4().makeRotationX(-0.48).setPosition(0.05, hand.y, hand.z)));
+          carryCount.set(STICK, dk + 1);
         }
       }
       // a woodcutter's axe, in both hands, following the swing (as POSE_GLSL bends the arms)
@@ -1154,6 +1194,7 @@ export class BandLayer {
     };
     const fires: { x: number; y: number; z: number; fuel: number }[] = [];
     this.drawPiles();
+    this.drawTraps();
     for (const b of this.buildings) {
       const cx = b.x + 0.5, cz = b.z + 0.5;
       const rot = (b.rot * Math.PI) / 2;
@@ -1249,6 +1290,36 @@ export class BandLayer {
 
   setPiles(p: { id: number; wood: number; berries: number; meat: number; fish: number; preserved: number }[]) {
     this.piles = new Map(p.map((q) => [q.id, q]));
+  }
+
+  setTraps(t: NonNullable<Frame['traps']>) {
+    this.traps = t;
+  }
+
+  /** Snares stand at the foot of the bushes, off the middle of their tile; fish traps lie half sunk in the shallows. */
+  private drawTraps() {
+    const counts = new Map<string, number>();
+    // a little over life size, so a set line still reads from the usual height
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), size = new THREE.Vector3(1.3, 1.3, 1.3);
+    for (const t of this.traps) {
+      const key = (t.kind === 0 ? 'snare' : 'fishtrap') + (t.caught ? 'Full' : '');
+      let m = this.trapMeshes.get(key);
+      if (!m) continue;
+      const k = counts.get(key) ?? 0;
+      if (k >= m.instanceMatrix.count) this.trapMeshes.set(key, (m = this.grow(m, k + 1)));
+      const h = (i: number) => ((t.id * 7919 + i * 104729) % 1000) / 1000;
+      const x = t.x + 0.5 + (h(1) - 0.5) * 0.5, z = t.z + 0.5 + (h(2) - 0.5) * 0.5;
+      const wt = t.kind === 1 ? this.waterAt(x, z) : null;
+      const y = wt ? wt.surface - 0.02 : this.groundAt(x, z);
+      q.setFromAxisAngle(up, h(3) * Math.PI * 2);
+      m4.compose(new THREE.Vector3(x, y, z), q, size);
+      m.setMatrixAt(k, m4);
+      counts.set(key, k + 1);
+    }
+    for (const [key, m] of this.trapMeshes) {
+      m.count = counts.get(key) ?? 0;
+      m.instanceMatrix.needsUpdate = true;
+    }
   }
 
   /** Lay out each stockpile's contents: more wood, a taller stack; more food, more on the mat. */
@@ -1350,6 +1421,9 @@ function carryOffset(kind: number, act: number) {
       break;
     case CARRY.Body: p.set(0, 0.215, 0.085); e.set(0, 0, 0); break; // held across the arms
     case CARRY.Baby: p.set(0, 0.23, 0.055); break;
+    case STICK: p.set(0.076, 0.16, 0.055); e.set(0.22 + Math.PI, 0, 0); break; // point up, as a spear is carried
+    case SNARE: p.set(0.075, 0.16, 0.04); break; // the coil in the fist, its stake hanging
+    case FISHTRAP: p.set(0.075, 0.075, 0.04); e.set(Math.PI / 2, 0, 0); break; // by the tail, mouth down
   }
   m.makeRotationFromEuler(e).setPosition(p);
   return m;

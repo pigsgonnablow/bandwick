@@ -33,6 +33,7 @@ export interface Frame {
   summary?: ReturnType<Sim['summary']>;
   events?: Sim['events'];
   piles?: ReturnType<Sim['packPiles']>;
+  traps?: ReturnType<Sim['packTraps']>;
   /** one answer per open info window, in the order asked */
   looks?: Look[];
   skipping: boolean;
@@ -219,6 +220,7 @@ export class Runner {
       this.lastSummary = t;
       f.summary = sim.summary(this.focusBand);
       f.piles = sim.packPiles();
+      f.traps = sim.packTraps();
       if (this.targets.length)
         f.looks = this.targets.map((tg) => (tg.kind === 'person' ? { key: refKey(tg), person: sim.inspect(tg.id) } : { key: refKey(tg), card: sim.inspectThing(tg) }));
     }

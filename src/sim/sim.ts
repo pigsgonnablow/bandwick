@@ -2789,7 +2789,7 @@ export class Sim {
       out[o + 12] = p.task ? TASK_KINDS.indexOf(p.task.kind) + 1 : 0;
       out[o + 13] = p.flash ?? 0;
       out[o + 14] = p.band;
-      // the tool in hand: 0 none, 1 chopper, 2 axe
+      // the tool in hand: 0 none, else ITEM_KINDS index + 1 (1 chopper, 2 axe, 3 stick, 4 snare, 5 fish trap)
       const tool = this.heldBy(p);
       out[o + 15] = tool ? ITEM_KINDS.indexOf(tool.kind) + 1 : 0;
     });
@@ -2828,6 +2828,13 @@ export class Sim {
       const inside = this.buildings.some((q) => q.band === b.band && q.kind === 'storehouse' && q.built);
       return { id: b.id, wood: st.wood, berries: inside ? 0 : st.berries, meat: inside ? 0 : st.meat, fish: inside ? 0 : st.fish, preserved: inside ? 0 : st.preserved };
     });
+  }
+  /** The traps standing in the world: snares on land, fish traps in the water (kind 0 snare, 1 fish trap). */
+  packTraps() {
+    const n = this.N;
+    return this.items.filter((i) => i.tile !== undefined && i.tile >= 0).map((i) => ({
+      id: i.id, kind: i.kind === 'snare' ? 0 : 1, x: i.tile! % n, z: Math.floor(i.tile! / n), caught: (i.catch ?? 0) > 0,
+    }));
   }
   packProps() {
     const n = this.propCount;

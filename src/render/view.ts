@@ -133,6 +133,7 @@ export class WorldView {
     if (f.props) this.props?.setProps(f.props);
     if (f.buildings) this.band?.setBuildings(f.buildings);
     if (f.piles) this.band?.setPiles(f.piles);
+    if (f.traps) this.band?.setTraps(f.traps);
     this.band?.onFrame(f, tps, performance.now());
   }
 
