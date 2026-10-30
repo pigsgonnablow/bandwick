@@ -180,90 +180,230 @@ def record(name, *objs):
 
 
 # ---------------------------------------------------------------- trees
+# Each species has three variants that differ in form, not just in size, so a wood never looks stamped out:
+#   pine  v0 a narrow spruce-like spire, v1 a broad full pine, v2 an old flat-topped pine on a long bare trunk
+#   oak   v0 a spreading oak on a short trunk, v1 a tall upright oak, v2 a gnarled oak leaning one way
+#   birch v0 a slender single stem, v1 twin stems from one root, v2 a leaning birch with weeping twigs
+# Trunk and leaf stay separate meshes (the leaf mesh's bounding box centre is where winter shrinks it to).
+
+def tube(part, path, segs, color_of, rnd, cap=True, amt=0.06, flat_base=True):
+    """A trunk or limb along path [(point, radius)]: rings square to the path (the first one level, so a
+    trunk stands flat in the ground); color_of(i, k) per face, segment i round k."""
+    bm = part.bm
+    pts = [Vector(p) for p, _ in path]
+    rot0 = rnd.uniform(0, math.tau)
+    rings = []
+    side = None
+    for i, (p, r) in enumerate(path):
+        d = Vector((0, 0, 1)) if i == 0 and flat_base else (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+        # carry the ring's frame along the path so it doesn't twist where the path turns
+        ref = side if side is not None else (Vector((1, 0, 0)) if abs(d.x) < 0.9 else Vector((0, 1, 0)))
+        up = d.cross(ref).normalized()
+        side = up.cross(d).normalized()
+        rings.append([bm.verts.new(pts[i] + (side * math.cos(rot0 + k / segs * math.tau) + up * math.sin(rot0 + k / segs * math.tau)) * r)
+                      for k in range(segs)])
+    for i in range(len(rings) - 1):
+        a, b = rings[i], rings[i + 1]
+        for k in range(segs):
+            part._paint([bm.faces.new((a[k], a[(k + 1) % segs], b[(k + 1) % segs], b[k]))], color_of(i, k), rnd, amt)
+    if cap and path[-1][1] > 0.0005:
+        part._paint([bm.faces.new(rings[-1])], color_of(len(rings) - 2, 0), rnd, amt)
+
+
+def bend(base, top, kink, n):
+    """n+1 points from base to top, bowed sideways by kink (a vector) at the middle."""
+    base, top, kink = Vector(base), Vector(top), Vector(kink)
+    return [base.lerp(top, t) + kink * math.sin(t * math.pi) for t in (k / n for k in range(n + 1))]
+
+
+def skirt(part, center, r, h, color, rnd, n=8, droop=0.0, jag=0.72, squash=1.0, lean=(0, 0)):
+    """One tier of a conifer: a jagged star of branch tips drooping from a peak, closed beneath by a
+    shallow cone, so it reads as a layer of boughs rather than a smooth cone."""
+    bm = part.bm
+    c = Vector(center)
+    rot0 = rnd.uniform(0, math.tau)
+    ring = []
+    for k in range(n):
+        a = rot0 + k / n * math.tau
+        rr = r * (1.0 if k % 2 == 0 else jag) * rnd.uniform(0.88, 1.1)
+        dz = -droop * (1.0 if k % 2 == 0 else 0.5) * rnd.uniform(0.7, 1.0)
+        ring.append(bm.verts.new(c + Vector((math.cos(a) * rr, math.sin(a) * rr * squash, dz))))
+    apex = bm.verts.new(c + Vector((lean[0], lean[1], h)))
+    under = bm.verts.new(c + Vector((lean[0] * 0.3, lean[1] * 0.3, h * 0.22)))
+    top = [bm.faces.new((ring[k], ring[(k + 1) % n], apex)) for k in range(n)]
+    bot = [bm.faces.new((ring[(k + 1) % n], ring[k], under)) for k in range(n)]
+    part._paint(top, color, rnd, 0.07)
+    part._paint(bot, tuple(v * 0.72 for v in color), rnd, 0.05)
+
+
+def lump(part, center, size, color, rnd, noise=0.16, rotz=None):
+    """A clump of foliage: a jittered icosahedron (20 faces), flattened or stretched by size."""
+    ret = bmesh.ops.create_icosphere(part.bm, subdivisions=0, radius=1.0)
+    rot = Matrix.Rotation(rnd.uniform(0, math.tau) if rotz is None else rotz, 3, "Z")
+    for v in ret["verts"]:
+        q = v.co * (1 + rnd.uniform(-noise, noise))
+        v.co = rot @ Vector((q.x * size[0], q.y * size[1], q.z * size[2])) + Vector(center)
+    part.add_geom(ret["verts"], color, rnd, 0.08)
+
+
 def pine(stage, variant, lo=False):
     rnd = random.Random(1000 + stage * 10 + variant)
-    H = [0.45, 0.95, 1.45, 1.8][stage] * rnd.uniform(0.92, 1.08)
-    layers = [1, 2, 3, 4][stage] if not lo else 1
-    R = [0.16, 0.26, 0.36, 0.42][stage] * rnd.uniform(0.9, 1.1)
-    tr = [0.025, 0.045, 0.07, 0.09][stage]
+    k = rnd.uniform(0.92, 1.08)
     trunk, leaf = Part(), Part()
-    segs = 4 if lo else 5
-    trunk.cylinder(segs, tr, tr * 0.6, -0.05, H * 0.55, BARK_DARK if stage == 3 else BARK, rnd)
     col = PINE_DARK if stage == 3 else PINE
     if lo:
+        H = [0.45, 0.95, 1.45, 1.8][stage] * k
+        R = [0.16, 0.26, 0.36, 0.42][stage]
+        trunk.cylinder(4, [0.025, 0.045, 0.07, 0.09][stage], 0.01, -0.05, H * 0.55, BARK, rnd)
         leaf.cone(5, R * 1.05, H * 0.18, H * 0.84, col, rnd)
-    else:
-        for k in range(layers):
-            t = k / max(1, layers)
-            z0 = H * (0.2 + 0.62 * t)
-            r = R * (1 - 0.62 * t)
-            h = H * (0.52 - 0.12 * t)
-            off = (rnd.uniform(-0.025, 0.025), rnd.uniform(-0.025, 0.025))
-            leaf.cone(7, r, z0, h, jit(col, rnd, 0.08), rnd, center=off, droop=0.04 * (stage == 3))
+        return trunk, leaf
+    if variant == 2 and stage >= 2:
+        # an old pine: a long bare trunk, kinked, red-brown above; a few stubs where lower boughs died;
+        # the crown in two or three flat, jagged plates near the top, pushed to one side by the wind
+        H = [0, 0, 1.4, 1.75][stage] * k
+        tr = [0, 0, 0.065, 0.085][stage]
+        wind = Vector((rnd.uniform(-1, 1), rnd.uniform(-1, 1), 0)).normalized()
+        path = bend((0, 0, -0.05), (wind.x * 0.08, wind.y * 0.08, H * 0.86), wind * 0.05 + Vector((0, 0, 0)), 4)
+        tube(trunk, [(p, tr * (1.25 if i == 0 else 1 - 0.55 * i / 4)) for i, p in enumerate(path)], 5,
+             lambda i, k: BARK_DARK if i < 1 else (128, 86, 58) if i < 2 else (156, 96, 62), rnd)
+        for j in range(3):  # dead stubs
+            z = H * (0.3 + 0.13 * j)
+            a = rnd.uniform(0, math.tau)
+            base = Vector((wind.x * 0.08 * z / H, wind.y * 0.08 * z / H, z))
+            trunk.cylinder(3, tr * 0.25, tr * 0.08, z, z + 0.04, BARK_DARK, rnd, base=(base.x, base.y),
+                           tilt=(math.cos(a) * 0.12, math.sin(a) * 0.12), cap=False)
+        plates = 3 if stage == 3 else 2
+        for j in range(plates):
+            t = j / plates
+            c = (wind.x * (0.1 + 0.12 * t), wind.y * (0.1 + 0.12 * t), H * (0.62 + 0.28 * t))
+            skirt(leaf, c, 0.5 * (1 - 0.3 * t) * (1 if stage == 3 else 0.8), 0.16, jit(col, rnd, 0.08), rnd, n=8, droop=0.05, jag=0.55,
+                  lean=(wind.x * 0.05, wind.y * 0.05))
+        return trunk, leaf
+    if variant == 1:  # a broad, full pine: fewer, wider tiers, a blunt top
+        H = [0.4, 0.85, 1.3, 1.6][stage] * k
+        R = [0.18, 0.3, 0.42, 0.5][stage] * rnd.uniform(0.95, 1.05)
+        tiers = [1, 2, 3, 4][stage]
+        sp, jag, droop = 0.6, 0.78, 0.05
+    else:  # v0 (and the young of v2): a narrow spire, many tiers drooping at the tips, a spike on top
+        H = [0.48, 1.0, 1.55, 1.95][stage] * k
+        R = [0.14, 0.22, 0.3, 0.34][stage] * rnd.uniform(0.95, 1.05)
+        tiers = [2, 3, 4, 5][stage]
+        sp, jag, droop = 0.7, 0.66, 0.08
+    tr = [0.025, 0.045, 0.07, 0.09][stage]
+    tube(trunk, [((0, 0, -0.05), tr * 1.3), ((0, 0, 0.04), tr), ((rnd.uniform(-0.02, 0.02), 0, H * 0.5), tr * 0.6)], 5,
+         lambda i, k: BARK_DARK if stage == 3 else BARK, rnd)
+    for j in range(tiers):
+        t = j / tiers
+        z0 = H * (0.16 + sp * t)
+        r = R * (1 - 0.68 * t)
+        h = H * (0.36 - 0.1 * t)
+        off = (rnd.uniform(-0.02, 0.02), rnd.uniform(-0.02, 0.02), z0)
+        skirt(leaf, off, r, h, jit(col, rnd, 0.08), rnd, n=8 if stage >= 2 else 6, droop=droop * H * 0.4, jag=jag)
+    if variant != 1 and stage >= 1:
+        leaf.cone(4, R * 0.12, H * (0.16 + sp) + H * 0.12, H * 0.22, col, rnd)  # the leader
     return trunk, leaf
 
 
 def oak(stage, variant, lo=False):
     rnd = random.Random(2000 + stage * 10 + variant)
-    H = [0.42, 0.85, 1.3, 1.6][stage] * rnd.uniform(0.92, 1.08)
-    R = [0.15, 0.27, 0.4, 0.5][stage] * rnd.uniform(0.9, 1.1)
-    tr = [0.025, 0.045, 0.075, 0.1][stage]
+    k = rnd.uniform(0.92, 1.08)
     trunk, leaf = Part(), Part()
-    trunk.cylinder(4 if lo else 6, tr, tr * 0.7, -0.05, H * 0.55, BARK, rnd)
-    cz = H * 0.66
     if lo:
-        leaf.blob((0, 0, cz), (R, R, R * 0.8), OAK, rnd, noise=0.12)
+        H = [0.42, 0.85, 1.3, 1.6][stage] * k
+        R = [0.15, 0.27, 0.4, 0.5][stage]
+        trunk.cylinder(4, [0.025, 0.045, 0.075, 0.1][stage], 0.02, -0.05, H * 0.55, BARK, rnd)
+        leaf.blob((0, 0, H * 0.66), (R, R, R * 0.8), OAK, rnd, noise=0.12)
         return trunk, leaf
-    # branches (visible when the canopy is bare in winter)
-    nb = [0, 1, 3, 4][stage]
+    tr = [0.025, 0.045, 0.075, 0.1][stage]
+    if variant == 0:  # spreading: a short stout trunk, limbs reaching out, a wide flattened crown
+        H, R, cz, flat, lean = [0.4, 0.75, 1.1, 1.35][stage] * k, [0.18, 0.32, 0.5, 0.62][stage], 0.6, 0.62, Vector((0, 0, 0))
+    elif variant == 1:  # tall and upright: a long clean trunk, a high round crown
+        H, R, cz, flat, lean = [0.46, 0.95, 1.45, 1.8][stage] * k, [0.14, 0.24, 0.34, 0.4][stage], 0.7, 0.95, Vector((0, 0, 0))
+        tr *= 0.85
+    else:  # gnarled, leaning away from its neighbours, the crown lopsided over the lean, one dead limb
+        a = rnd.uniform(0, math.tau)
+        H, R, cz, flat = [0.42, 0.8, 1.2, 1.45][stage] * k, [0.16, 0.28, 0.42, 0.5][stage], 0.62, 0.75
+        lean = Vector((math.cos(a), math.sin(a), 0)) * [0.04, 0.1, 0.18, 0.24][stage]
+    top = lean + Vector((0, 0, H * cz * 0.85))
+    kink = Vector((-lean.y, lean.x, 0)) * 0.4 if variant == 2 else Vector((0, 0, 0))
+    path = bend((0, 0, -0.05), top, kink, 3)
+    tube(trunk, [(p, tr * (1.3 if i == 0 else 1 - 0.4 * i / 3)) for i, p in enumerate(path)], 5,
+         lambda i, k: BARK_DARK if i == 0 else BARK, rnd)
+    centre = Vector((top.x, top.y, H * cz)) + lean * 0.3
+    # limbs from the top of the trunk out under the crown (they show when it is bare in winter)
+    nb = [0, 2, 3, 4][stage]
     for b in range(nb):
         a = b / max(1, nb) * math.tau + rnd.uniform(-0.4, 0.4)
-        z0 = H * rnd.uniform(0.38, 0.5)
-        reach = R * rnd.uniform(0.55, 0.8)
-        trunk.cylinder(4, tr * 0.45, tr * 0.18, z0, cz + rnd.uniform(-0.05, 0.12), BARK, rnd,
-                       tilt=(math.cos(a) * reach, math.sin(a) * reach), cap=False)
-    blobs = [1, 2, 4, 5][stage]
-    for b in range(blobs):
+        out = Vector((math.cos(a), math.sin(a), 0)) * R * rnd.uniform(0.55, 0.8)
+        z0 = top.z * rnd.uniform(0.75, 0.95)
+        base = path[0].lerp(top, z0 / top.z)
+        end = centre + out + Vector((0, 0, rnd.uniform(-0.05, 0.1) * R + (0.12 * R if variant == 1 else 0)))
+        tube(trunk, [(base, tr * 0.45), ((base + end) / 2 + Vector((0, 0, 0.03)), tr * 0.3), (end, tr * 0.12)], 3, lambda i, k: BARK, rnd, cap=False, flat_base=False)
+    if variant == 2 and stage >= 2:  # the dead limb, bare, out of the crown on the far side
+        a = math.atan2(-lean.y, -lean.x)
+        base = path[0].lerp(top, 0.8)
+        end = base + Vector((math.cos(a) * R * 1.0, math.sin(a) * R * 1.0, R * 0.4))
+        tube(trunk, [(base, tr * 0.3), (end, tr * 0.08)], 4, lambda i, k: (122, 112, 100), rnd, cap=False, flat_base=False)
+    # the crown: a big central lump and others round it, more and wider the older it is
+    n = [1, 3, 4, 4][stage]
+    for b in range(n):
         if b == 0:
-            c = (0, 0, cz + R * 0.15)
-            s = R * 0.85
+            c, sz = centre + Vector((0, 0, R * 0.15 * flat)), R * 0.8
         else:
-            a = b / (blobs - 1) * math.tau + rnd.uniform(-0.3, 0.3)
-            d = R * rnd.uniform(0.45, 0.6)
-            c = (math.cos(a) * d, math.sin(a) * d, cz + rnd.uniform(-0.12, 0.05) * R)
-            s = R * rnd.uniform(0.5, 0.65)
-        leaf.blob(c, (s, s, s * 0.82), jit(OAK if b % 2 else OAK_DARK, rnd, 0.06), rnd, noise=0.16)
+            a = b / (n - 1) * math.tau + rnd.uniform(-0.3, 0.3)
+            d = R * rnd.uniform(0.5, 0.65)
+            c = centre + Vector((math.cos(a) * d, math.sin(a) * d, rnd.uniform(-0.2, 0.08) * R * flat))
+            if variant == 2:
+                c += lean * 0.6
+            sz = R * rnd.uniform(0.48, 0.62)
+        lump(leaf, c, (sz, sz, sz * flat), jit(OAK if b % 2 else OAK_DARK, rnd, 0.06), rnd)
     return trunk, leaf
 
 
 def birch(stage, variant, lo=False):
     rnd = random.Random(3000 + stage * 10 + variant)
-    H = [0.45, 0.95, 1.45, 1.7][stage] * rnd.uniform(0.92, 1.08)
+    k = rnd.uniform(0.92, 1.08)
+    H = [0.45, 0.95, 1.45, 1.7][stage] * k
     R = [0.12, 0.2, 0.28, 0.32][stage] * rnd.uniform(0.9, 1.1)
     tr = [0.02, 0.032, 0.048, 0.06][stage]
     trunk, leaf = Part(), Part()
-    lean = (rnd.uniform(-0.05, 0.05), rnd.uniform(-0.05, 0.05))
     if lo:
+        lean = (rnd.uniform(-0.05, 0.05), rnd.uniform(-0.05, 0.05))
         trunk.cylinder(4, tr, tr * 0.6, -0.05, H * 0.6, BIRCH_BARK, rnd, tilt=lean)
         leaf.blob((lean[0], lean[1], H * 0.68), (R, R, R * 1.5), BIRCH_LEAF, rnd, noise=0.1)
         return trunk, leaf
-    segs = 5
-    z = -0.05
-    nseg = 4
-    for k in range(nseg):
-        z1 = z + (H * 0.72 + 0.05) / nseg
-        f0 = k / nseg
-        f1 = (k + 1) / nseg
-        col = BIRCH_MARK if (k % 2 == 1 and rnd.random() < 0.7) else BIRCH_BARK
-        trunk.cylinder(segs, tr * (1 - 0.35 * f0), tr * (1 - 0.35 * f1), z, z1, col, rnd,
-                       base=(lean[0] * f0, lean[1] * f0), tilt=(lean[0] / nseg, lean[1] / nseg), cap=(k == nseg - 1))
-        z = z1
-    blobs = [1, 2, 3, 3][stage]
-    for b in range(blobs):
-        t = b / max(1, blobs)
-        c = (lean[0] + rnd.uniform(-0.06, 0.06), lean[1] + rnd.uniform(-0.06, 0.06), H * (0.55 + 0.25 * t))
-        s = R * (1 - 0.25 * t) * rnd.uniform(0.85, 1.05)
-        leaf.blob(c, (s, s, s * 1.45), jit(BIRCH_LEAF, rnd, 0.08), rnd, noise=0.14)
+    marks = {(i, k) for i in range(6) for k in range(5) if rnd.random() < 0.14}  # dark marks on the white bark
+    bark = lambda i, k: BIRCH_MARK if (i, k) in marks else BIRCH_BARK
+    a = rnd.uniform(0, math.tau)
+    out = Vector((math.cos(a), math.sin(a), 0))
+    if variant == 1 and stage >= 1:  # two stems from one root, parting as they rise
+        stems = [(out * 0.12 * H / 1.45, 0.85), (-out * 0.1 * H / 1.45 + Vector((out.y, -out.x, 0)) * 0.04, 1.0)]
+        rr = 0.8
+    elif variant == 2:  # leaning, bowed, the twigs weeping
+        stems = [(out * [0.06, 0.15, 0.24, 0.3][stage], 1.0)]
+        rr = 1.0
+    else:  # one slender straight stem
+        stems = [(Vector((rnd.uniform(-0.03, 0.03), rnd.uniform(-0.03, 0.03), 0)), 1.0)]
+        rr = 1.0
+    for lean, hk in stems:
+        h = H * hk
+        top = lean + Vector((0, 0, h * 0.74))
+        kink = lean * 0.25 if variant == 2 else Vector((0, 0, 0))
+        path = bend((lean.x * 0.08, lean.y * 0.08, -0.1 if variant == 2 else -0.05), top, kink, 4)
+        tube(trunk, [(p, tr * rr * (1.15 if i == 0 else 1 - 0.45 * i / 4)) for i, p in enumerate(path)], 5 if len(stems) == 1 else 4, bark, rnd,
+             flat_base=variant != 2)  # a hard lean pinches if the foot is kept level; bury it instead
+        # an open crown of small clumps up the top of the stem, so light shows between them
+        lumps = [1, 3, 4, 5][stage] if len(stems) == 1 else [1, 2, 2, 2][stage]
+        for b in range(lumps):
+            t = b / max(1, lumps - 1)
+            a = b * 2.4 + rnd.uniform(-0.3, 0.3)
+            d = R * rr * (0.45 if lumps > 1 else 0) * (1 - 0.5 * t)
+            c = lean * (1.05 + (0.2 if variant == 2 else 0.0) * t) + Vector((math.cos(a) * d, math.sin(a) * d, h * (0.48 + (0.3 if len(stems) == 1 else 0.2) * t)))
+            s = R * rr * ((0.62 if len(stems) == 1 else 0.8) if lumps > 1 else 1.0) * (1 - 0.3 * t) * rnd.uniform(0.85, 1.1)
+            if variant == 2:  # weeping: clumps drawn long and hanging, pushed out over the lean
+                lump(leaf, c + lean * 0.35 - Vector((0, 0, s * 0.6)), (s * 0.9, s * 0.9, s * 2.0), jit(BIRCH_LEAF, rnd, 0.08), rnd, noise=0.1)
+            else:
+                lump(leaf, c, (s, s, s * 1.35), jit(BIRCH_LEAF, rnd, 0.08), rnd, noise=0.16)
     return trunk, leaf
 
 
@@ -414,5 +554,7 @@ bpy.ops.export_scene.gltf(
 full = [k for k in STATS if "__lo" not in k]
 print("ASSETS", len(STATS), "objects-sets;", "max tris", max(STATS[k] for k in full),
       "avg tree tris", round(sum(STATS[k] for k in full if k.split('_')[0] in SPECIES) / 36))
+for k in sorted(k for k in STATS if k.split('_')[0] in SPECIES and STATS[k] > 140):
+    print(" big", k, STATS[k])
 for k in ("pine_s2_v0", "oak_s3_v0", "birch_s2_v0", "oak_s2__lo", "rock_v0", "outcrop_v2", "grass_v0", "reeds_v0"):
     print(" ", k, STATS[k])
