@@ -10,7 +10,7 @@ Conventions (read by src/render/band.ts):
   carry__{log,berries,meat,fish,spear,axe,body,baby,stick,snare} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   bld__{hearth,flame,leanto,hut0,hut1,storehouse,rack,site}  one tile footprint, centred on the origin;
-      huts also come as bld__hut0d/hut1d (wattle-and-daub) and bld__hut0s/hut1s (drystone).
+      huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
 Models face -Y in Blender (= +Z in the game). 1 unit = one 6 m tile; an adult is 0.4 tall.
 """
 import math
@@ -892,19 +892,84 @@ q.cone(4, 0.05, 0.05, 0.27, (255, 255, 255), center=(0.03, 0.02))
 q.blob((0, 0, 0.07), (0.07, 0.07, 0.07), (255, 255, 255))
 q.finish("bld__flame")
 
-q = Part()  # lean-to: two forked poles, a ridge, a sloping hide-and-branch roof, a bracken bed
-q.cyl(4, 0.014, 0.012, (-0.28, -0.12, 0), (-0.28, -0.12, 0.34), POLE, rnd)
-q.cyl(4, 0.014, 0.012, (0.28, -0.12, 0), (0.28, -0.12, 0.34), POLE, rnd)
-q.cyl(4, 0.012, 0.012, (-0.32, -0.12, 0.33), (0.32, -0.12, 0.33), POLE, rnd)
-for k in range(5):
-    x = -0.26 + k * 0.13
-    q.cyl(4, 0.01, 0.01, (x, -0.12, 0.33), (x, 0.26, 0.0), POLE, rnd)
-roof = q.box((0, 0.07, 0.17), (0.6, 0.03, 0.46), HIDE, rnd, 0.05, rot=Matrix.Rotation(-0.86, 3, "X"))
-for k in range(4):  # branches laid over the hide against the wind
-    x = -0.22 + k * 0.15 + rnd.uniform(-0.03, 0.03)
-    q.cyl(4, 0.008, 0.006, (x, -0.1, 0.35), (x + rnd.uniform(-0.05, 0.05), 0.27, 0.02), (88, 70, 46), rnd, 0.08)
-q.box((0, 0.02, 0.012), (0.48, 0.3, 0.02), (130, 104, 70), rnd, 0.05)
-q.blob((0, 0.06, 0.03), (0.2, 0.11, 0.025), (92, 110, 58), rnd, 0.08, noise=0.25)  # bracken bedding
+def sheet(q, rows, color_of, rnd, amt=0.05, flip=False):
+    """Quads between rows of points (an open surface, not wrapped); color_of(i, k) per face."""
+    bm = q.bm
+    vs = [[bm.verts.new(p) for p in row] for row in rows]
+    for i in range(len(vs) - 1):
+        for k in range(len(vs[0]) - 1):
+            quad = (vs[i][k], vs[i][k + 1], vs[i + 1][k + 1], vs[i + 1][k])
+            q.paint([bm.faces.new(quad[::-1] if flip else quad)], color_of(i, k), rnd, amt)
+    return vs
+
+
+HIDE_DK = (140, 106, 74)
+ROPE_LT = (150, 122, 80)
+HIDE_IN = (118, 90, 62)   # the flesh side, seen from under the shelter
+BRACKEN = (92, 110, 58)
+BRANCH = (88, 70, 46)
+
+
+def forked_post(q, base, top, rnd, r=0.014):
+    """An upright cut just above a fork: the trunk, and two short tines splayed to cradle a ridge pole."""
+    base, top = Vector(base), Vector(top)
+    q.cyl(5, r, r * 0.85, base, top, POLE, rnd)
+    for s in (-1, 1):
+        q.cyl(4, r * 0.7, r * 0.5, top - Vector((0, 0, 0.006)), top + Vector((0, s * 0.022, 0.036)), POLE, rnd)
+
+
+# lean-to: a ridge pole in two forked uprights, rafters raked back to the ground, two hides sewn together
+# and draped over them, sagging between the rafters and laced down; branches thrown over against the wind,
+# a bracken bed beneath. Open to the front (-y).
+q = Part()
+rnd = random.Random(21)
+RY, RZ, BY = -0.12, 0.33, 0.28
+for x in (-0.28, 0.28):
+    forked_post(q, (x, RY, 0), (x, RY, RZ - 0.02), rnd)
+q.cyl(5, 0.012, 0.011, (-0.34, RY, RZ), (0.34, RY, RZ + 0.004), POLE, rnd)  # the ridge
+RAFTERS = [-0.27, -0.135, 0.0, 0.135, 0.27]
+for x in RAFTERS:
+    q.cyl(4, 0.009, 0.008, (x, RY - 0.03, RZ + 0.012), (x + rnd.uniform(-0.01, 0.01), BY + 0.02, -0.004), POLE, rnd)
+# the hide: rows from a lip hanging over the ridge at the front down to the ground at the back; columns
+# across, a sag between each pair of rafters
+cols = [-0.33 + k * 0.66 / 16 for k in range(17)]
+slope = [(-0.16, RZ - 0.045), (RY - 0.012, RZ + 0.02), (-0.04, 0.27), (0.04, 0.2), (0.12, 0.13), (0.2, 0.065), (BY, 0.008)]
+
+
+def drape(x, y, z, off):
+    """A point on the hide: lifted onto the rafters, sagging between them, ragged at the edges."""
+    d = min(abs(x - r) for r in RAFTERS)
+    sag = 0.0 if abs(x) > 0.27 else math.sin(min(1.0, d / 0.0675) * math.pi / 2) * 0.016
+    n = Vector((0, 0.65, 0.76))  # roughly the hide's outward normal
+    p = Vector((x, y, z)) + n * (0.014 - sag - off)
+    if abs(x) > 0.3:
+        p.z -= (abs(x) - 0.3) * 0.6  # the side edges droop past the outer rafters
+    return tuple(p)
+
+
+edge = [rnd.uniform(-0.012, 0.012) for _ in cols]
+rows_out = [[drape(x, y + (edge[k] if i == len(slope) - 1 else 0), z, 0) for k, x in enumerate(cols)] for i, (y, z) in enumerate(slope)]
+rows_in = [[drape(x, y + (edge[k] if i == len(slope) - 1 else 0), z, 0.004) for k, x in enumerate(cols)] for i, (y, z) in enumerate(slope)]
+sheet(q, rows_out, lambda i, k: HIDE if k < 8 else HIDE_DK, rnd, 0.05, flip=True)
+sheet(q, rows_in, lambda i, k: HIDE_IN, rnd, 0.04)
+for i in range(1, len(slope) - 1, 2):  # the seam laced down the middle
+    q.box(rows_out[i][8], (0.006, 0.014, 0.006), ROPE_LT, rnd, 0.0)
+for x in (-0.3, 0.3):  # cords lacing the hide to the outer rafters
+    for i in (2, 4):
+        q.cyl(3, 0.0022, 0.0022, drape(x, slope[i][0], slope[i][1], -0.004), (x * 0.92, slope[i][0] - 0.01, slope[i][1] - 0.02), ROPE_LT, rnd, 0.0)
+q.cyl(5, 0.014, 0.013, (-0.34, BY + 0.02, 0.012), (0.34, BY + 0.02, 0.012), BRANCH, rnd)  # a log on the hide's foot
+for k in range(5):  # branches laid over the top against the wind
+    x = -0.26 + k * 0.13 + rnd.uniform(-0.04, 0.04)
+    top = Vector(drape(x, -0.07, 0.30, -0.012))
+    bot = Vector(drape(x + rnd.uniform(-0.06, 0.06), 0.2, 0.06, -0.012))
+    q.cyl(4, 0.007, 0.004, top, bot, BRANCH, rnd, 0.08)
+    for t in (0.35, 0.65):  # a twig or two, with leaves gone brown
+        m = top.lerp(bot, t)
+        q.cyl(3, 0.004, 0.002, m, m + Vector((rnd.choice((-1, 1)) * 0.05, 0.02, 0.012)), BRANCH, rnd, 0.08)
+q.box((0, 0.06, 0.006), (0.5, 0.3, 0.012), (124, 100, 68), rnd, 0.05)  # trodden earth
+for k in range(7):  # the bed: armfuls of bracken heaped under the low side
+    q.blob((-0.18 + k * 0.06, 0.1 + rnd.uniform(-0.03, 0.03), 0.02), (0.06, 0.07, 0.02), BRACKEN if k % 3 else (120, 112, 60), rnd, 0.1, noise=0.3)
+q.blob((0.16, -0.05, 0.022), (0.06, 0.04, 0.022), HIDE_DK, rnd, 0.05, noise=0.2)  # a rolled sleeping hide
 q.finish("bld__leanto")
 
 
@@ -1105,24 +1170,161 @@ for walls, suffix in (("wood", ""), ("daub", "d"), ("stone", "s")):
     hut0(walls, random.Random(30)).finish(f"bld__hut0{suffix}")
     hut1(walls, random.Random(31)).finish(f"bld__hut1{suffix}")
 
-rnd = random.Random(40)
-q = Part()  # storehouse raised on posts against damp and vermin
-for x in (-0.18, 0.18):
-    for y in (-0.16, 0.16):
-        q.cyl(4, 0.02, 0.018, (x, y, 0), (x, y, 0.13), POLE, rnd)
-        q.cyl(6, 0.034, 0.03, (x, y, 0.125), (x, y, 0.135), (90, 90, 90), rnd, 0.05)  # flat stone caps keep the mice off
-q.box((0, 0, 0.14), (0.46, 0.4, 0.025), POLE, rnd, 0.05)
-q.box((0, 0, 0.24), (0.4, 0.34, 0.18), WATTLE, rnd, 0.06)
-for sx in (-1, 1):  # gable ends
-    bm = q.bm
-    vs = [bm.verts.new((sx * 0.2, -0.17, 0.33)), bm.verts.new((sx * 0.2, 0.17, 0.33)), bm.verts.new((sx * 0.2, 0, 0.47))]
-    q.paint([bm.faces.new(vs if sx > 0 else list(reversed(vs)))], WATTLE, rnd, 0.06)
-q.box((0, -0.11, 0.39), (0.52, 0.27, 0.035), THATCH, rnd, 0.06, rot=Matrix.Rotation(0.75, 3, "X"))
-q.box((0, 0.11, 0.39), (0.52, 0.27, 0.035), THATCH, rnd, 0.06, rot=Matrix.Rotation(-0.75, 3, "X"))
-q.cyl(5, 0.018, 0.018, (-0.27, 0, 0.485), (0.27, 0, 0.485), THATCH_DK, rnd, 0.04)  # ridge
-q.box((0, -0.22, 0.16), (0.08, 0.12, 0.02), POLE, rnd, rot=Matrix.Rotation(0.6, 3, "X"))
-q.box((0, -0.171, 0.25), (0.1, 0.01, 0.12), (52, 40, 28))  # hatch
-q.finish("bld__storehouse")
+HATCH = (58, 44, 30)  # dark, but not so dark it glows like a doorway at night
+
+
+def gable_thatch(q, L, ey, ez, rz, rnd, sag=0.01, n=10):
+    """A thatched gable roof along x: two slopes from ragged eaves (|y| = ey, height ez) up to a ridge (rz),
+    sagging along the middle and bowed in between eave and ridge, with a thick edge at the eaves and gables
+    and a dark underside."""
+    def pt(x, t, side, off=0.0):
+        u = x / L
+        dip = sag * (1 - u * u)  # the ridge and the slopes settle in the middle
+        y = side * ey * (1 - t)
+        z = ez + (rz - ez) * t - dip * (0.4 + 0.6 * t) - math.sin(t * math.pi) * 0.012
+        return (x, y, z - off)
+    xs = [-L + 2 * L * k / n for k in range(n + 1)]
+    ts = [0.0, 0.25, 0.5, 0.75, 1.0]
+    for side in (-1, 1):
+        rag = [rnd.uniform(-0.006, 0.006) - (0.012 if k % 2 else 0) for k in range(n + 1)]
+        rows = [[pt(x, t, side) for x in xs] for t in ts]
+        rows[0] = [(p[0], p[1], p[2] + rag[k]) for k, p in enumerate(rows[0])]
+        shade = lambda i, k: THATCH_DK if i == 0 else jit(THATCH if (i + k // 3) % 2 else (206, 176, 108), rnd, 0.04)
+        top = sheet(q, rows, shade, rnd, 0.06, flip=side < 0)
+        under = [[pt(x, t, side, 0.03) for x in xs] for t in ts]
+        under[0] = [(p[0], p[1], p[2] + rag[k]) for k, p in enumerate(under[0])]
+        bot = sheet(q, under, lambda i, k: THATCH_UNDER, rnd, 0.04, flip=side > 0)
+        bm = q.bm
+        # the thickness: along the eave, and up each gable edge
+        for k in range(n):
+            f = (top[0][k], bot[0][k], bot[0][k + 1], top[0][k + 1])
+            q.paint([bm.faces.new(f if side < 0 else f[::-1])], THATCH_DK, rnd, 0.05)
+        for k, sgn in ((0, -1), (n, 1)):
+            for i in range(len(ts) - 1):
+                f = (top[i][k], top[i + 1][k], bot[i + 1][k], bot[i][k])
+                q.paint([bm.faces.new(f if sgn * side > 0 else f[::-1])], THATCH_DK, rnd, 0.05)
+    # the ridge: a roll of thatch bound with cord
+    pts = [pt(x, 1.0, 1) for x in xs]
+    for p0, p1 in zip(pts, pts[1:]):
+        q.cyl(6, 0.02, 0.02, (p0[0], 0, p0[2] + 0.004), (p1[0], 0, p1[2] + 0.004), THATCH_DK, rnd, 0.04, cap=p0 is pts[0] or p1 is pts[-1])
+    for x in (-L * 0.7, 0.0, L * 0.7):
+        z = pt(x, 1.0, 1)[2] + 0.004
+        q.cyl(6, 0.0215, 0.0215, (x - 0.005, 0, z), (x + 0.005, 0, z), ROPE, rnd, 0.03, cap=False)
+    # two ropes over the roof, weighted at the eaves with stones
+    for x in (-L * 0.45, L * 0.45):
+        for side in (-1, 1):
+            e = pt(x, 0.0, side)
+            q.cyl(3, 0.003, 0.003, (x, 0, pt(x, 1.0, side)[2] + 0.02), (x, e[1] + side * 0.01, e[2] - 0.004), ROPE, rnd, 0.0)
+            q.blob((x, e[1] + side * 0.012, e[2] - 0.035), (0.017, 0.015, 0.02), rnd.choice(STONES), rnd, 0.05, noise=0.2)
+    return pt
+
+
+def rect_ring(W, D, z, out=0.0, per=6):
+    """Points round a W x D rectangle (corners included), front (-y) edge first, at height z."""
+    hw, hd = W / 2 + out, D / 2 + out
+    corners = [(-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd)]
+    pts = []
+    for (x0, y0), (x1, y1) in zip(corners, corners[1:] + corners[:1]):
+        pts += [(x0 + (x1 - x0) * k / per, y0 + (y1 - y0) * k / per, z) for k in range(per)]
+    return pts
+
+
+def store_walls(q, walls, W, D, z0, h, rnd):
+    """The box of the store: woven wattle between corner and side stakes, mud daub over that, or drystone."""
+    hw, hd = W / 2, D / 2
+    sides = [((-hw, -hd), (hw, -hd), (0, -1)), ((hw, -hd), (hw, hd), (1, 0)), ((hw, hd), (-hw, hd), (0, 1)), ((-hw, hd), (-hw, -hd), (-1, 0))]
+    if walls == "wood":
+        courses = 5
+        for (x0, y0), (x1, y1), (nx, ny) in sides:
+            m = 4
+            for j in range(courses):
+                za, zb = z0 + 0.003 + j * h / courses, z0 + (j + 1) * h / courses - 0.001
+                col = jit(WATTLE, rnd, 0.1)
+                for k in range(m):
+                    p0 = Vector((x0 + (x1 - x0) * k / m, y0 + (y1 - y0) * k / m, 0))
+                    p1 = Vector((x0 + (x1 - x0) * (k + 1) / m, y0 + (y1 - y0) * (k + 1) / m, 0))
+                    pm = (p0 + p1) / 2 + Vector((nx, ny, 0)) * (0.007 if (k + j) % 2 else -0.003)
+                    vs = [q.bm.verts.new((p.x, p.y, z)) for p, z in ((p0, za), (pm, za), (p1, za), (p1, zb), (pm, zb), (p0, zb))]
+                    q.paint([q.bm.faces.new((vs[0], vs[1], vs[4], vs[5])), q.bm.faces.new((vs[1], vs[2], vs[3], vs[4]))], col, rnd, 0.05)
+                for k in range(m):  # stakes
+                    p = (x0 + (x1 - x0) * k / m + nx * 0.003, y0 + (y1 - y0) * k / m + ny * 0.003)
+                    q.cyl(4, 0.007, 0.006, (p[0], p[1], z0 - 0.01), (p[0], p[1], z0 + h + 0.015), POLE, rnd, 0.06)
+        q.box((0, 0, z0 + h / 2), (W - 0.012, D - 0.012, h), (96, 72, 46), rnd, 0.04)  # the far side of the weave
+    elif walls == "daub":
+        prof = [(0.004, z0), (0.006, z0 + 0.022), (0.005, z0 + 0.03), (0.008, z0 + h * 0.5), (0.005, z0 + h - 0.012), (0.0, z0 + h)]
+        rows = [[(x * (1 + rnd.uniform(-0.01, 0.01)), y * (1 + rnd.uniform(-0.01, 0.01)), z) for x, y, z in rect_ring(W, D, z, out)] for out, z in prof]
+        n = len(rows[0])
+        crack = rnd.randrange(n)
+        ring_loft(q, rows, lambda i, k: DAUB_DK if i < 2 else (WATTLE if i == 3 and k in (crack, (crack + 9) % n) else DAUB), rnd, 0.07)
+        for (x0, y0), _, _ in sides:  # corner posts showing through the plaster
+            q.cyl(4, 0.009, 0.008, (x0 * 1.04, y0 * 1.04, z0 - 0.01), (x0 * 1.04, y0 * 1.04, z0 + h + 0.015), POLE, rnd, 0.06)
+    else:
+        courses = 5
+        ch = h / courses
+        for c in range(courses):
+            for (x0, y0), (x1, y1), (nx, ny) in sides:
+                L = math.hypot(x1 - x0, y1 - y0)
+                m = 4 if abs(ny) else 3
+                off = 0.5 if (c + abs(nx)) % 2 else 0.0
+                for k in range(m + (1 if off else 0)):
+                    t0, t1 = max(0.0, (k - off) / m), min(1.0, (k + 1 - off) / m)
+                    t = (t0 + t1) / 2
+                    cx, cy = x0 + (x1 - x0) * t + nx * 0.012, y0 + (y1 - y0) * t + ny * 0.012
+                    if ny < 0 and abs(cx) < 0.06 and c < 4:
+                        continue  # the doorway
+                    size = (L * (t1 - t0) * rnd.uniform(0.88, 0.97) + 0.03, 0.05 * rnd.uniform(0.9, 1.1), ch * rnd.uniform(0.84, 0.96))
+                    ang = math.atan2(y1 - y0, x1 - x0)
+                    q.box((cx, cy, z0 + c * ch + ch / 2), size, rnd.choice(STONES), rnd, 0.08,
+                          rot=Matrix.Rotation(ang + rnd.uniform(-0.03, 0.03), 3, "Z"), taper=0.93)
+        q.box((0, -hd - 0.012, z0 + 4 * ch - 0.006), (0.18, 0.06, 0.026), STONES[1], rnd, 0.05)  # lintel
+
+
+def storehouse(walls, rnd):
+    """A store for food. Wattle and daub stand on posts capped with flat stones, out of the damp and the
+    mice' reach, with a notched-log ladder up to the hatch; the stone store sits on the ground with a low
+    door. A sagging thatched gable roof over either."""
+    q = Part()
+    W, D = 0.38, 0.3
+    if walls == "stone":
+        z0, h = 0.0, 0.24
+    else:
+        z0, h = 0.15, 0.16
+        for x in (-0.16, 0.16):
+            for y in (-0.12, 0.12):
+                q.cyl(5, 0.019, 0.017, (x, y, 0), (x, y, 0.118), POLE, rnd)
+                q.cyl(7, 0.036, 0.03, (x, y, 0.118), (x, y, 0.13), rnd.choice(STONES), rnd, 0.05)  # staddle stones
+        for y in (-0.12, 0.12):  # bearers, then a floor of split logs
+            q.cyl(5, 0.014, 0.014, (-0.21, y, 0.142), (0.21, y, 0.142), POLE, rnd)
+        for k in range(8):
+            x = -0.2 + k * 0.4 / 7
+            q.cyl(5, 0.014, 0.013, (x, -0.17, 0.157), (x + rnd.uniform(-0.005, 0.005), 0.17, 0.157), (118, 90, 60), rnd, 0.06)
+        z0 = 0.165
+    store_walls(q, walls, W, D, z0, h, rnd)
+    top = z0 + h
+    # gable ends filled with wattle (daubed on the daub store), set back under the roof
+    pt = gable_thatch(q, W / 2 + 0.07, D / 2 + 0.085, top + 0.008, top + 0.17, rnd)
+    for sx in (-1, 1):
+        bm = q.bm
+        x = sx * (W / 2 - 0.004)
+        vs = [bm.verts.new((x, -D / 2, top)), bm.verts.new((x, D / 2, top)), bm.verts.new((x, 0, top + 0.14))]
+        q.paint([bm.faces.new(vs if sx > 0 else list(reversed(vs)))], DAUB if walls == "daub" else WATTLE, rnd, 0.06)
+    if walls == "stone":  # a low door, a hide hung over it, a flat stone before it
+        q.box((0, -D / 2 - 0.01, 0.08), (0.1, 0.03, 0.16), HATCH)
+        q.box((0.045, -D / 2 - 0.036, 0.085), (0.045, 0.008, 0.14), HIDE, rnd, 0.05, rot=Matrix.Rotation(0.5, 3, "Z"))  # pulled aside
+        q.blob((0, -D / 2 - 0.07, 0.005), (0.07, 0.04, 0.01), STONES[2], rnd, 0.05, noise=0.15)
+    else:  # a hatch with a hide over it, and a notched log leant up to it
+        q.box((0, -D / 2 - 0.012, z0 + 0.075), (0.11, 0.02, 0.1), HATCH)
+        q.box((-0.02, -D / 2 - 0.024, z0 + 0.09), (0.075, 0.008, 0.075), HIDE, rnd, 0.05, rot=Matrix.Rotation(-0.2, 3, "Y"))
+        a, b = Vector((0.03, -D / 2 - 0.15, 0.0)), Vector((0.01, -D / 2 - 0.022, z0 + 0.012))
+        q.cyl(5, 0.017, 0.014, a, b, (118, 90, 60), rnd, 0.05)
+        for t in (0.25, 0.5, 0.75):  # the notches
+            m = a.lerp(b, t)
+            q.box(m + Vector((0, -0.012, 0.012)), (0.026, 0.01, 0.006), POLE, rnd, 0.0, rot=Matrix.Rotation(-0.85, 3, "X"))
+    return q
+
+
+for walls, suffix in (("wood", ""), ("daub", "d"), ("stone", "s")):
+    storehouse(walls, random.Random(40)).finish(f"bld__storehouse{suffix}")
 
 rnd = random.Random(41)
 q = Part()  # drying rack: two A-frames, a pole, strips of fish and meat
