@@ -110,6 +110,8 @@ export interface Camp {
   hungryWinters: number;
   /** job weights from the planner, refreshed each morning */
   jobs: Record<string, number>;
+  /** who was last named the band's best at each craft (a skill index to a person) */
+  named?: Record<number, number>;
   /** the day someone last set out on the round of the band's traps */
   trapRound?: number;
   plan: string[];
@@ -321,7 +323,7 @@ export class Sim {
       events: this.events.map((e) => ({ ...e, people: e.people.slice() })),
       people: this.people.map((p) => ({
         ...p, skills: Array.from(p.skills), rel: rel(p.rel), path: p.path ? b64(p.path) : null,
-        task: p.task ? { ...p.task, ...(p.task.route ? { route: p.task.route.slice() } : {}) } : null, traits: p.traits.slice(), memories: p.memories.map((m) => ({ ...m })), children: p.children.slice(),
+        task: p.task ? { ...p.task, ...(p.task.route ? { route: p.task.route.slice() } : {}) } : null, traits: p.traits.slice(), ...(p.titles ? { titles: p.titles.slice() } : {}), memories: p.memories.map((m) => ({ ...m })), children: p.children.slice(),
       })),
       buildings: this.buildings.map((b) => ({ ...b, builders: b.builders.slice() })),
       items: this.items.map((i) => ({ ...i })),
@@ -1373,14 +1375,27 @@ export class Sim {
     const adults = this.members(c).filter((p) => this.age(p) >= 16);
     const shown = this.shownSkills(c);
     const names = new Map<number, { k: number; lead: number }>();
+    const held = new Set<number>();
+    // a name, once given, is kept until someone catches up or the skill fades: it doesn't come and go
+    // each time the lead wavers
+    for (const p of adults) {
+      const k = p.known;
+      if (k === undefined || !shown.includes(k) || p.skills[k] < 6) continue;
+      if (adults.some((q) => q !== p && q.skills[k] >= p.skills[k])) continue;
+      names.set(p.id, { k, lead: 0 });
+      held.add(k);
+    }
     for (const k of Object.keys(CRAFT_TITLES).map(Number)) {
-      if (!shown.includes(k)) continue;
+      if (!shown.includes(k) || held.has(k)) continue;
       const [best, next] = [...adults].sort((a, b) => b.skills[k] - a.skills[k] || a.id - b.id);
       if (!best || best.skills[k] < 8 || (next && best.skills[k] < next.skills[k] + 2)) continue;
       // one name each: the craft they stand out at most
+      const had = names.get(best.id);
+      if (had && had.lead === 0) continue;
       const lead = best.skills[k] - (next?.skills[k] ?? 0);
-      if (lead > (names.get(best.id)?.lead ?? -1)) names.set(best.id, { k, lead });
+      if (lead > (had?.lead ?? -1)) names.set(best.id, { k, lead });
     }
+    const named = c.named ??= {};
     for (const p of this.people) {
       if (p.band !== c.id || !p.alive) continue;
       const k = names.get(p.id)?.k;
@@ -1388,9 +1403,15 @@ export class Sim {
       if (k === undefined) { delete p.known; continue; }
       p.known = k;
       const title = CRAFT_TITLES[k]!;
-      // a band just come here brings its names with it: no news in that
-      if (this.tick - c.founded < 2 * TICKS_PER_DAY) continue;
-      this.event('known', `${p.name} is known now as the ${title} of ${c.name}.`, [p.id], p.x, p.z, 1.5);
+      const before = named[k] !== undefined && named[k] !== p.id ? this.byId.get(named[k]) : undefined;
+      const again = p.titles?.includes(k) && !before;
+      named[k] = p.id;
+      if (!p.titles?.includes(k)) (p.titles ??= []).push(k);
+      // a band just come here brings its names with it: no news in that; nor in a name given back
+      if (this.tick - c.founded < 2 * TICKS_PER_DAY || again) continue;
+      this.event('known', before && before.band === c.id && before.alive
+        ? `${p.name} has taken over from ${before.name} as the ${title} of ${c.name}.`
+        : `${p.name} is known now as the ${title} of ${c.name}.`, [p.id], p.x, p.z, 1.5);
       this.remember(p, 'known', 10, 6, -1, `Became known as the band's ${title}.`);
     }
   }
@@ -1425,9 +1446,13 @@ export class Sim {
   }
 
   private discover(c: Camp, d: Discovery, p: Person) {
+    // the first in the world to find it out is the story; a band finding out what others already know is
+    // told more quietly
+    const known = this.camps.some((o) => o !== c && o.knows.includes(d.key));
     this.learn(c, d.key, 'found', p.id);
-    this.remember(p, 'discovery', 30, 5, -1, d.memory);
-    this.event('discovery', `${p.name} ${d.found}.`, [p.id], p.x, p.z, 5);
+    this.remember(p, 'discovery', known ? 20 : 30, 5, -1, known ? `Worked out how to ${d.taught}.` : d.memory);
+    if (known) this.event('discovery', `${p.name} of ${c.name} worked out how to ${d.taught}, as other bands had before.`, [p.id], p.x, p.z, 2.5);
+    else this.event('discovery', `${p.name} ${d.found}.`, [p.id], p.x, p.z, 5);
   }
 
   /** Mud or stone within reach of a camp (a camp never moves, so this is asked once). */

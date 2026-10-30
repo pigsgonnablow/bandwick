@@ -48,6 +48,41 @@ describe('crafting', () => {
     expect(ada.known).toBeUndefined();
   });
 
+  it('keeps a name while the lead wavers, gives it back quietly, and tells when someone takes it over', () => {
+    const s = sim(3);
+    runTo(s, s.tick + 3 * TICKS_PER_DAY);
+    const adults = s.members().filter((p) => s.age(p) >= 20);
+    for (const p of adults) p.skills[SK.tool] = p.skills[SK.weave] = 3;
+    const ada = adults[0], other = adults[1];
+    const told = () => s.events.filter((e) => e.kind === 'known');
+    ada.skills[SK.tool] = 12;
+    runTo(s, s.tick + TICKS_PER_DAY);
+    expect(ada.known).toBe(SK.tool);
+    const n = told().length;
+    // the lead narrows, but nobody has caught up: the name stays, and there is no news
+    for (let i = 0; i < 3; i++) {
+      other.skills[SK.tool] = ada.skills[SK.tool] - 1;
+      runTo(s, s.tick + TICKS_PER_DAY);
+      other.skills[SK.tool] = ada.skills[SK.tool] - 3;
+      runTo(s, s.tick + TICKS_PER_DAY);
+    }
+    expect(ada.known).toBe(SK.tool);
+    // caught up: the name goes; pulling ahead again gives it back without telling it twice
+    other.skills[SK.tool] = ada.skills[SK.tool];
+    runTo(s, s.tick + TICKS_PER_DAY);
+    expect(ada.known).toBeUndefined();
+    other.skills[SK.tool] = ada.skills[SK.tool] - 3;
+    runTo(s, s.tick + TICKS_PER_DAY);
+    expect(ada.known).toBe(SK.tool);
+    expect(told().length).toBe(n);
+    // someone else clearly better takes it over, and that is news
+    other.skills[SK.tool] = ada.skills[SK.tool] + 3;
+    runTo(s, s.tick + TICKS_PER_DAY);
+    expect(other.known).toBe(SK.tool);
+    expect(ada.known).toBeUndefined();
+    expect(told().at(-1)!.text).toBe(`${other.name} has taken over from ${ada.name} as the toolmaker of ${s.camp.name}.`);
+  });
+
   it('carries old saves over: crafting goes to toolmaking and weaving, and twisting becomes a recipe', () => {
     const s = runYears(sim(2), 1);
     const save = s.serialize();
