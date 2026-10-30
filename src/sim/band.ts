@@ -231,6 +231,8 @@ export interface Person {
   skills: Float32Array;
   /** the craft they are known for in their band (a skill index), when clearly its best at it */
   known?: number;
+  /** every craft they have ever been named for (absent until they are) */
+  titles?: number[];
   carry: number;
   carryAmt: number;
   home: number;

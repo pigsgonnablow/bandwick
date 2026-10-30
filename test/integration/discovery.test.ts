@@ -41,6 +41,20 @@ describe('discovery', () => {
     expect(s.events.some((e) => e.kind === 'discovery' && e.people[0] === adult.id)).toBe(true);
   });
 
+  it('tells the first in the world to find something out as the story, and later bands more quietly', () => {
+    const s = sim(2);
+    const c = s.camp;
+    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
+    const other = s.foundCamp(c.tile + 40, { ...stock }, -1, -1);
+    other.knows.push('huts');
+    s.camp = c;
+    const adult = s.members().find((p) => s.age(p) >= 20)!;
+    for (let i = 0; i < 400 && !s.knows('huts'); i++) s.practise(adult, 'night_out');
+    const e = s.events.find((e) => e.kind === 'discovery' && e.people[0] === adult.id)!;
+    expect(e.text).toBe(`${adult.name} of ${c.name} worked out how to raise huts, as other bands had before.`);
+    expect(e.weight).toBeLessThan(3);
+  });
+
   it('is taught a season after someone who knows it marries in', () => {
     const s = sim(3);
     const c = s.camp;
