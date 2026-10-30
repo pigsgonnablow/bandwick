@@ -34,6 +34,12 @@ export const STAGE_WORD = ['sapling', 'young', 'mature', 'old'];
 export const DAMP_BURN = 1.2;
 /** How far a fire's warmth reaches, and with a windbreak behind it. */
 export const WARM_RADIUS = 2.6;
+/** how fast fish come back in winter, against the rest of the year */
+export const WINTER_FISH = 0.25;
+/** a winter catch, against a catch the rest of the year */
+export const WINTER_CATCH = 0.5;
+/** rationing starts when the stores hold less than this share of what would last to spring */
+export const RATION_BELOW = 0.7;
 export const WARM_RADIUS_SHELTERED = 3.2;
 /** 'a' or 'an' for a word. */
 export const art = (w: string) => (/^[aeiou]/i.test(w) ? 'an' : 'a');
@@ -112,6 +118,8 @@ export interface Camp {
   jobs: Record<string, number>;
   /** who was last named the band's best at each craft (a skill index to a person) */
   named?: Record<number, number>;
+  /** whether the band is eking out its stores this winter (set each morning) */
+  rationing?: boolean;
   /** the day someone last set out on the round of the band's traps */
   trapRound?: number;
   plan: string[];
@@ -1014,9 +1022,11 @@ export class Sim {
     // near to starving: turning back for the night only means the whole walk again tomorrow)
     const body = k === 'bury' ? this.byId.get(p.task!.ref) : undefined;
     const graveDug = !!body && p.food >= 10 && (p.task!.stage >= 1 || hyp(body.x - this.camp.x, body.z - this.camp.z) > FAR_GRAVE);
-    if (p.food < starveAt && !foodInHand && !graveDug && k !== 'eat' && k !== 'eatwild' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
+    // (feeding the fire is a moment's work, and a band that lets its fire go out in a hungry winter freezes)
+    if (p.food < starveAt && !foodInHand && !graveDug && k !== 'eat' && k !== 'eatwild' && k !== 'fuel' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
     const woodRun = (k === 'fell' || k === 'haul' || k === 'deadwood') && this.hearth().fuel < 2;
-    if (p.warmth < (woodRun ? 8 : 18) && k !== 'warm' && k !== 'sleep') return true;
+    // (feeding the fire is how they get warm: nobody turns away from it to go and sit by it cold)
+    if (p.warmth < (woodRun ? 8 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel') return true;
     // the fire keeper wakes in the night when the fire will not last till morning
     if (k === 'sleep' && isDark(this.tick) && this.fireShort() && !this.people.some((q) => q.alive && q.band === p.band && q.task?.kind === 'fuel') && this.fireKeeper() === p) return true;
     // worn out on the way home with a load: the bed is at camp, where they're going anyway
@@ -1158,11 +1168,12 @@ export class Sim {
   // ------------------------------------------------------------------ hourly & daily
   private hourly() {
     for (const c of this.liveCamps()) this.burn(this.hearth(c));
-    // fish recover slowly
+    // fish recover slowly, and hardly at all in winter, when they go deep and lie still in the cold
     if (this.tick % (TICKS_PER_HOUR * 6) === 0) {
+      const slow = seasonOf(this.tick) === 3 ? WINTER_FISH : 1;
       for (let i = 0; i < this.fish.length; i++) {
         const c = this.fishCap[i];
-        if (c > 0 && this.fish[i] < c) this.fish[i] = Math.min(c, this.fish[i] + 0.06 * c * (1 - this.fish[i] / (c * 1.05)) + 0.02);
+        if (c > 0 && this.fish[i] < c) this.fish[i] = Math.min(c, this.fish[i] + (0.06 * c * (1 - this.fish[i] / (c * 1.05)) + 0.02) * slow);
       }
     }
   }
@@ -1674,15 +1685,17 @@ export class Sim {
         this.remember(p, 'came_of_age', 10, 2, -1, 'Came of age.');
       }
       // old age, illness, infancy
+      // illness takes the worn-down: the well fed and strong rarely, the weak, hungry and cold far more often
+      const worn = p.health < 70 || p.food < 30 || p.warmth < 35;
       let daily = annualMortality(age) / DAYS_PER_YEAR;
-      if (p.health < HEALTH.weak) daily *= 2;
+      daily *= p.health < HEALTH.weak ? 3 : worn ? 1.5 : 0.6;
       if (p.hardy && age > 50) daily *= 0.3;
       if (r.next() < daily) {
         this.kill(p, age < 3 ? 'infancy' : age > 50 ? 'old age' : 'fever');
         continue;
       }
       // a sickness going through the camp takes the youngest and the oldest first
-      if (p.sick > 0 && (this.camp.sickUntil ?? 0) > this.tick && r.next() < (age < 3 || age > 60 ? 0.03 : age < 12 ? 0.01 : 0.005)) {
+      if (p.sick > 0 && (this.camp.sickUntil ?? 0) > this.tick && r.next() < (age < 3 || age > 60 ? 0.03 : age < 12 ? 0.01 : 0.005) * (worn ? 2 : 0.6)) {
         this.camp.sickDead = (this.camp.sickDead ?? 0) + 1;
         this.kill(p, 'sickness');
         continue;
@@ -2329,6 +2342,9 @@ export class Sim {
     // from late summer on, the store has to carry the band through to the end of winter
     const need = meals * (winterNow ? daysToWinterEnd + 2 : s >= 1.75 ? daysToWinterEnd : Math.min(daysToWinterEnd, 20));
     const foodP = clamp01(1.15 - (lasting / Math.max(1, need)) * 0.9, winterNow ? 0.3 : 0.1, 1.2);
+    // from late autumn, a store that won't see the band through to spring is eked out: small shares, a full
+    // one only for the very hungry
+    c.rationing = s >= 2.5 && lasting < need * RATION_BELOW;
     // kept burning through the night, the fire eats about 9 loads a winter day: lay in enough before the cold comes
     const fuelNeed = (winterNow ? Math.max(14, daysToWinterEnd * 9) : s > 2.0 ? 110 : s > 1.4 ? 55 : 12) * (this.hasBuilt('woodshed') ? 1 : s > 1.6 ? DAMP_BURN : 1);
     const sites = mine.filter((b) => !b.built);
@@ -2378,6 +2394,7 @@ export class Sim {
       bury: this.people.some((p) => !p.alive && !p.buried && p.band === c.id) ? 1 : 0,
     };
     c.plan = [];
+    if (c.rationing) c.plan.push('Ration the stores until spring');
     if (foodP > 0.8) c.plan.push(winterNow ? 'Find food to last the winter' : 'Store food before winter');
     if (woodP > 0.5) c.plan.push(s > 2.0 && !winterNow ? 'Lay in firewood for the winter' : 'Gather wood');
     if (siteFiber > fiberHave) c.plan.push('Cut grass and reeds for thatch and cordage');

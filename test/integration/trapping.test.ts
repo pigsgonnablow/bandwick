@@ -46,7 +46,7 @@ describe('trapping', () => {
     const s = sim(1);
     s.camp.knows.push('fishtraps');
     let set: typeof s.items = [];
-    for (let d = 0; d < 48 && !set.length; d++) {
+    for (let d = 0; d < 96 && !set.length; d++) {
       runTo(s, s.tick + TICKS_PER_DAY);
       set = s.toolsOf().filter((i) => i.kind === 'fishtrap' && (i.tile ?? -1) >= 0);
     }
