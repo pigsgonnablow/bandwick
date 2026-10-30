@@ -1,7 +1,7 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
-import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp } from './sim';
+import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
@@ -171,7 +171,8 @@ export function decide(s: Sim, p: Person) {
     if ((dark || hour >= 15) && age >= 13 && busyWith(s, 'fuel') === 0 && s.fireShort()) add('fuel', dark ? 2.0 : 1.0);
     // a dying fire in the cold is everyone's problem: a few go for wood whatever the hour
     const fireLow = s.hearth().fuel < 2;
-    if (fireLow && temp < 9 && age >= 13 && p.health > 30) {
+    // (even the weak: a cold hearth in a hungry winter is how a whole band dies)
+    if (fireLow && temp < 9 && age >= 13 && p.health > 12) {
       if (c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', 2.1);
       else if (c.stock.wood < 3) {
         const fetching = busyWith(s, 'fell') + busyWith(s, 'haul') + busyWith(s, 'deadwood');
@@ -941,7 +942,9 @@ export function runTask(s: Sim, p: Person) {
       if (--t.timer > 0) return;
       // a portion is enough to fill about half a belly: the very hungry eat more, up to two helpings
       const portion = s.age(p) < 12 ? 0.6 : s.has(p, 'greedy') ? 1.25 : 1;
-      const want = portion * Math.max(1, Math.min(2, (88 - p.food) / 48));
+      // while the band rations its stores, only the very hungry get a full share
+      const small = c.rationing && p.food >= 35;
+      const want = small ? portion * 0.5 : portion * Math.max(1, Math.min(2, (88 - p.food) / 48));
       let got = 0;
       const st = c.stock;
       for (const k of ['berries', 'fish', 'meat', 'preserved'] as const) {
@@ -958,7 +961,7 @@ export function runTask(s: Sim, p: Person) {
         p.belonging = clamp(p.belonging + 6 + company.length * 2);
         for (const q of company) s.adjust(p, q, 0.6);
       }
-      p.thought = got < want * 0.5 ? 'There was hardly anything to eat.' : 'Ate well.';
+      p.thought = got < want * 0.5 ? 'There was hardly anything to eat.' : small ? 'A small share. The stores have to last till spring.' : 'Ate well.';
       finish(s, p);
       return;
     }
@@ -1561,10 +1564,11 @@ export function runTask(s: Sim, p: Person) {
         // a stab at a fish that got away now and then while waiting (just looks; decides nothing)
         if (t.timer % 9 === 4 && t.timer > 6) flash(p, FLASH.Stab);
         if (--t.timer > 0) return;
-        const chance = 0.42 + p.skills[SK.fish] * 0.028 + (s.fish[w] / Math.max(1, s.fishCap[w])) * 0.18;
+        // in winter the fish lie deep and slow, and cold hands miss more
+        const chance = 0.42 + p.skills[SK.fish] * 0.028 + (s.fish[w] / Math.max(1, s.fishCap[w])) * 0.18 - (seasonOf(s.tick) === 3 ? 0.12 : 0);
         flash(p, FLASH.Stab);
         if (r.next() < chance) {
-          const got = Math.min(s.fish[w], 3 + Math.floor(p.skills[SK.fish] / 4));
+          const got = Math.min(s.fish[w], Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (seasonOf(s.tick) === 3 ? WINTER_CATCH : 1)));
           s.fish[w] -= got;
           skillUp(p, SK.fish, 0.12);
           // standing in the shallows with reeds to hand is what makes someone think of a woven trap
