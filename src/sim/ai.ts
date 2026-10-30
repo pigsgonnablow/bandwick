@@ -1,7 +1,7 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
-import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH } from './sim';
+import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
@@ -1568,7 +1568,7 @@ export function runTask(s: Sim, p: Person) {
         const chance = 0.42 + p.skills[SK.fish] * 0.028 + (s.fish[w] / Math.max(1, s.fishCap[w])) * 0.18 - (seasonOf(s.tick) === 3 ? 0.12 : 0);
         flash(p, FLASH.Stab);
         if (r.next() < chance) {
-          const got = Math.min(s.fish[w], Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (seasonOf(s.tick) === 3 ? WINTER_CATCH : 1)));
+          const got = Math.min(s.fish[w], Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (seasonOf(s.tick) === 3 ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1)));
           s.fish[w] -= got;
           skillUp(p, SK.fish, 0.12);
           // standing in the shallows with reeds to hand is what makes someone think of a woven trap
