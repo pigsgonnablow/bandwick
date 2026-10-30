@@ -7,7 +7,7 @@ Conventions (read by src/render/band.ts):
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
   deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
-  carry__{log,berries,meat,fish,spear,axe,body,baby,stick,snare} attached to a person's hands or shoulder.
+  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   bld__{hearth,flame,leanto,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
@@ -746,6 +746,59 @@ q = Part()
 q.blob((0, 0, 0), (0.035, 0.025, 0.03), (214, 200, 170), rnd, 0.03)
 q.blob((0, -0.03, 0.008), (0.018, 0.018, 0.018), (0, 1, 0), raw=True)
 q.finish("carry__baby")
+
+ROPE_TIE = (120, 96, 60)
+HIDE_CARRY = (138, 104, 72)
+FLINT = (122, 116, 108)
+FLINT_SCAR = (156, 150, 140)  # fresh flake scars, paler than the weathered rind
+CORTEX = (176, 160, 128)
+GRASS = (170, 160, 92)
+GRASS_DK = (132, 128, 70)
+CLAY = (128, 96, 70)
+CLAY_WET = (104, 76, 56)
+
+q = Part()  # a hand chopper: a cobble with flakes struck off one end to a wavy edge (+z), the rind left to grip
+rr = random.Random(46)
+for v in q.blob((0, 0, 0), (0.024, 0.019, 0.023), CORTEX, rr, 0.06, noise=0.1, subdiv=2):
+    if v.co.z > -0.002:  # the worked end, thinned from both faces to an edge across x
+        v.co.y *= max(0.18, 1 - (v.co.z + 0.002) / 0.022)
+for f in q.bm.faces:
+    c = f.calc_center_median()
+    if c.z > 0.001:
+        q.paint([f], FLINT_SCAR if rr.random() < 0.4 else FLINT, rr, 0.06)
+q.finish("carry__chopper")
+
+q = Part()  # an armful of cut grass, tied round the middle, the cut ends down and the heads splayed up
+rr = random.Random(47)
+for k in range(16):
+    a, r = rr.uniform(0, math.tau), rr.uniform(0, 0.014)
+    base = Vector((math.cos(a) * r, math.sin(a) * r * 0.7, -0.07 + rr.uniform(0, 0.012)))
+    top = Vector((math.cos(a) * (r * 2.6 + 0.008), math.sin(a) * (r * 2.2 + 0.006), 0.075 + rr.uniform(0, 0.03)))
+    mid = Vector((base.x * 0.6, base.y * 0.6, 0.0))
+    col = GRASS if k % 3 else GRASS_DK
+    q.cyl(3, 0.0032, 0.0028, base, mid, col, rr, 0.08, cap=False)
+    q.cyl(3, 0.0028, 0.0012, mid, top, col, rr, 0.08, cap=False)
+q.cyl(8, 0.0125, 0.0125, (0, 0, -0.006), (0, 0, 0.006), ROPE_TIE, rr, 0.03, cap=False)  # the tie
+q.finish("carry__fiber")
+
+q = Part()  # wet clay dug from the bank, carried in a hide gathered up and twisted at the top
+rr = random.Random(48)
+for v in q.blob((0, 0, -0.035), (0.042, 0.036, 0.034), HIDE_CARRY, rr, 0.05, noise=0.12):
+    if v.co.z > -0.012:
+        k = (v.co.z + 0.012) / 0.03
+        v.co.x *= 1 - 0.8 * min(1.0, k)
+        v.co.y *= 1 - 0.8 * min(1.0, k)
+q.cyl(5, 0.008, 0.005, (0, 0, -0.008), (0.002, 0, 0.012), HIDE_CARRY, rr, 0.05)  # the twist
+q.blob((0.008, -0.026, -0.024), (0.03, 0.022, 0.02), CLAY_WET, rr, 0.08, noise=0.25)  # clay bulging out of the
+q.blob((-0.016, -0.012, -0.03), (0.018, 0.018, 0.014), CLAY, rr, 0.08, noise=0.25)   # open side
+q.finish("carry__mud")
+
+q = Part()  # a building stone, flattish and blocky, carried on the right shoulder
+rr = random.Random(49)
+for v in q.blob((0, 0, 0), (0.042, 0.03, 0.022), (132, 126, 117), rr, 0.1, noise=0.12):
+    v.co.x = max(-0.034, min(0.034, v.co.x))  # squared off at the ends, as a stone for a wall is chosen
+    v.co.z = max(-0.016, v.co.z)
+q.finish("carry__stone")
 
 # ---------------------------------------------------------------- tools and traps
 WOOD = (138, 104, 66)
