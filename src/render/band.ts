@@ -20,20 +20,6 @@ const AXE = 99, CHOPPER = 98;
 const STICK = 97, SNARE = 96, FISHTRAP = 95;
 /** How walls that are not wood colour a building that has no model of its own for them (multiplied over its own colours). */
 const WALL_TINT: Record<string, [number, number, number]> = { daub: [1.0, 0.86, 0.68], stone: [0.8, 0.82, 0.86] };
-/** A box of one colour, turned about its own centre and set down at (x, y, z) (y is its foot). */
-function plank(w: number, h: number, d: number, x: number, y: number, z: number, rx: number, ry: number, hex: number) {
-  const g = new THREE.BoxGeometry(w, h, d);
-  g.rotateX(rx);
-  g.rotateY(ry);
-  g.translate(x, y + h / 2, z);
-  const c = new THREE.Color(hex).convertSRGBToLinear();
-  const n = g.attributes.position.count;
-  const col = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) col.set([c.r, c.g, c.b], i * 3);
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  g.deleteAttribute('uv');
-  return g;
-}
 /** A flying chip of wood or a drop of water. */
 interface Bit { x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number; life: number; size: number; r: number; g: number; b: number; floor: number }
 /** Water deeper than this share of someone's height means swimming rather than wading. */
@@ -68,9 +54,9 @@ function smooth(a: number, b: number, x: number) {
 /** The arm a carried thing hangs from, in the pose it is normally carried in: [shoulder, elbow, lean]. */
 function baseArm(carry: number, act: number): [number, number, number] {
   if (carry === CARRY.Spear) return act === ACT.Hunt ? [-2.35, -0.35, 0.28] : act === ACT.Fish ? [-2.2, -0.35, 0.28] : [-0.45, -0.75, 0.05];
-  if (carry === CARRY.Log || carry === CARRY.Meat) return [-1.55, -1.95, 0.05];
+  if (carry === CARRY.Log || carry === CARRY.Meat || carry === CARRY.Stone) return [-1.55, -1.95, 0.05];
   if (carry === CARRY.Body) return [-1.25, -1.35, 0.05];
-  if (carry === CARRY.Berries || carry === CARRY.Fiber || carry === CARRY.Mud || carry === CARRY.Stone) return [-0.15, -0.55, 0.05];
+  if (carry === CARRY.Berries || carry === CARRY.Fiber || carry === CARRY.Mud) return [-0.15, -0.55, 0.05];
   return [-0.1, -0.5, 0.05];
 }
 /** Where the right hand is (person space) for given arm angles and lean, as the shader bends the body. */
@@ -178,14 +164,14 @@ export class BandLayer {
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
       [CARRY.Spear, 'spear'], [CARRY.Body, 'body'], [CARRY.Baby, 'baby'], [AXE, 'axe'], [CHOPPER, 'chopper'],
       [STICK, 'stick'], [SNARE, 'snare'], [FISHTRAP, 'fishtrap'],
-      // cut grass and cordage go home in a basket like berries
-      [CARRY.Fiber, 'berries'], [CARRY.Mud, 'berries'], [CARRY.Stone, 'berries'],
+      // cut grass in a bundle, clay in a hide, a stone on the shoulder
+      [CARRY.Fiber, 'fiber'], [CARRY.Mud, 'mud'], [CARRY.Stone, 'stone'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
     carryMat.customProgramCacheKey = () => 'carry';
     for (const [id, name] of carryNames) {
-      const g = geoms.get(`carry__${name}`) ?? geoms.get(`trap__${name}`) ?? (name === 'chopper' ? plank(0.045, 0.06, 0.035, 0, -0.03, 0, 0.3, 0.2, 0x8a8478) : undefined);
+      const g = geoms.get(`carry__${name}`) ?? geoms.get(`trap__${name}`);
       if (!g) continue;
       const m = new THREE.InstancedMesh(g, carryMat, 128);
       m.count = 0;
@@ -1374,7 +1360,10 @@ function carryOffset(kind: number, act: number) {
   const p = new THREE.Vector3();
   switch (kind) {
     case CARRY.Log: p.set(0.06, 0.3, 0); e.set(0, Math.PI / 2, 0.15); break;
-    case CARRY.Berries: case CARRY.Fiber: case CARRY.Mud: case CARRY.Stone: p.set(0.075, 0.16, 0.04); break;
+    case CARRY.Berries: p.set(0.075, 0.16, 0.04); break;
+    case CARRY.Fiber: p.set(0.078, 0.15, 0.035); e.set(0.15, 0, 0); break; // gripped at the tie, heads up
+    case CARRY.Mud: p.set(0.076, 0.15, 0.035); break; // hanging from the twist of the hide
+    case CARRY.Stone: p.set(0.06, 0.315, -0.008); e.set(0, 0.3, 0); break; // on the right shoulder
     case CARRY.Meat: p.set(0, 0.3, -0.03); e.set(0, Math.PI / 2, 0); break;
     case CARRY.Fish: p.set(0.078, 0.15, 0.02); e.set(0, Math.PI / 2, -1.2); break;
     case CARRY.Spear:
@@ -1597,11 +1586,11 @@ void poseVertex(vec3 pos, out vec3 v, out mat3 R) {
   // hands that are carrying something hold it (codes as CARRY in sim/band.ts)
   float carry = iAnim2.w;
   if (p.lie < 0.5 && carry > 0.5) {
-    if (carry < 1.5 || (carry > 2.5 && carry < 3.5)) { p.shR = -1.55; p.elR = -1.95; }            // log, meat: on the right shoulder
+    if (carry < 1.5 || (carry > 2.5 && carry < 3.5) || (carry > 9.5 && carry < 10.5)) { p.shR = -1.55; p.elR = -1.95; } // log, meat, stone: on the right shoulder
     else if (carry > 4.5 && carry < 5.5) { p.shL = p.shR = -1.25; p.elL = p.elR = -1.35; }         // a body, in both arms
     else if (carry > 6.5 && carry < 7.5) { p.shL = p.shR = -0.75; p.elL = p.elR = -1.45; }                         // a baby, cradled
     else if (carry > 5.5 && iAnim.x < 12.5) { p.shR = -0.45; p.elR = -0.75; }                      // a spear, held low
-    else if ((carry > 1.5 && carry < 2.5) || carry > 7.5) { p.shR = -0.15; p.elR = -0.55; }        // a basket of berries or grass
+    else if ((carry > 1.5 && carry < 2.5) || carry > 7.5) { p.shR = -0.15; p.elR = -0.55; }        // a basket of berries, grass, clay
   }
   // a one-off move (picking up, setting down, a thrust, a stab) plays over all of that
   if (iAnim3.x > 0.5 && p.lie < 0.5) {
