@@ -231,7 +231,7 @@ export class BandLayer {
     }
     // buildings
     const works = fireWorks();
-    for (const kind of ['hearth', 'leanto', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed']) {
+    for (const kind of ['hearth', 'leanto', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed']) {
       const g0 = geoms.get(`bld__${kind}`) ?? works.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -1148,8 +1148,8 @@ export class BandLayer {
 
   /** Which model draws a building: huts come in two shapes, each with wattle, daub and stone walls. */
   private modelOf(b: { kind: string; id: number; walls?: string }) {
-    if (b.kind !== 'hut') return b.kind;
-    const shape = b.id % 2 ? 'hut1' : 'hut0';
+    if (b.kind !== 'hut' && b.kind !== 'storehouse') return b.kind;
+    const shape = b.kind === 'storehouse' ? b.kind : b.id % 2 ? 'hut1' : 'hut0';
     const own = shape + (b.walls === 'daub' ? 'd' : b.walls === 'stone' ? 's' : '');
     return this.buildingMeshes.has(own) ? own : shape;
   }
@@ -1178,8 +1178,8 @@ export class BandLayer {
       // in colour mode a building takes on its band's colour; otherwise it is as built
       if (!m.instanceColor) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3).fill(1), 3);
       const bc = this.colorMode && band >= 0 ? this.bandColors.get(band) : undefined;
-      // daubed walls take on the colour of dried mud, stone ones go grey (huts have their own models)
-      const wt = /^hut\d[ds]$/.test(kind) ? undefined : WALL_TINT[walls];
+      // daubed walls take on the colour of dried mud, stone ones go grey (huts and the storehouse have their own models)
+      const wt = /^(hut\d|storehouse)[ds]$/.test(kind) ? undefined : WALL_TINT[walls];
       if (wt) tint.setRGB(wt[0], wt[1], wt[2]);
       else tint.setRGB(1, 1, 1);
       if (bc) tint.lerp(bc.light, bc.gone ? 0.25 : 0.65);
