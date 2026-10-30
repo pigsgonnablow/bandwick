@@ -6,7 +6,7 @@ Conventions (read by src/render/band.ts):
       the game shows one of the four hair pieces (short, long, braids, bun) and, on some men, the beard.
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
-  deer__{body,head,legFL,legFR,legBL,legBR}               animated in parts, real colours.
+  deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
   carry__{log,berries,meat,fish,spear,axe,body,baby}           attached to a person's hands or shoulder.
   bld__{hearth,flame,leanto,hut0,hut1,storehouse,rack,site}  one tile footprint, centred on the origin;
       huts also come as bld__hut0d/hut1d (wattle-and-daub) and bld__hut0s/hut1s (drystone).
@@ -227,17 +227,17 @@ def grid(q, rows, color_of, wrap=True):
     return vs, faces
 
 
-def fan(q, ring, apex, color, flip=False):
+def fan(q, ring, apex, color, flip=False, raw=True):
     a = q.bm.verts.new(apex)
     for k in range(len(ring)):
         tri = (ring[k], ring[(k + 1) % len(ring)], a)
-        q.paint([q.bm.faces.new(tri[::-1] if flip else tri)], color, raw=True)
+        q.paint([q.bm.faces.new(tri[::-1] if flip else tri)], color, raw=raw)
 
 
-def solid(q, verts, faces, color):
-    """A small closed shape from a vertex list and index faces."""
+def solid(q, verts, faces, color, raw=True):
+    """A small closed shape from a vertex list and index faces (raw: color is a region code, not sRGB)."""
     vs = [q.bm.verts.new(v) for v in verts]
-    q.paint([q.bm.faces.new([vs[i] for i in f]) for f in faces], color, raw=True)
+    q.paint([q.bm.faces.new([vs[i] for i in f]) for f in faces], color, raw=raw)
 
 
 SEG = 12
@@ -545,9 +545,14 @@ q.finish("villager__torso")
 # ---------------------------------------------------------------- deer
 DEER = (150, 102, 62)
 DEER_DARK = (96, 64, 40)
+DEER_BACK = (128, 86, 52)   # darker along the spine
 BELLY = (214, 196, 168)
+RUMP = (226, 214, 192)      # the pale patch round the tail
 HOOF = (44, 34, 28)
+NOSE = (52, 40, 34)
 ANTLER = (196, 176, 140)
+ANTLER_TIP = (226, 214, 190)
+SPOT = (232, 220, 196)
 rnd = random.Random(11)
 
 
@@ -565,38 +570,144 @@ def loft_y(q, rings, segs, color_at):
         q.paint([f], color_at(f.calc_center_median()), rnd, 0.04)
 
 
-q = Part()  # body: chest deeper than the rump, pale belly, white tail
-loft_y(q, [(-0.135, 0.030, 0.034, 0.235), (-0.11, 0.045, 0.058, 0.212), (-0.06, 0.053, 0.064, 0.196), (0.0, 0.054, 0.060, 0.192),
-           (0.07, 0.052, 0.058, 0.198), (0.115, 0.044, 0.050, 0.206), (0.14, 0.022, 0.028, 0.212)], 8,
-       lambda c: BELLY if c.z < 0.165 else DEER)
-q.blob((0, 0.145, 0.215), (0.018, 0.016, 0.026), BELLY, rnd, 0.0)
+def sweep(q, path, segs, color_at, caps=(True, True)):
+    """A tube along a path of (point, half-width, half-height): rings stand square to the path, their
+    'up' kept towards +z, so necks and muzzles keep a flat top and a deep jaw."""
+    bm = q.bm
+    pts = [Vector(p) for p, _, _ in path]
+    loops = []
+    for i, (p, rx, rz) in enumerate(path):
+        d = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+        side = d.cross(Vector((0, 0, 1)) if abs(d.z) < 0.9 else Vector((0, -1, 0))).normalized()
+        up = side.cross(d).normalized()
+        loops.append([bm.verts.new(pts[i] + side * math.cos(k / segs * math.tau) * rx + up * math.sin(k / segs * math.tau) * rz) for k in range(segs)])
+    faces = []
+    for i in range(len(loops) - 1):
+        a, b = loops[i], loops[i + 1]
+        faces += [bm.faces.new((a[k], a[(k + 1) % segs], b[(k + 1) % segs], b[k])) for k in range(segs)]
+    if caps[0]:
+        faces.append(bm.faces.new(list(reversed(loops[0]))))
+    if caps[1]:
+        faces.append(bm.faces.new(loops[-1]))
+    for f in faces:
+        q.paint([f], color_at(f.calc_center_median()), rnd, 0.04)
+    return loops
+
+
+# body: a deep chest behind the shoulders, a rise at the withers, the belly drawn up at the flank, a rounded
+# haunch; brown above a pale belly, darker along the spine, a pale rump patch round a short tail
+BODY = [(-0.142, 0.026, 0.034, 0.228), (-0.122, 0.040, 0.054, 0.214), (-0.092, 0.049, 0.065, 0.202), (-0.048, 0.052, 0.060, 0.199),
+        (0.004, 0.049, 0.052, 0.203), (0.052, 0.051, 0.056, 0.206), (0.094, 0.050, 0.059, 0.208), (0.124, 0.039, 0.049, 0.212),
+        (0.143, 0.019, 0.024, 0.215)]
+
+
+def body_col(c):
+    if c.y > 0.112 and c.z > 0.178:
+        return RUMP
+    if c.z < 0.162:
+        return BELLY
+    if c.z > 0.252 and abs(c.x) < 0.02:
+        return DEER_BACK
+    return DEER
+
+
+q = Part()
+loft_y(q, BODY, 10, body_col)
+solid(q, [(0, 0.140, 0.236), (-0.011, 0.150, 0.230), (0.011, 0.150, 0.230), (0, 0.160, 0.200), (0, 0.146, 0.222)],
+      [(0, 1, 3), (0, 3, 2), (1, 2, 3), (0, 4, 1), (0, 2, 4), (1, 4, 2)], RUMP, raw=False)  # the tail, flicked up a little
+q.box((0, 0.153, 0.232), (0.016, 0.012, 0.010), DEER_DARK, rnd, 0.0, rot=Matrix.Rotation(-0.6, 3, "X"))  # dark top of the tail
 q.finish("deer__body")
-q = Part()  # neck, head, muzzle, ears, eyes
-q.cyl(6, 0.030, 0.022, (0, -0.105, 0.225), (0, -0.15, 0.305), DEER, rnd, 0.04)
-q.box((0, -0.178, 0.312), (0.046, 0.08, 0.044), DEER, rnd, 0.03, taper=0.78)
-q.box((0, -0.222, 0.304), (0.028, 0.022, 0.026), DEER_DARK, rnd, 0.0)
+
+
+def body_surface(y, a):
+    """A point on the body's skin at length y, angle a round it (0 = right side, pi/2 = top)."""
+    for (y0, *r0), (y1, *r1) in zip(BODY, BODY[1:]):
+        if y0 <= y <= y1:
+            k = (y - y0) / (y1 - y0)
+            rx, rz, cz = [u + (v - u) * k for u, v in zip(r0, r1)]
+            return Vector((math.cos(a) * rx, y, cz + math.sin(a) * rz))
+    raise ValueError(y)
+
+
+q = Part()  # a fawn's dappling: rows of pale spots down the back and flanks (the game shows them on fawns only)
+sr = random.Random(12)
+for row, a0 in enumerate((1.25, 0.95, 0.65, 0.4)):
+    for k in range(6 - row // 2):
+        y = -0.085 + k * 0.034 + (row % 2) * 0.017 + sr.uniform(-0.009, 0.009)
+        for side in (1, -1):
+            a = a0 + sr.uniform(-0.1, 0.1)
+            a = a if side > 0 else math.pi - a
+            p = body_surface(y, a)
+            n = Vector((math.cos(a), 0, math.sin(a)))
+            # a small pale disc lying on the hide, a hair proud of it
+            t1 = n.cross(Vector((0, 1, 0))).normalized()
+            t2 = Vector((0, 1, 0))
+            sz = sr.uniform(0.75, 1.1)
+            ring = [q.bm.verts.new(p + n * 0.0015 + (t1 * math.cos(k / 5 * math.tau) * 0.0048 + t2 * math.sin(k / 5 * math.tau) * 0.0062) * sz) for k in range(5)]
+            fan(q, ring, p + n * 0.0025, SPOT, raw=False)
+q.finish("deer__spots")
+
+q = Part()  # neck (paler at the throat), a wedge of a head, dark nose, pale chin, big ears, dark eyes
+neck = [((0, -0.098, 0.222), 0.031, 0.040), ((0, -0.126, 0.262), 0.025, 0.031), ((0, -0.146, 0.296), 0.020, 0.025), ((0, -0.156, 0.312), 0.019, 0.022)]
+sweep(q, neck, 8, lambda c: BELLY if c.z < 0.25 and c.y < -0.11 and (c.y + 0.04) < -(c.z - 0.13) * 0.55 else DEER, caps=(True, False))
+head = [((0, -0.150, 0.322), 0.020, 0.022), ((0, -0.168, 0.320), 0.023, 0.024), ((0, -0.188, 0.311), 0.017, 0.019),
+        ((0, -0.208, 0.302), 0.0125, 0.0145), ((0, -0.222, 0.297), 0.0095, 0.0115)]
+sweep(q, head, 8, lambda c: NOSE if c.y < -0.216 else (BELLY if c.z < 0.296 and c.y < -0.18 else DEER))
 for ex in (-1, 1):
-    q.box((ex * 0.024, -0.158, 0.344), (0.012, 0.008, 0.036), DEER, rnd, 0.0, rot=Matrix.Rotation(ex * 0.5, 3, "Y"))
-    q.box((ex * 0.021, -0.19, 0.322), (0.006, 0.008, 0.007), HOOF, rnd, 0.0)
+    q.box((ex * 0.0205, -0.178, 0.326), (0.006, 0.010, 0.0075), HOOF, rnd, 0.0, rot=Matrix.Rotation(ex * 0.35, 3, "Z"))  # eye
+    # ears: long leaves set high behind the eyes, turned out to the side, pale inside
+    ear = Matrix.Rotation(ex * 0.75, 3, "Y") @ Matrix.Rotation(0.35, 3, "X")
+    base = Vector((ex * 0.017, -0.153, 0.338))
+    solid(q, [base + ear @ Vector(v) for v in [(0, -0.008, 0), (0, 0.008, 0), (0, 0.009, 0.020), (0, 0, 0.036), (0, -0.009, 0.020),
+                                                (ex * 0.003, 0, 0.016)]],
+          [(0, 1, 5), (1, 2, 5), (2, 3, 5), (3, 4, 5), (4, 0, 5), (0, 4, 3, 2, 1)], DEER, raw=False)
+    solid(q, [base + ear @ Vector(v) for v in [(-ex * 0.0012, -0.006, 0.004), (-ex * 0.0012, 0.006, 0.004), (-ex * 0.0012, 0.0055, 0.019),
+                                                (-ex * 0.0012, 0, 0.030), (-ex * 0.0012, -0.0055, 0.019), (-ex * 0.0030, 0, 0.014)]],
+          [(0, 1, 5), (1, 2, 5), (2, 3, 5), (3, 4, 5), (4, 0, 5), (0, 4, 3, 2, 1)], BELLY, raw=False)
 q.finish("deer__head")
-q = Part()  # antlers (worn by stags only; the game hides them on hinds and fawns)
-for ex in (-1, 1):
-    base = Vector((ex * 0.014, -0.16, 0.335))
-    beam = base + Vector((ex * 0.035, 0.03, 0.075))
-    tip = beam + Vector((ex * 0.012, 0.035, 0.035))
-    q.cyl(4, 0.0045, 0.0035, base, beam, ANTLER, rnd, 0.03)
-    q.cyl(4, 0.0035, 0.0022, beam, tip, ANTLER, rnd, 0.03)
-    for t, d in ((0.35, (ex * 0.002, -0.03, 0.03)), (0.75, (ex * 0.01, -0.025, 0.035))):
-        p0 = base.lerp(beam, t)
-        q.cyl(4, 0.003, 0.0018, p0, p0 + Vector(d), ANTLER, rnd, 0.03)
+
+
+def tine(q, a, b, r0, r1):
+    q.cyl(4, r0, r1, a, b, ANTLER, rnd, 0.03)
+
+
+q = Part()  # antlers (worn by stags only; the game hides them on hinds and fawns): a beam sweeping back and
+for ex in (-1, 1):  # up from a burr, a brow tine forward over the eyes, a tine up off the beam, a forked crown
+    burr = Vector((ex * 0.012, -0.156, 0.338))
+    p1 = burr + Vector((ex * 0.022, 0.012, 0.034))
+    p2 = p1 + Vector((ex * 0.016, 0.022, 0.040))
+    p3 = p2 + Vector((ex * 0.004, 0.018, 0.030))
+    q.cyl(5, 0.0058, 0.0058, burr - Vector((0, 0, 0.002)), burr + Vector((0, 0, 0.004)), DEER_DARK, rnd, 0.0)  # pedicle
+    tine(q, burr, p1, 0.0050, 0.0043)
+    tine(q, p1, p2, 0.0043, 0.0034)
+    tine(q, p2, p3, 0.0034, 0.0026)
+    tine(q, burr.lerp(p1, 0.25), burr.lerp(p1, 0.25) + Vector((ex * 0.004, -0.034, 0.016)), 0.0036, 0.0016)  # brow tine
+    tine(q, p1.lerp(p2, 0.55), p1.lerp(p2, 0.55) + Vector((ex * 0.002, -0.022, 0.030)), 0.0032, 0.0016)
+    tine(q, p3, p3 + Vector((ex * 0.010, 0.008, 0.024)), 0.0025, 0.0013)  # the crown's fork
+    tine(q, p3, p3 + Vector((-ex * 0.004, -0.010, 0.022)), 0.0025, 0.0013)
 q.finish("deer__antlers")
+
+
+def hoof(q, x, y):
+    """A cloven hoof: two dark wedges, toes forward (-y)."""
+    for s in (-1, 1):
+        solid(q, [(x + s * 0.0005, y + 0.004, 0.0), (x + s * 0.0070, y + 0.003, 0.0), (x + s * 0.0035, y - 0.012, 0.0),
+                  (x + s * 0.0010, y + 0.003, 0.012), (x + s * 0.0055, y + 0.002, 0.011)],
+              [(0, 2, 1), (0, 1, 4, 3), (1, 2, 4), (2, 0, 3), (2, 3, 4)], HOOF, raw=False)
+
+
 for name, x, y in (("legFL", -0.035, -0.09), ("legFR", 0.035, -0.09), ("legBL", -0.035, 0.09), ("legBR", 0.035, 0.09)):
-    q = Part()  # a thigh-thick upper leg, slim lower leg, dark hoof
-    back = y > 0
-    knee = (x, y + (0.012 if back else -0.006), 0.085)
-    q.cyl(5, 0.017 if back else 0.014, 0.010, (x, y, 0.17), knee, DEER, rnd, 0.03)
-    q.cyl(4, 0.008, 0.007, knee, (x, y, 0.016), DEER_DARK, rnd, 0.03)
-    q.cyl(4, 0.008, 0.009, (x, y, 0.016), (x, y - 0.004, 0.0), HOOF, rnd, 0.0)
+    q = Part()
+    if y < 0:  # foreleg: a muscled forearm, the knee, a slim cannon, a pastern sloping to the hoof
+        path = [((x, y - 0.004, 0.185), 0.018, 0.024), ((x, y - 0.006, 0.150), 0.015, 0.018), ((x, y - 0.004, 0.112), 0.0095, 0.011),
+                ((x, y - 0.003, 0.088), 0.0085, 0.0095), ((x, y - 0.002, 0.060), 0.0062, 0.0068), ((x, y - 0.002, 0.026), 0.0058, 0.0064),
+                ((x, y - 0.006, 0.011), 0.0055, 0.006)]
+    else:  # hind leg: the ham, the gaskin running back to a sharp hock, then the cannon forward to the hoof
+        path = [((x, y - 0.006, 0.188), 0.021, 0.030), ((x, y + 0.004, 0.150), 0.018, 0.022), ((x, y + 0.016, 0.118), 0.0105, 0.012),
+                ((x, y + 0.024, 0.094), 0.0085, 0.0105), ((x, y + 0.018, 0.070), 0.0063, 0.007), ((x, y + 0.006, 0.028), 0.0058, 0.0064),
+                ((x, y + 0.002, 0.011), 0.0055, 0.006)]
+    sweep(q, path, 6, lambda c: DEER_DARK if c.z < 0.055 else DEER)
+    hoof(q, x, path[-1][0][1])
     q.finish(f"deer__{name}")
 
 # ---------------------------------------------------------------- carried items (in hand/shoulder space)
