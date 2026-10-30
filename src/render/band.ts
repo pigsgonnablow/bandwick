@@ -467,7 +467,7 @@ export class BandLayer {
   // ---------------------------------------------------------------- deer mesh
   private makeDeer(geoms: Map<string, THREE.BufferGeometry>) {
     const parts: [string, number, [number, number, number]][] = [
-      ['body', 0, [0, 0.19, 0]], ['head', 1, [0, 0.21, 0.1]], ['antlers', 6, [0, 0.21, 0.1]],
+      ['body', 0, [0, 0.19, 0]], ['head', 1, [0, 0.21, 0.1]], ['antlers', 6, [0, 0.21, 0.1]], ['spots', 7, [0, 0.19, 0]],
       ['legFL', 2, [-0.035, 0.15, 0.09]], ['legFR', 3, [0.035, 0.15, 0.09]], ['legBL', 4, [-0.035, 0.15, -0.09]], ['legBR', 5, [0.035, 0.15, -0.09]],
     ];
     const list: THREE.BufferGeometry[] = [];
@@ -506,14 +506,15 @@ export class BandLayer {
             if (aPart > 1.5 && aPart < 5.5) {
               float sgn = (aPart < 2.5 || aPart > 4.5) ? 1.0 : -1.0;
               a = s * amp * sgn;
-            } else if (aPart > 0.5) {
+            } else if (aPart > 0.5 && aPart < 6.5) {
               // grazing: head down most of the time, up now and then to look around
               float graze = st < 0.5 ? smoothstep(-0.3, 0.3, sin(ph * 0.6)) : 0.0;
               a = graze * 1.0 + (st > 1.5 ? -0.25 : 0.0);
             }
             mat3 Rp = rx(a);
-            // antlers are worn by stags only (iAnim.z)
-            if (aPart > 5.5 && iAnim.z < 0.5) Rp = mat3(0.0);
+            // antlers are worn by stags only (iAnim.z), a dappled coat by fawns only (iAnim.w)
+            if (aPart > 5.5 && aPart < 6.5 && iAnim.z < 0.5) Rp = mat3(0.0);
+            if (aPart > 6.5 && iAnim.w < 0.5) Rp = mat3(0.0);
             R = Rp;
             T = aPivot - Rp * aPivot;
             if (st > 1.5) {
@@ -1077,7 +1078,7 @@ export class BandLayer {
       scl.setScalar(d.fawn ? 0.62 : 1);
       m4.compose(pos, q, scl);
       this.deerMesh.setMatrixAt(dn, m4);
-      dAnim.setXYZW(dn, d.state, (id % 97) * 0.61, !d.fawn && id % 2 ? 1 : 0, 0);
+      dAnim.setXYZW(dn, d.state, (id % 97) * 0.61, !d.fawn && id % 2 ? 1 : 0, d.fawn ? 1 : 0);
       dn++;
       this.visibleDeer.push({ id, x, y: d.y + 0.2, z, fawn: d.fawn, state: d.state });
       if (this.markerAt && this.markerAt.r < 0 && -this.markerAt.r === id) this.markerAt = { x, y: d.y, z, r: -id };
