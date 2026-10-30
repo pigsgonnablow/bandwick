@@ -9,7 +9,8 @@ Conventions (read by src/render/band.ts):
   deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
   carry__{log,berries,meat,fish,spear,axe,body,baby,stick,snare} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
-  bld__{hearth,flame,leanto,hut0,hut1,storehouse,rack,site}  one tile footprint, centred on the origin;
+  bld__{hearth,flame,leanto,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
+      (the windbreak reaches out in an arc behind the fire);
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
 Models face -Y in Blender (= +Z in the game). 1 unit = one 6 m tile; an adult is 0.4 tall.
 """
@@ -903,6 +904,23 @@ def sheet(q, rows, color_of, rnd, amt=0.05, flip=False):
     return vs
 
 
+def shell(q, top, bot, col_top, col_bot, col_rim, rnd, amt=0.05):
+    """A thin closed solid between two matching grids of points (a hide, a roof): faces on both sides and
+    round the rim, so it shows from either side and finish() can turn every face outward."""
+    bm = q.bm
+    vt = [[bm.verts.new(p) for p in row] for row in top]
+    vb = [[bm.verts.new(p) for p in row] for row in bot]
+    R, C = len(top), len(top[0])
+    for i in range(R - 1):
+        for k in range(C - 1):
+            q.paint([bm.faces.new((vt[i][k], vt[i][k + 1], vt[i + 1][k + 1], vt[i + 1][k]))], col_top(i, k), rnd, amt)
+            q.paint([bm.faces.new((vb[i + 1][k], vb[i + 1][k + 1], vb[i][k + 1], vb[i][k]))], col_bot(i, k), rnd, amt)
+    rim = [(0, k) for k in range(C)] + [(i, C - 1) for i in range(1, R)] + [(R - 1, k) for k in range(C - 2, -1, -1)] + [(i, 0) for i in range(R - 2, 0, -1)]
+    for (i0, k0), (i1, k1) in zip(rim, rim[1:] + rim[:1]):
+        q.paint([bm.faces.new((vt[i0][k0], vb[i0][k0], vb[i1][k1], vt[i1][k1]))], col_rim, rnd, amt)
+    return vt, vb
+
+
 HIDE_DK = (140, 106, 74)
 ROPE_LT = (150, 122, 80)
 HIDE_IN = (118, 90, 62)   # the flesh side, seen from under the shelter
@@ -950,8 +968,7 @@ def drape(x, y, z, off):
 edge = [rnd.uniform(-0.012, 0.012) for _ in cols]
 rows_out = [[drape(x, y + (edge[k] if i == len(slope) - 1 else 0), z, 0) for k, x in enumerate(cols)] for i, (y, z) in enumerate(slope)]
 rows_in = [[drape(x, y + (edge[k] if i == len(slope) - 1 else 0), z, 0.004) for k, x in enumerate(cols)] for i, (y, z) in enumerate(slope)]
-sheet(q, rows_out, lambda i, k: HIDE if k < 8 else HIDE_DK, rnd, 0.05, flip=True)
-sheet(q, rows_in, lambda i, k: HIDE_IN, rnd, 0.04)
+shell(q, rows_out, rows_in, lambda i, k: HIDE if k < 8 else HIDE_DK, lambda i, k: HIDE_IN, HIDE_DK, rnd)
 for i in range(1, len(slope) - 1, 2):  # the seam laced down the middle
     q.box(rows_out[i][8], (0.006, 0.014, 0.006), ROPE_LT, rnd, 0.0)
 for x in (-0.3, 0.3):  # cords lacing the hide to the outer rafters
@@ -1325,6 +1342,84 @@ def storehouse(walls, rnd):
 
 for walls, suffix in (("wood", ""), ("daub", "d"), ("stone", "s")):
     storehouse(walls, random.Random(40)).finish(f"bld__storehouse{suffix}")
+
+
+# windbreak: a curved hurdle behind the fire (+y, outside the ring where people sit), stakes driven in on an
+# arc with rods woven between them, brushwood heaped along its top and against its back, a hide hung over
+# the middle where the wind bites most. Centred on the hearth.
+q = Part()
+rnd = random.Random(44)
+WR, WSPAN, WH = 1.55, 2.4, 0.32
+n = 14
+angs = [-WSPAN / 2 + WSPAN * k / n for k in range(n + 1)]
+arc = lambda a, r=WR, z=0.0: (math.sin(a) * r, math.cos(a) * r, z)
+for k, a in enumerate(angs):
+    tall = WH + 0.03 + rnd.uniform(-0.015, 0.02)
+    q.cyl(4, 0.011, 0.009, arc(a, WR, -0.01), arc(a + rnd.uniform(-0.004, 0.004), WR, tall), POLE, rnd, 0.06)
+courses = 7
+for j in range(courses):
+    za, zb = 0.004 + j * WH / courses, (j + 1) * WH / courses + 0.003
+    col = jit(WATTLE, rnd, 0.1)
+    for k in range(n):
+        a0, a1 = angs[k], angs[k + 1]
+        rm = WR + (0.012 if (k + j) % 2 else -0.006)
+        # a rod with some thickness, bending out and in round the stakes
+        inner = [arc(a, r - 0.008, z) for a, r, z in ((a0, WR, za), ((a0 + a1) / 2, rm, za), (a1, WR, za))]
+        outer = [arc(a, r, z) for a, r, z in ((a0, WR, za), ((a0 + a1) / 2, rm, za), (a1, WR, za))]
+        shell(q, [outer, [(x, y, zb) for x, y, _ in outer]], [inner, [(x, y, zb) for x, y, _ in inner]],
+              lambda i, k: col, lambda i, k: col, col, rnd)
+for k in range(n):  # brushwood along the top, and heaped against the back
+    a = (angs[k] + angs[k + 1]) / 2
+    for v in q.blob((0, 0, 0), (0.16, 0.055, 0.045), (98, 84, 56) if k % 2 else (104, 92, 58), rnd, 0.1, noise=0.4):
+        v.co = Vector(arc(a, WR + 0.012, WH + 0.03)) + Matrix.Rotation(-a, 3, "Z") @ v.co  # laid along the arc
+    if k % 3 != 1:  # cut branches leant against the back
+        for t in range(3):
+            b = a + rnd.uniform(-0.05, 0.05)
+            q.cyl(3, 0.007, 0.003, arc(b, WR + 0.16 + rnd.uniform(0, 0.05), 0.0), arc(b + rnd.uniform(-0.04, 0.04), WR + 0.01, WH * rnd.uniform(0.6, 0.95)),
+                  BRANCH, rnd, 0.08)
+for s in (-1, 1):  # the ends braced with a prop
+    a = s * WSPAN / 2
+    q.cyl(4, 0.01, 0.009, arc(a, WR + 0.2, 0), arc(a, WR, WH * 0.85), POLE, rnd)
+hide = []  # a hide over the middle panels, draped down the inside
+for i, z in enumerate((WH + 0.035, WH * 0.75, WH * 0.45)):
+    hide.append([arc(-0.22 + 0.44 * k / 6, WR - 0.016 - (0.004 * i) - (0.006 if k % 2 else 0), z - (0.02 if i == 2 and k % 2 else 0)) for k in range(7)])
+shell(q, hide, [[(x * 0.996, y * 0.996, z) for x, y, z in row] for row in hide], lambda i, k: HIDE_IN, lambda i, k: HIDE, HIDE_DK, rnd)
+for k in range(5):  # stones at the foot, to keep the draught from under it
+    a = -WSPAN / 2 + 0.2 + k * (WSPAN - 0.4) / 4 + rnd.uniform(-0.05, 0.05)
+    q.blob(arc(a, WR - 0.05, 0.015), (0.04, 0.03, 0.025), rnd.choice(STONES), rnd, 0.05, noise=0.2)
+q.finish("bld__windbreak")
+
+# woodshed: a roof over the stockpile's log stack (posts just wide of the logs, which lie from y = 0.17 to
+# 0.27 and stack up to about 0.5), four forked posts, a thatched roof falling to the back, a chopping block
+q = Part()
+rnd = random.Random(45)
+X0, YF, YB = 0.3, 0.1, 0.34
+ZF, ZB = 0.53, 0.45
+for x in (-X0, X0):
+    forked_post(q, (x, YF, 0), (x, YF, ZF - 0.03), rnd, r=0.013)
+    forked_post(q, (x, YB, 0), (x, YB, ZB - 0.03), rnd, r=0.013)
+    q.cyl(4, 0.008, 0.007, (x, YF, 0.2), (x, YB, 0.19), POLE, rnd)  # a rail to keep the stack in
+for y, z in ((YF, ZF), (YB, ZB)):  # plates across, in the forks
+    q.cyl(5, 0.011, 0.01, (-X0 - 0.06, y, z - 0.014), (X0 + 0.06, y, z - 0.014), POLE, rnd)
+L = X0 + 0.07
+xs = [-L + 2 * L * k / 8 for k in range(9)]
+ys = [YF - 0.07, YF + 0.06, YB - 0.06, YB + 0.07]
+roof_z = lambda x, y: ZF + (ZB - ZF) * (y - YF) / (YB - YF) + 0.006 - (1 - (x / L) ** 2) * 0.008
+rag = [rnd.uniform(-0.006, 0.006) - (0.01 if k % 2 else 0) for k in range(9)]
+top = [[(x, y, roof_z(x, y) + (rag[k] if i in (0, 3) else 0)) for k, x in enumerate(xs)] for i, y in enumerate(ys)]
+bot = [[(x, y, z - 0.026) for x, y, z in row] for row in top]
+shade = lambda i, k: jit(THATCH if (i + k // 2) % 2 else (206, 176, 108), rnd, 0.04)
+shell(q, top, bot, shade, lambda i, k: THATCH_UNDER, THATCH_DK, rnd, 0.06)
+for x in (-L * 0.5, L * 0.5):  # a rope over, weighted at the back
+    q.cyl(3, 0.0035, 0.0035, (x, YF - 0.06, roof_z(x, YF - 0.06) + 0.004), (x, YB + 0.075, roof_z(x, YB + 0.07) + 0.002), ROPE, rnd, 0.0)
+    q.cyl(3, 0.0035, 0.0035, (x, YB + 0.075, roof_z(x, YB + 0.07) + 0.002), (x, YB + 0.08, roof_z(x, YB + 0.07) - 0.03), ROPE, rnd, 0.0)
+    q.blob((x, YB + 0.08, roof_z(x, YB + 0.07) - 0.045), (0.018, 0.016, 0.02), rnd.choice(STONES), rnd, 0.05, noise=0.2)
+q.cyl(7, 0.04, 0.042, (0.4, -0.06, 0), (0.4, -0.06, 0.06), (118, 90, 60), rnd, 0.05)  # the chopping block
+q.cyl(7, 0.038, 0.038, (0.4, -0.06, 0.06), (0.4, -0.06, 0.062), (196, 170, 128), rnd, 0.03)  # its cut top
+for k in range(5):  # chips
+    q.box((0.4 + rnd.uniform(-0.08, 0.08), -0.06 + rnd.uniform(-0.08, 0.08), 0.003), (0.014, 0.008, 0.003), (204, 180, 136), rnd, 0.06,
+          rot=Matrix.Rotation(rnd.uniform(0, math.pi), 3, "Z"))
+q.finish("bld__woodshed")
 
 rnd = random.Random(41)
 q = Part()  # drying rack: two A-frames, a pole, strips of fish and meat
