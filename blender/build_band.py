@@ -7,7 +7,8 @@ Conventions (read by src/render/band.ts):
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
   deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
-  carry__{log,berries,meat,fish,spear,axe,body,baby}           attached to a person's hands or shoulder.
+  carry__{log,berries,meat,fish,spear,axe,body,baby,stick,snare} attached to a person's hands or shoulder.
+  trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   bld__{hearth,flame,leanto,hut0,hut1,storehouse,rack,site}  one tile footprint, centred on the origin;
       huts also come as bld__hut0d/hut1d (wattle-and-daub) and bld__hut0s/hut1s (drystone).
 Models face -Y in Blender (= +Z in the game). 1 unit = one 6 m tile; an adult is 0.4 tall.
@@ -744,6 +745,128 @@ q = Part()
 q.blob((0, 0, 0), (0.035, 0.025, 0.03), (214, 200, 170), rnd, 0.03)
 q.blob((0, -0.03, 0.008), (0.018, 0.018, 0.018), (0, 1, 0), raw=True)
 q.finish("carry__baby")
+
+# ---------------------------------------------------------------- tools and traps
+WOOD = (138, 104, 66)
+WOOD_DARK = (96, 70, 44)
+CHAR = (46, 38, 32)       # a point hardened in the fire
+CORD = (176, 150, 104)
+WICKER = (168, 136, 84)
+WICKER_DARK = (118, 92, 56)
+HARE = (138, 112, 82)
+HARE_PALE = (210, 196, 172)
+
+q = Part()  # a digging stick, held about a third of the way up: a stout shaft, a knot, the point charred hard
+q.cyl(6, 0.0068, 0.0060, (0, 0, -0.120), (0.002, 0, 0.010), WOOD, rnd, 0.04, cap=False)
+q.cyl(6, 0.0060, 0.0052, (0.002, 0, 0.010), (0.001, 0, 0.135), WOOD, rnd, 0.04)
+q.box((0.004, -0.002, 0.052), (0.007, 0.006, 0.010), WOOD_DARK, rnd, 0.0)  # a knot where a twig was trimmed
+q.cyl(6, 0.0069, 0.0060, (0, 0, -0.142), (0, 0, -0.120), CHAR, rnd, 0.03, cap=False)
+cone = q.cone(6, 0.0069, -0.142, 1.0, CHAR, rnd, 0.03)
+for v in {v for f in cone for v in f.verts if v.co.z > -0.1}:
+    v.co = Vector((0.0015, -0.002, -0.168))  # the point, a little off the axis
+q.finish("carry__stick")
+
+
+def noose(q, c, r, segs=7):
+    """A loop of cord standing upright across a run, facing along y."""
+    pts = [Vector(c) + Vector((math.cos(k / segs * math.tau) * r, 0, math.sin(k / segs * math.tau) * r * 1.15)) for k in range(segs)]
+    for a, b in zip(pts, pts[1:] + pts[:1]):
+        q.cyl(3, 0.0016, 0.0016, a, b, CORD, rnd, 0.0, cap=False)
+
+
+def hare(q, at, hang=False):
+    """A hare, ~0.08 long; lying on its side, or hanging by the neck from a noose (head up)."""
+    m = Matrix.Rotation(-math.pi / 2, 3, "X") if hang else Matrix.Rotation(math.pi / 2, 3, "Y")
+    o = Vector(at)
+    for c, r, col in (((0, 0.006, 0), (0.019, 0.032, 0.020), HARE), ((0, -0.034, 0.006), (0.012, 0.016, 0.012), HARE),
+                      ((0, 0.036, 0.004), (0.008, 0.007, 0.008), HARE_PALE)):
+        for v in q.blob((0, 0, 0), r, col, rnd, 0.05):
+            v.co = o + m @ (v.co + Vector(c))
+    for ex in (-1, 1):  # long ears, laid back
+        q.box(o + m @ Vector((ex * 0.005, -0.040, 0.020)), (0.005, 0.006, 0.026), HARE, rnd, 0.03,
+              rot=m @ Matrix.Rotation(-0.9, 3, "X") @ Matrix.Rotation(ex * 0.25, 3, "Y"))
+
+
+def snare(q, sprung):
+    """A hare snare in a run at the foot of a bush: a sapling bent over as a spring, held down by a notched
+    trigger peg, a cord from its tip to a noose propped open by two twigs. Sprung, the pole stands up again
+    and the catch hangs off the ground. Origin at the foot, the run along y."""
+    base = Vector((-0.07, 0.02, 0))
+    if not sprung:
+        pole = [((base + Vector((0.000, 0, 0.000))), 0.0060, 0.0060), ((base + Vector((0.006, 0, 0.060))), 0.0052, 0.0052),
+                ((base + Vector((0.030, 0, 0.110))), 0.0044, 0.0044), ((base + Vector((0.070, 0, 0.128))), 0.0036, 0.0036),
+                ((base + Vector((0.098, 0, 0.112))), 0.0030, 0.0030)]
+    else:
+        pole = [((base + Vector((0.000, 0, 0.000))), 0.0060, 0.0060), ((base + Vector((0.002, 0, 0.070))), 0.0052, 0.0052),
+                ((base + Vector((0.012, 0, 0.140))), 0.0044, 0.0044), ((base + Vector((0.030, 0, 0.198))), 0.0036, 0.0036),
+                ((base + Vector((0.046, 0, 0.226))), 0.0030, 0.0030)]
+    sweep(q, [(tuple(p), a, b) for p, a, b in pole], 5, lambda c: WOOD, caps=(False, True))
+    tip = pole[-1][0]
+    peg = Vector((0.030, 0.02, 0))
+    q.cyl(4, 0.0040, 0.0030, peg - Vector((0, 0, 0.004)), peg + Vector((0, 0, 0.034)), WOOD_DARK, rnd, 0.03)  # trigger peg
+    for ex in (-1, 1):  # the twigs that hold the noose open across the run
+        q.cyl(3, 0.0022, 0.0016, (0.030 + ex * 0.034, -0.010, 0), (0.030 + ex * 0.026, -0.010, 0.072), WOOD_DARK, rnd, 0.03)
+    if not sprung:
+        q.cyl(3, 0.0016, 0.0016, tip, peg + Vector((0, 0, 0.030)), CORD, rnd, 0.0, cap=False)
+        q.cyl(3, 0.0016, 0.0016, peg + Vector((0, 0, 0.026)), (0.030, -0.010, 0.068), CORD, rnd, 0.0, cap=False)
+        noose(q, (0.030, -0.010, 0.040), 0.024)
+    else:
+        neck = tip + Vector((0, 0, -0.070))
+        q.cyl(3, 0.0016, 0.0016, tip, neck, CORD, rnd, 0.0, cap=False)
+        hare(q, neck + Vector((0, 0, -0.040)), hang=True)
+
+
+q = Part()
+snare(q, False)
+q.finish("trap__snare")
+q = Part()
+snare(q, True)
+q.finish("trap__snareFull")
+q = Part()  # a snare to carry: a coil of cord round a short stake
+q.cyl(4, 0.004, 0.003, (0, 0, -0.07), (0, 0, 0.0), WOOD_DARK, rnd, 0.03)
+for k in range(3):
+    noose(q, (0, 0, -0.035 + k * 0.004), 0.016 - k * 0.002, segs=6)
+q.finish("carry__snare")
+
+
+def fishtrap(q, full):
+    """A woven fish trap: a long basket, wide at the mouth with a funnel turned in, tapering to a tied tail,
+    bound with darker hoops, lying on its side along -y (mouth) to +y, tied to a stake. Origin at the
+    middle of the basket; the game sets it half under the water."""
+    # rings mouth to tail: (y, radius, a binding hoop)
+    rings = [(-0.078, 0.040, True), (-0.070, 0.042, True), (-0.050, 0.044, False), (-0.030, 0.044, True), (-0.022, 0.043, True),
+             (0.010, 0.037, False), (0.036, 0.030, True), (0.044, 0.028, True), (0.064, 0.019, False), (0.080, 0.010, False)]
+    segs = 9
+    bm = q.bm
+    loops = [[bm.verts.new((math.cos(k / segs * math.tau) * r, y, math.sin(k / segs * math.tau) * r * 0.9)) for k in range(segs)] for y, r, _ in rings]
+    for i in range(len(loops) - 1):
+        a, b = loops[i], loops[i + 1]
+        hoop = rings[i][2] and rings[i + 1][2]
+        for k in range(segs):
+            f = bm.faces.new((a[k], b[k], b[(k + 1) % segs], a[(k + 1) % segs]))
+            q.paint([f], WOOD_DARK if hoop else WICKER if (k + i) % 2 else WICKER_DARK, rnd, 0.06)
+    tail = bm.verts.new((0, 0.092, 0))
+    q.paint([bm.faces.new((loops[-1][(k + 1) % segs], loops[-1][k], tail)) for k in range(segs)], WICKER_DARK, rnd, 0.04)
+    # the funnel turned in at the mouth, open at its small end
+    inner = [bm.verts.new((math.cos(k / segs * math.tau) * 0.014, -0.030, math.sin(k / segs * math.tau) * 0.013)) for k in range(segs)]
+    a = loops[0]
+    q.paint([bm.faces.new((inner[k], a[k], a[(k + 1) % segs], inner[(k + 1) % segs])) for k in range(segs)], WICKER_DARK, rnd, 0.06)
+    q.cyl(4, 0.0045, 0.0035, (0.050, -0.080, -0.080), (0.046, -0.080, 0.075), WOOD_DARK, rnd, 0.03)  # the stake
+    q.cyl(3, 0.0015, 0.0015, (0.046, -0.080, 0.050), (0.030, -0.070, 0.020), CORD, rnd, 0.0, cap=False)
+    if full:  # the catch: backs breaking out through the top of the weave, a tail flipped up
+        for x, y, ry in ((0.010, 0.012, 0.25), (-0.012, -0.008, -0.3)):
+            m = Matrix.Rotation(ry, 3, "Z")
+            for v in q.blob((0, 0, 0), (0.010, 0.034, 0.012), (150, 170, 182), rnd, 0.05):
+                v.co = Vector((x, y, 0.030)) + m @ v.co
+        q.box((0.016, 0.044, 0.046), (0.003, 0.016, 0.018), (120, 140, 150), rnd, 0.0, rot=Matrix.Rotation(0.5, 3, "X"))
+
+
+q = Part()
+fishtrap(q, False)
+q.finish("trap__fishtrap")
+q = Part()
+fishtrap(q, True)
+q.finish("trap__fishtrapFull")
 
 # ---------------------------------------------------------------- buildings
 STONE = (128, 122, 114)
