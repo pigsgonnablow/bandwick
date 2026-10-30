@@ -34,41 +34,6 @@ function plank(w: number, h: number, d: number, x: number, y: number, z: number,
   g.deleteAttribute('uv');
   return g;
 }
-/**
- * The fire's comforts, made here rather than in Blender: a windbreak of stakes and rails in an arc behind
- * the fire (outside the ring where people sit), and a thatched roof on four posts over the stockpile's log stack.
- */
-function fireWorks(): Map<string, THREE.BufferGeometry> {
-  const out = new Map<string, THREE.BufferGeometry>();
-  const STAKE = 0x5b4128, RAIL = 0x7a5a3a, THATCH = 0xb8a062;
-  {
-    const parts: THREE.BufferGeometry[] = [];
-    const r = 1.55, n = 6, span = 2.4;
-    const at = (i: number) => -span / 2 + (span * i) / (n - 1);
-    // stakes on the arc, behind the fire (towards -z before the building's turn)
-    for (let i = 0; i < n; i++) parts.push(plank(0.04, 0.34, 0.04, Math.sin(at(i)) * r, 0, -Math.cos(at(i)) * r, 0, 0, STAKE));
-    // three rails between each pair of stakes
-    for (let i = 0; i < n - 1; i++) {
-      const a = (at(i) + at(i + 1)) / 2, len = 2 * r * Math.sin((at(i + 1) - at(i)) / 2) + 0.04;
-      for (const y of [0.04, 0.13, 0.22]) parts.push(plank(len, 0.05, 0.05, Math.sin(a) * (r - 0.03), y, -Math.cos(a) * (r - 0.03), 0, -a, RAIL));
-    }
-    out.set('bld__windbreak', mergeGeometries(parts)!);
-  }
-  {
-    const parts: THREE.BufferGeometry[] = [];
-    // over the log stack at the back of the stockpile (see drawPiles): posts a little wider than the logs
-    const x0 = 0.3, zb = -0.34, zf = -0.1;
-    for (const x of [-x0, x0]) {
-      parts.push(plank(0.03, 0.44, 0.03, x, 0, zb, 0, 0, STAKE));
-      parts.push(plank(0.03, 0.5, 0.03, x, 0, zf, 0, 0, STAKE));
-    }
-    // the roof slopes down to the back
-    parts.push(plank(0.7, 0.03, 0.34, 0, 0.45, (zb + zf) / 2, -Math.atan2(0.06, zf - zb), 0, THATCH));
-    out.set('bld__woodshed', mergeGeometries(parts)!);
-  }
-  return out;
-}
-
 /** A flying chip of wood or a drop of water. */
 interface Bit { x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number; life: number; size: number; r: number; g: number; b: number; floor: number }
 /** Water deeper than this share of someone's height means swimming rather than wading. */
@@ -230,9 +195,8 @@ export class BandLayer {
       this.group.add(m);
     }
     // buildings
-    const works = fireWorks();
     for (const kind of ['hearth', 'leanto', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed']) {
-      const g0 = geoms.get(`bld__${kind}`) ?? works.get(`bld__${kind}`);
+      const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
       g.computeBoundingBox();
