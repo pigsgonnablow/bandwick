@@ -66,7 +66,7 @@ describe('recipes and tools', () => {
       if (r.knows) expect(DISCOVERY.has(r.knows), `${k} needs ${r.knows}`).toBe(true);
       expect(Object.keys(r.uses).length, k).toBeGreaterThan(0);
       for (const [m, n] of Object.entries(r.uses)) {
-        expect(['wood', 'fiber', 'cordage', 'stone'], k).toContain(m);
+        expect(['wood', 'fiber', 'cordage', 'stone', 'mud'], k).toContain(m);
         expect(n, k).toBeGreaterThan(0);
       }
       expect(r.work, k).toBeGreaterThan(0);

@@ -1,8 +1,8 @@
 // Tools are made, kept on the stockpile, taken out for felling and put back, and wear out.
 import { describe, it, expect } from 'vitest';
-import { ITEMS, CARRY, RECIPE_KEYS } from '../../src/sim/band';
+import { ITEMS, CARRY, RECIPE_KEYS, SK, BASKET_HOLDS, POT_HOLDS } from '../../src/sim/band';
 import { abandon } from '../../src/sim/ai';
-import { seasonOf } from '../../src/sim/time';
+import { seasonOf, berriesRipe } from '../../src/sim/time';
 import { treeStage, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY } from '../../src/sim/time';
 import { sim, runTo, runYears } from '../helpers';
@@ -111,6 +111,89 @@ describe('tools', () => {
     expect(byHand).toBeGreaterThan(0);
     expect(withStick).toBeGreaterThan(0);
     expect(s.items.some((i) => i.kind === 'stick' && i.wear > 0)).toBe(true);
+  });
+
+  it('picks several bushes into a basket, and only one by hand', () => {
+    const s = sim(2);
+    const c = s.camp;
+    while (!berriesRipe(s.tick)) runTo(s, s.tick + TICKS_PER_DAY);
+    c.knows.push('baskets');
+    s.giveTools(c, { basket: 2 });
+    const seen = new Set<number>();
+    let byHand = 0, inBasket = 0, bushes = 0;
+    const firstBush = new Map<number, number>();
+    for (let i = 0; i < 12 * TICKS_PER_DAY && berriesRipe(s.tick); i++) {
+      runTo(s, s.tick + 1);
+      for (const p of s.members()) {
+        const t = p.task;
+        if (t?.kind !== 'forage') continue;
+        if (t.stage >= 0 && t.stage < 2 && !firstBush.has(p.id)) firstBush.set(p.id, t.ref);
+        if (t.stage === 1 && firstBush.get(p.id) !== t.ref && p.carry === CARRY.Berries) bushes++;
+        if (t.stage !== 2 || p.carry !== CARRY.Berries || seen.has(t.homeAt! * 1000 + p.id)) continue;
+        seen.add(t.homeAt! * 1000 + p.id);
+        firstBush.delete(p.id);
+        const basket = s.heldBy(p)?.kind === 'basket';
+        if (basket) {
+          expect(p.carryAmt).toBeLessThanOrEqual(BASKET_HOLDS);
+          inBasket++;
+        } else {
+          // one bush's worth, as much as their skill picks
+          expect(p.carryAmt).toBeLessThanOrEqual(2.6 + p.skills[SK.forage] * 0.12 + 1e-6);
+          byHand++;
+        }
+      }
+    }
+    expect(inBasket).toBeGreaterThan(0);
+    expect(byHand).toBeGreaterThan(0);
+    // a basket goes on from bush to bush before it comes home
+    expect(bushes).toBeGreaterThan(0);
+    expect(s.toolsOf(c, 'basket').some((i) => i.wear > 0)).toBe(true);
+  });
+
+  it('weaves baskets for the pickers once the band knows how', () => {
+    const s = sim(2);
+    const c = s.camp;
+    s.giveTools(c, { axe: 4, chopper: 2 });
+    expect(s.toolToMake()).toBeNull();
+    c.knows.push('baskets');
+    expect(s.toolToMake()).toBe('basket');
+    Object.assign(c.stock, { wood: 200, fiber: 40 });
+    for (let d = 0; d < 6 && s.toolsOf(c, 'basket').length < 2; d++) runTo(s, s.tick + TICKS_PER_DAY);
+    expect(s.toolsOf(c, 'basket').length).toBeGreaterThanOrEqual(1);
+    expect(s.toolsOf(c, 'basket').length).toBeLessThanOrEqual(Math.min(4, 1 + Math.floor(s.members().length / 5)));
+  });
+
+  it('keeps berries longer in clay pots, and wears the pots that hold them', () => {
+    const run = (pots: number) => {
+      const s = sim(2);
+      const c = s.camp;
+      if (pots) s.giveTools(c, { pot: pots });
+      c.stock.berries = 30;
+      // one day's going-off, by itself
+      (s as any).spoil();
+      return { left: c.stock.berries, worn: s.toolsOf(c, 'pot').filter((i) => i.wear > 0).length };
+    };
+    const bare = run(0), two = run(2), plenty = run(10);
+    expect(two.left).toBeGreaterThan(bare.left);
+    expect(plenty.left).toBeGreaterThan(two.left);
+    // only the pots with berries in them wear: 30 berries fill five
+    expect(two.worn).toBe(2);
+    expect(plenty.worn).toBe(Math.ceil(30 / POT_HOLDS));
+  });
+
+  it('makes clay pots once the band knows pottery, and digs the clay for them', () => {
+    const s = sim(2);
+    const c = s.camp;
+    s.giveTools(c, { axe: 4, chopper: 2 });
+    expect(s.toolToMake()).toBeNull();
+    c.knows.push('baskets', 'pottery');
+    s.giveTools(c, { basket: 4 });
+    expect(s.toolToMake()).toBe('pot');
+    // stores full enough that nobody is out after food, and no clay in yet
+    Object.assign(c.stock, { wood: 200, preserved: 300, mud: 0 });
+    for (let d = 0; d < 30 && s.toolsOf(c, 'pot').length < 2; d++) runTo(s, s.tick + TICKS_PER_DAY);
+    expect(s.toolsOf(c, 'pot').length).toBeGreaterThanOrEqual(2);
+    expect(s.toolsOf(c, 'pot').every((i) => i.maker >= 0)).toBe(true);
   });
 
   it('makes only the tools the band is short of, counting the ones being made', () => {

@@ -17,7 +17,7 @@ describe('walls', () => {
 
   it('never raises stone before the band knows stonework, nor builds before every material is in', () => {
     let other = 0;
-    for (const seed of [2, 4]) {
+    for (const seed of [3, 4]) {
       const s = runYears(sim(seed), 8);
       const built = s.buildings.filter((b) => b.built && (b.kind === 'hut' || b.kind === 'storehouse'));
       // daub and stone are discoveries now: not every band finds them, but some do

@@ -15,12 +15,13 @@ export type Practice =
   | 'damp_fire' // feeding the fire with damp wood
   | 'store_food' // food carried into the stores (per meal)
   | 'store_meat' // meat and fish carried into the stores (per meal)
+  | 'store_berries' // berries carried into the stores (per meal)
   | 'thatch' // grass and reeds cut and carried in (per bundle)
   | 'fell_chopper' // a tree felled with a hand chopper
   | 'dig_hand' // a trip's digging done with bare hands
   | 'grave' // a grave dug with bare hands
   | 'hunt' // a hunt, kill or no kill
-  | 'forage' // a basket of berries picked
+  | 'forage' // a bush's berries picked
   | 'fish_fiber' // a fishing trip, with fiber in the stores to think of weaving with (more when the catch is thin)
 
 /**
@@ -139,6 +140,20 @@ export const DISCOVERIES: Discovery[] = [
     practice: { fish_fiber: 1 }, odds: 10,
     found: 'wove reeds into a funnel the fish swim into and cannot find their way out of',
     taught: 'weave fish traps', memory: 'Wove the first fish trap.',
+  },
+  {
+    // (the picker who already twists cord thinks of weaving something to carry more home in)
+    key: 'baskets', label: 'Baskets', needs: [], requires: [skill(SK.forage, ABLE), skill(SK.weave, 8)],
+    practice: { forage: 1 }, odds: 45,
+    found: 'wove grass round a ring of withies into a deep basket, and came home with the berries of a dozen bushes',
+    taught: 'weave baskets for gathering', memory: 'Wove the first gathering basket.',
+  },
+  {
+    // (a basket lined with clay to keep the juice in, left too near the fire, comes out hard)
+    key: 'pottery', label: 'Pottery', needs: ['baskets'], requires: [skill(SK.weave, ABLE), skill(SK.build, 8)], near: 'mud',
+    practice: { store_berries: 1 }, odds: 40,
+    found: 'lined a basket with clay, left it in the embers, and found a hard pot where the basket had burned away',
+    taught: 'make pots of fired clay', memory: 'Fired the first clay pot.',
   },
   {
     // (hidework is learned at the drying rack, so it can't be what leads to it)

@@ -9,7 +9,7 @@ import {
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
   Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
-  TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, TASK_KINDS, Ref, Card, CardLine, HEALTH,
+  TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP,
 } from './band';
 import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
@@ -35,7 +35,7 @@ export const DAMP_BURN = 1.2;
 /** How far a fire's warmth reaches, and with a windbreak behind it. */
 export const WARM_RADIUS = 2.6;
 /** the crafts beyond the everyday ones, and the discovery that gives the band a use for each (pottery has none yet) */
-const SKILL_SHOWN_BY: Partial<Record<number, string>> = { [SK.hide]: 'preserving' };
+const SKILL_SHOWN_BY: Partial<Record<number, string>> = { [SK.hide]: 'preserving', [SK.pot]: 'pottery' };
 /** the most skill anyone starts with at anything */
 export const START_SKILL_MAX = 10;
 /** how fast fish come back in winter, against the rest of the year */
@@ -69,7 +69,7 @@ const STUMP_BASE = propId('stump_v0');
 const LOGS = propId('logs_v0');
 const GRAVE = propId('grave_v0');
 /** Work done with a tool in hand: the tool stays with them until it's done. */
-const TOOL_TASKS: TaskKind[] = ['fell', 'dig', 'bury'];
+const TOOL_TASKS: TaskKind[] = ['fell', 'dig', 'bury', 'forage'];
 
 /** Annual chance of dying of old age, by age in years (piecewise linear). */
 const MORTALITY: number[][] = [[0, 0.03], [2, 0.012], [5, 0.004], [15, 0.003], [35, 0.006], [50, 0.02], [60, 0.05], [70, 0.13], [80, 0.32], [90, 0.7]];
@@ -1070,6 +1070,10 @@ export class Sim {
     }
   }
 
+  /** Whether someone of the band is feeding its fire, near enough to it to do so soon. */
+  fuelOnHand(c: Camp) {
+    return this.people.some((q) => q.alive && q.band === c.id && q.task?.kind === 'fuel' && hyp(q.x - c.x, q.z - c.z) < 6);
+  }
   private urgent(p: Person) {
     const k = p.task?.kind;
     // starving: go and eat. Only when the store is bare is it worth staying out to hunt, fish or forage
@@ -1088,9 +1092,10 @@ export class Sim {
     // (feeding the fire is how they get warm: nobody turns away from it to go and sit by it cold)
     if (p.warmth < (woodRun ? 8 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel') return true;
     // the fire keeper wakes in the night when the fire will not last till morning
-    if (k === 'sleep' && isDark(this.tick) && this.fireShort() && !this.people.some((q) => q.alive && q.band === p.band && q.task?.kind === 'fuel') && this.fireKeeper() === p) return true;
+    if (k === 'sleep' && isDark(this.tick) && this.fireShort() && !this.fuelOnHand(this.camp) && this.fireKeeper() === p) return true;
     // worn out on the way home with a load: the bed is at camp, where they're going anyway
-    if (p.rest < 8 && k !== 'sleep' && !delivering(p) && !graveDug) return true;
+    // (and with the wood for the fire in their arms, they put it on before they lie down)
+    if (p.rest < 8 && k !== 'sleep' && k !== 'fuel' && !delivering(p) && !graveDug) return true;
     // at nightfall, workers who haven't started back yet call it a day
     // except wood runs in the cold when the store is low: coming home empty-handed means a cold night
     const emergency = (k === 'fell' || k === 'haul' || k === 'deadwood') && (this.hearth().fuel < 2 || this.camp.stock.wood < 20) && this.tempAt(p) < 12;
@@ -1350,7 +1355,8 @@ export class Sim {
   }
   /**
    * What the band should make next at the fire, if anything: axes for the woodcutters, a couple of
-   * choppers, and a digging stick or two (two where there is mud to dig for walls).
+   * choppers, a digging stick or two (two where there is mud to dig for walls), baskets for the pickers, and
+   * pots for the stores.
    */
   toolToMake(c = this.camp): ItemKind | null {
     const ms = this.members(c);
@@ -1363,6 +1369,8 @@ export class Sim {
     if (this.knows('axe', c) && axes < 2 + Math.floor(ms.length / 8)) return 'axe';
     if (choppers < (this.knows('axe', c) && axes > 0 ? 1 : 2)) return 'chopper';
     if (this.knows('digstick', c) && have('stick') < (this.knows('daub', c) ? 2 : 1)) return 'stick';
+    if (this.knows('baskets', c) && have('basket') < Math.min(4, 1 + Math.floor(ms.length / 5))) return 'basket';
+    if (this.knows('pottery', c) && have('pot') < Math.min(6, 2 + Math.floor(ms.length / 4))) return 'pot';
     return null;
   }
   /**
@@ -1623,7 +1631,11 @@ export class Sim {
     const cold = seasonOf(this.tick) === 3 ? 0.4 : seasonOf(this.tick) === 0 || seasonOf(this.tick) === 2 ? 0.75 : 1;
     const house = this.buildings.find((b) => b.band === this.camp.id && b.kind === 'storehouse' && b.built);
     const store = house ? specOf(house).keep : 1;
-    s.berries *= 1 - 0.06 * cold * store;
+    // berries in a lidded pot keep far longer; each pot that holds some is a day nearer cracking
+    const pots = this.toolsOf(this.camp, 'pot');
+    const potted = Math.min(s.berries, pots.length * POT_HOLDS);
+    s.berries -= 0.06 * cold * store * (potted * POT_KEEP + (s.berries - potted));
+    for (const it of pots.slice(0, Math.ceil(potted / POT_HOLDS))) this.wearTool(it);
     s.fish *= 1 - 0.05 * cold * store;
     s.meat *= 1 - 0.035 * cold * store;
     s.preserved *= 1 - 0.004;
@@ -2034,7 +2046,7 @@ export class Sim {
     this.book('carried', foodTotal(take) + take.wood, from);
     const nc = this.foundCamp(site, take, from.id, leader.id);
     // and their share of the tools on the pile: at least one of each, where the band has two or more to spare
-    for (const kind of ['axe', 'chopper', 'stick'] as const) {
+    for (const kind of ['axe', 'chopper', 'stick', 'basket', 'pot'] as const) {
       const pile = this.items.filter((i) => i.band === from.id && i.holder < 0 && i.kind === kind);
       const n = Math.min(pile.length - 1, Math.max(1, Math.round(pile.length * share)));
       for (const it of pile.slice(0, Math.max(0, n))) it.band = nc.id;
@@ -2448,6 +2460,8 @@ export class Sim {
       'craft.chopper': make === 'chopper' ? (unarmed ? 0.95 : 0.6) : 0,
       'craft.axe': make === 'axe' ? (unarmed ? 0.95 : 0.6) : 0,
       'craft.stick': make === 'stick' ? 0.5 : 0,
+      'craft.basket': make === 'basket' ? 0.45 : 0,
+      'craft.pot': make === 'pot' ? 0.4 : 0,
       // snares and fish traps: more of them when food is short
       'want.snare': traps.snare,
       'want.fishtrap': traps.fishtrap,
@@ -2456,7 +2470,8 @@ export class Sim {
       // the round of the traps: once a day, by one person, to empty them and set out new ones
       trap: c.trapRound !== today && this.toolsOf(c).some((i) => TRAP_KINDS.includes(i.kind)) ? 0.75 + (foodP > 0.8 ? 0.25 : 0) : 0,
       // mud and stone are fetched only for a site that needs them (mud can't be dug from frozen ground)
-      dig: siteMud > c.stock.mud && !winterNow ? 0.75 : 0,
+      // (and clay for a pot)
+      dig: (siteMud > c.stock.mud || (make === 'pot' && c.stock.mud < 2)) && !winterNow ? 0.75 : 0,
       // stone for walls, and a lump or two for knapping tools
       quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < (RECIPES[make].uses.stone ?? 0) ? 0.5 : 0,
       bury: this.people.some((p) => !p.alive && !p.buried && p.band === c.id) ? 1 : 0,
@@ -2466,7 +2481,7 @@ export class Sim {
     if (foodP > 0.8) c.plan.push(winterNow ? 'Find food to last the winter' : 'Store food before winter');
     if (woodP > 0.5) c.plan.push(s > 2.0 && !winterNow ? 'Lay in firewood for the winter' : 'Gather wood');
     if (siteFiber > fiberHave) c.plan.push('Cut grass and reeds for thatch and cordage');
-    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : make === 'stick' ? 'Make a digging stick' : 'Knap a hand chopper');
+    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : make === 'stick' ? 'Make a digging stick' : make === 'basket' ? 'Weave a basket for gathering' : make === 'pot' ? 'Make a clay pot for the stores' : 'Knap a hand chopper');
 
     this.craftNames(c);
 
@@ -2930,13 +2945,14 @@ export class Sim {
       fuel: b.fuel, owner: b.owner,
     }));
   }
-  /** What lies on each band's stockpile, for drawing it (food is out of sight once there is a storehouse). */
+  /** What lies on each band's stockpile, for drawing it (food, and the pots it is kept in, are out of sight once there is a storehouse). */
   packPiles() {
     return this.buildings.filter((b) => b.kind === 'stockpile').map((b) => {
       const c = this.campById(b.band);
       const st = c && !c.gone ? c.stock : { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
       const inside = this.buildings.some((q) => q.band === b.band && q.kind === 'storehouse' && q.built);
-      return { id: b.id, wood: st.wood, berries: inside ? 0 : st.berries, meat: inside ? 0 : st.meat, fish: inside ? 0 : st.fish, preserved: inside ? 0 : st.preserved };
+      const pots = inside || !c ? 0 : this.toolsOf(c, 'pot').length;
+      return { id: b.id, wood: st.wood, berries: inside ? 0 : st.berries, meat: inside ? 0 : st.meat, fish: inside ? 0 : st.fish, preserved: inside ? 0 : st.preserved, pots };
     });
   }
   /** The traps standing in the world: snares on land, fish traps in the water (kind 0 snare, 1 fish trap). */
