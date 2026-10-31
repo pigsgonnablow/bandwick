@@ -24,7 +24,26 @@ describe('Grid', () => {
     expect(path).not.toBeNull();
     expect(path.length).toBe(7);
     expect(path[path.length - 1]).toBe(idx(8, 5));
+    // (and straight: never a step off the row and back, which costs two diagonals)
+    for (const [, z] of coords(path)) expect(z).toBe(5);
     expectLegal(g, idx(1, 5), path);
+  });
+
+  it('cuts a corner only as much as it has to: a diagonal step costs more than a straight one', () => {
+    const g = new Grid(flatWorld(N));
+    for (const [from, to, diagonals] of [[idx(1, 1), idx(9, 4), 3], [idx(2, 8), idx(10, 7), 1], [idx(1, 1), idx(6, 6), 5]] as const) {
+      const path = g.find(from, to)!;
+      expectLegal(g, from, path);
+      let prev = from, diag = 0;
+      for (const t of path) {
+        if (t % N !== prev % N && Math.floor(t / N) !== Math.floor(prev / N)) diag++;
+        prev = t;
+      }
+      // as few steps as can be, and no more diagonal ones than it takes to make up the difference
+      const dx = Math.abs((to % N) - (from % N)), dz = Math.abs(Math.floor(to / N) - Math.floor(from / N));
+      expect(path.length).toBe(Math.max(dx, dz));
+      expect(diag).toBe(diagonals);
+    }
   });
 
   it('returns an empty path when already there', () => {

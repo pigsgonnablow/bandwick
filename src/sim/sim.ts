@@ -46,6 +46,8 @@ export const WINTER_CATCH = 0.5;
 export const RATION_BELOW = 0.7;
 /** in a bitter winter, a catch against an ordinary winter's, and how fast the fish come back */
 export const BITTER_CATCH = 0.6;
+/** The jobs whose `ref` is a prop (a tree, a bush, a stand of reeds, a pile of logs). */
+export const PROP_TASKS: TaskKind[] = ['eatwild', 'forage', 'reap', 'fell', 'deadwood', 'haul'];
 /** winters in a row a band has had to ration before it thinks of finding better land */
 export const LEAN_WINTERS_TO_MOVE = 3;
 export const WARM_RADIUS_SHELTERED = 3.2;
@@ -311,8 +313,18 @@ export class Sim {
    * the same history, tick for tick, as never having saved.
    */
   serialize(): SaveData {
-    const n = this.propCount;
     const rel = (m: Map<number, number>) => Array.from(m.entries());
+    // felled trees, rotted stumps and logs carried off are gone for good, and over decades they come to
+    // outnumber the living props: the save keeps only those still standing (and any a job still points
+    // to), in the same order, so the world carries on exactly as it would have
+    const { n, at, keep } = this.propsToSave();
+    const pick = <A extends Uint8Array | Uint16Array | Uint32Array | Float32Array>(a: A) => {
+      const out = new (a.constructor as { new (k: number): A })(n);
+      for (let k = 0, j = 0; k < this.propCount; k++) if (keep[k]) out[j++] = a[k];
+      return b64(out);
+    };
+    const remap = <V>(m: Map<number, V>) => Array.from(m.entries()).filter(([k]) => k < 0 || at[k] >= 0).map(([k, v]): [number, V] => [k < 0 ? k : at[k], v]);
+    const propRef = (t: Task) => (PROP_TASKS.includes(t.kind) && t.ref >= 0 ? at[t.ref] : t.ref);
     return {
       v: SAVE_VERSION,
       params: { ...this.world.params },
@@ -321,15 +333,15 @@ export class Sim {
       rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState() },
       props: {
         count: n,
-        type: b64(this.propType.subarray(0, n)), x: b64(this.propX.subarray(0, n)), y: b64(this.propY.subarray(0, n)),
-        z: b64(this.propZ.subarray(0, n)), rot: b64(this.propRot.subarray(0, n)), scale: b64(this.propScale.subarray(0, n)),
-        alive: b64(this.propAlive.subarray(0, n)), val: b64(this.propVal.subarray(0, n)), tile: b64(this.propTile.subarray(0, n)),
+        type: pick(this.propType), x: pick(this.propX), y: pick(this.propY), z: pick(this.propZ), rot: pick(this.propRot),
+        scale: pick(this.propScale), alive: pick(this.propAlive), val: pick(this.propVal), tile: pick(this.propTile),
       },
-      propNote: Array.from(this.propNote.entries()),
-      reserved: Array.from(this.reserved.entries()),
-      unreachable: Array.from(this.unreachable.entries()),
-      chopped: Array.from(this.chopped.entries()),
-      deadwoodTaken: Array.from(this.deadwoodTaken.entries()),
+      propNote: remap(this.propNote),
+      reserved: remap(this.reserved),
+      // (negative keys are places, not props)
+      unreachable: remap(this.unreachable),
+      chopped: remap(this.chopped),
+      deadwoodTaken: remap(this.deadwoodTaken),
       fish: b64(this.fish),
       game: b64(this.game),
       stats: { ...this.stats },
@@ -340,13 +352,29 @@ export class Sim {
       events: this.events.map((e) => ({ ...e, people: e.people.slice() })),
       people: this.people.map((p) => ({
         ...p, skills: Array.from(p.skills), rel: rel(p.rel), path: p.path ? b64(p.path) : null,
-        task: p.task ? { ...p.task, ...(p.task.route ? { route: p.task.route.slice() } : {}) } : null, traits: p.traits.slice(), ...(p.titles ? { titles: p.titles.slice() } : {}), memories: p.memories.map((m) => ({ ...m })), children: p.children.slice(),
+        task: p.task ? { ...p.task, ref: propRef(p.task), ...(p.task.route ? { route: p.task.route.slice() } : {}) } : null, traits: p.traits.slice(), ...(p.titles ? { titles: p.titles.slice() } : {}), memories: p.memories.map((m) => ({ ...m })), children: p.children.slice(),
       })),
       buildings: this.buildings.map((b) => ({ ...b, builders: b.builders.slice() })),
       items: this.items.map((i) => ({ ...i })),
       deer: this.deer.map((d) => ({ ...d })),
       herds: this.herds.map((h) => ({ ...h })),
     };
+  }
+
+  /**
+   * Which props a save keeps: every one still standing, and any that a job, a reservation or a
+   * place marked out of reach still points to. `at` maps each prop to its place in the save (-1: left out).
+   */
+  propsToSave() {
+    const keep = new Uint8Array(this.propCount);
+    for (let k = 0; k < this.propCount; k++) keep[k] = this.propAlive[k];
+    const mark = (k: number) => { if (k >= 0 && k < this.propCount) keep[k] = 1; };
+    for (const m of [this.reserved, this.unreachable, this.chopped, this.deadwoodTaken]) for (const k of m.keys()) mark(k);
+    for (const p of this.people) if (p.task && PROP_TASKS.includes(p.task.kind)) mark(p.task.ref);
+    const at = new Int32Array(this.propCount).fill(-1);
+    let n = 0;
+    for (let k = 0; k < this.propCount; k++) if (keep[k]) at[k] = n++;
+    return { n, at, keep };
   }
 
   private restore(d: SaveData) {
@@ -940,7 +968,10 @@ export class Sim {
     }
     const st = this.camp.stock;
     for (const v of [st.berries, st.meat, st.fish, st.preserved, st.wood]) mix(Math.floor(v * 16));
-    mix(this.propCount);
+    // (the props standing, not how many there have ever been: a save leaves out the ones long gone)
+    let standing = 0;
+    for (let k = 0; k < this.propCount; k++) standing += this.propAlive[k];
+    mix(standing);
     mix(this.buildings.length);
     return (h >>> 0).toString(16).padStart(8, '0');
   }
@@ -1006,10 +1037,15 @@ export class Sim {
     this.updateDeer();
   }
 
+  /** Who carries an infant about: their mother, else their father, else whoever took them in. */
+  carerOf(p: Person) {
+    const m = this.byId.get(p.mother), f = this.byId.get(p.father);
+    return m && m.alive ? m : f && f.alive ? f : this.byId.get(p.carer);
+  }
+
   /** Infants stay with their mother (or whoever looks after them). */
   private carriedInfant(p: Person) {
-    const m = this.byId.get(p.mother), f = this.byId.get(p.father), fo = this.byId.get(p.carer);
-    const carer = m && m.alive ? m : f && f.alive ? f : fo;
+    const carer = this.carerOf(p);
     p.task = null;
     if (carer && carer.alive) {
       p.x = carer.x + 0.12;
@@ -2183,7 +2219,9 @@ export class Sim {
         this.adjust(p, q, 45);
         this.adjust(q, p, 45);
         this.pair(p, q, false);
-        this.join([goer], home);
+        // a baby still carried goes along in the arms that carry it
+        const babies = this.members(from).filter((b) => this.age(b) < 2 && this.carerOf(b) === goer);
+        this.join([goer, ...babies], home);
         // an adult brings what their old band knew, and teaches it after a season
         for (const k of this.unknownTo(from, home)) {
           if (home.learning?.some((l) => l.k === k)) continue;

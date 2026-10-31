@@ -81,6 +81,11 @@ export class Runner {
   constructor(private post: (m: FromSim, transfer?: Transferable[]) => void, private now: () => number) {}
 
   handle(m: ToSim) {
+    // (a page waiting on a save still gets its answer, or its save button stays stuck)
+    if (m.type === 'save' && this.crashed) {
+      this.post({ type: 'saved', id: m.id, save: null, error: 'The simulation stopped on a bug, so this world can no longer be saved.' });
+      return;
+    }
     if (m.type !== 'init' && m.type !== 'load' && this.crashed) return;
     try {
       this.handleInner(m);
