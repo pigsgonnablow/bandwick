@@ -18,6 +18,8 @@ const FISH_TASK = TASK_KINDS.indexOf('fish') + 1;
 const AXE = 99, CHOPPER = 98;
 /** Tools carried when the hands are otherwise free: a digging stick held low, a trap on the way to be set. */
 const STICK = 97, SNARE = 96, FISHTRAP = 95;
+/** A gathering basket: swung empty on the way out, and heaped with berries on the way home. */
+const BASKET = 94, BASKET_FULL = 93;
 /** How walls that are not wood colour a building that has no model of its own for them (multiplied over its own colours). */
 const WALL_TINT: Record<string, [number, number, number]> = { daub: [1.0, 0.86, 0.68], stone: [0.8, 0.82, 0.86] };
 /** A flying chip of wood or a drop of water. */
@@ -113,7 +115,7 @@ interface Shown {
   fx: number; fz: number;
   /** their band */
   band: number;
-  /** the tool in hand: 0 none, 1 chopper, 2 axe, 3 digging stick, 4 snare, 5 fish trap */
+  /** the tool in hand: 0 none, 1 chopper, 2 axe, 3 digging stick, 4 snare, 5 fish trap, 6 basket */
   tool: number;
   /** where the axe swing had got to last frame; whether this stab has hit the water yet */
   swing: number; splashed: boolean;
@@ -163,7 +165,7 @@ export class BandLayer {
     const carryNames: [number, string][] = [
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
       [CARRY.Spear, 'spear'], [CARRY.Body, 'body'], [CARRY.Baby, 'baby'], [AXE, 'axe'], [CHOPPER, 'chopper'],
-      [STICK, 'stick'], [SNARE, 'snare'], [FISHTRAP, 'fishtrap'],
+      [STICK, 'stick'], [SNARE, 'snare'], [FISHTRAP, 'fishtrap'], [BASKET, 'basket'], [BASKET_FULL, 'basketFull'],
       // cut grass in a bundle, clay in a hide, a stone on the shoulder
       [CARRY.Fiber, 'fiber'], [CARRY.Mud, 'mud'], [CARRY.Stone, 'stone'],
     ];
@@ -894,12 +896,17 @@ export class BandLayer {
       // hands hold what they carry; while putting something down they still hold it until it's set down
       let carry = s.carry !== CARRY.None ? s.carry : s.gestCarry && gpr < 0.55 ? s.gestCarry : babyCarriers.has(id) ? CARRY.Baby : CARRY.None;
       if (s.gesture === 'lift' && gpr < 0.42) carry = CARRY.None; // not picked up yet
+      // a picker sets their basket down at their feet while both hands are in the bush
+      const basketDown = s.tool === 6 && s.shownAct === ACT.Gather && s.act !== ACT.Dead ? (carry === CARRY.Berries ? BASKET_FULL : BASKET) : 0;
+      if (basketDown) carry = CARRY.None;
       // a fisher's catch comes home on the spear it was caught with
       const onSpear = carry === CARRY.Fish && s.task === FISH_TASK;
       if (onSpear) carry = CARRY.Spear;
       // with free hands on the move, a digging stick is held low like a spear and a trap swings like a basket
       const loose = carry === CARRY.None && !s.gesture && (s.act === ACT.Walk || s.act === ACT.Run || s.act === ACT.Idle);
-      const toolCarry = loose ? (s.tool === 3 ? STICK : s.tool === 4 ? SNARE : s.tool === 5 ? FISHTRAP : 0) : 0;
+      const toolCarry = loose ? (s.tool === 3 ? STICK : s.tool === 4 ? SNARE : s.tool === 5 ? FISHTRAP : s.tool === 6 ? BASKET : 0) : 0;
+      // berries picked into a basket come home in it
+      const shown = carry === CARRY.Berries && s.tool === 6 ? BASKET_FULL : carry;
       anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, toolCarry === STICK ? CARRY.Spear : toolCarry ? CARRY.Berries : carry);
       col.set(CLOTH[(look >>> 8) % CLOTH.length]).convertSRGBToLinear();
       const bc = this.colorMode ? this.bandColors.get(s.band) : undefined;
@@ -913,11 +920,11 @@ export class BandLayer {
       n++;
       // carried item
       if (carry !== CARRY.None && s.act !== ACT.Dead) {
-        const cm = this.carryMeshes.get(carry);
+        const cm = this.carryMeshes.get(shown);
         if (cm) {
-          const k = carryCount.get(carry) ?? 0;
+          const k = carryCount.get(shown) ?? 0;
           if (k < cm.instanceMatrix.count) {
-            const off = carryOffset(carry, s.act);
+            const off = carryOffset(shown, s.act);
             // during a one-off move the item goes where the hand goes
             if (gw > 0 && s.gesture) {
               const [bs, be, bl] = baseArm(carry, s.act);
@@ -931,7 +938,7 @@ export class BandLayer {
             }
             const held = m4.clone().multiply(off);
             cm.setMatrixAt(k, held);
-            carryCount.set(carry, k + 1);
+            carryCount.set(shown, k + 1);
             if (onSpear) {
               const fm = this.carryMeshes.get(CARRY.Fish);
               const fk = carryCount.get(CARRY.Fish) ?? 0;
@@ -942,6 +949,14 @@ export class BandLayer {
               }
             }
           }
+        }
+      }
+      if (basketDown) {
+        const bm = this.carryMeshes.get(basketDown);
+        const bk = carryCount.get(basketDown) ?? 0;
+        if (bm && bk < bm.instanceMatrix.count) {
+          bm.setMatrixAt(bk, m4.clone().multiply(new THREE.Matrix4().setPosition(0.1, 0.092, 0.03)));
+          carryCount.set(basketDown, bk + 1);
         }
       }
       if (toolCarry && s.act !== ACT.Dead) {
@@ -1377,6 +1392,7 @@ function carryOffset(kind: number, act: number) {
     case STICK: p.set(0.076, 0.16, 0.055); e.set(0.22 + Math.PI, 0, 0); break; // point up, as a spear is carried
     case SNARE: p.set(0.075, 0.16, 0.04); break; // the coil in the fist, its stake hanging
     case FISHTRAP: p.set(0.075, 0.075, 0.04); e.set(Math.PI / 2, 0, 0); break; // by the tail, mouth down
+    case BASKET: case BASKET_FULL: p.set(0.08, 0.16, 0.035); break; // hung from the fist by its handle
   }
   m.makeRotationFromEuler(e).setPosition(p);
   return m;

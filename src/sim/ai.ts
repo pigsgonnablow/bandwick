@@ -2,7 +2,7 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
 import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, train, trainSkill } from './band';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, train, trainSkill } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
@@ -338,7 +338,11 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       if (k < 0) return null;
       s.reserved.set(k, p.id);
       p.thought = 'Picking berries.';
-      return newTask(s, kind, s.propTile[k], s.propX[k] + 0.3, s.propZ[k] + 0.22, k);
+      const t = newTask(s, kind, s.propTile[k], s.propX[k] + 0.3, s.propZ[k] + 0.22, k);
+      // a basket from the pile if there's one to be had: it comes home with several bushes' worth
+      const basket = s.toolFor(p, ['basket']);
+      if (basket && takeFromPile(s, p, t, basket)) p.thought = 'Fetching a basket to pick berries.';
+      return t;
     }
     case 'reap': {
       const k = nextClump(s, c.x, c.z, 26);
@@ -886,6 +890,16 @@ function untakeTraps(s: Sim, t: Task) {
   }
 }
 
+/** Off to the bush a picking task is for. */
+function aimAtBush(s: Sim, p: Person, t: Task) {
+  t.stage = 0;
+  t.goal = s.propTile[t.ref];
+  t.gx = s.propX[t.ref] + 0.3;
+  t.gz = s.propZ[t.ref] + 0.22;
+  t.near = false;
+  p.path = null;
+}
+
 /** A digging trip or a grave wears the stick down; when it breaks, they say so. */
 function wearStick(s: Sim, p: Person, stick: Item) {
   if (!s.wearTool(stick)) return;
@@ -1131,8 +1145,21 @@ export function runTask(s: Sim, p: Person) {
       return;
     }
     case 'forage': {
+      if (t.stage === -1) {
+        // to the pile for a basket, then out to the bush
+        if (moving(go(s, p, t))) return;
+        aimAtBush(s, p, t);
+        p.thought = 'Off to pick berries with a basket.';
+        return;
+      }
       if (t.stage === 0) {
-        if (!s.propAlive[t.ref] || s.propVal[t.ref] < 0.5) return finish(s, p);
+        if (!s.propAlive[t.ref] || s.propVal[t.ref] < 0.5) {
+          // someone picked it bare first: take what is in the basket home
+          if (p.carry !== CARRY.Berries) return finish(s, p);
+          s.reserved.delete(t.ref);
+          goStore(s, p, t, 2);
+          return;
+        }
         if (moving(go(s, p, t))) return;
         t.stage = 1;
         t.timer = Math.max(8, Math.round(16 * (1.2 - p.skills[0] * 0.02)));
@@ -1141,12 +1168,15 @@ export function runTask(s: Sim, p: Person) {
         p.act = ACT.Gather;
         face(p, s.propX[t.ref], s.propZ[t.ref]);
         if (--t.timer > 0) return;
-        const take = Math.min(s.propVal[t.ref], 2.6 + p.skills[SK.forage] * 0.12);
+        const basket = s.heldBy(p)?.kind === 'basket';
+        const hold = basket ? BASKET_HOLDS : 2.6 + p.skills[SK.forage] * 0.12;
+        const had = p.carry === CARRY.Berries ? p.carryAmt : 0;
+        const take = Math.min(s.propVal[t.ref], hold - had, 2.6 + p.skills[SK.forage] * 0.12);
         s.propVal[t.ref] -= take;
         s.propsVersion++;
         s.reserved.delete(t.ref);
         p.carry = CARRY.Berries;
-        p.carryAmt = take;
+        p.carryAmt = had + take;
         // watching the hares in the undergrowth while picking
         s.practise(p, 'forage');
         if (p.food < 45 && take >= 1) {
@@ -1154,12 +1184,31 @@ export function runTask(s: Sim, p: Person) {
           p.food = clamp(p.food + 20);
         }
         train(p, 'forage.pick');
+        // with room left in the basket, on to the next bush near by
+        const next = basket && p.carryAmt < BASKET_HOLDS - 1
+          ? s.nearestProp(p.x, p.z, 5, (k) => isBerry(s.propType[k]) && s.propVal[k] >= 1 && hyp(s.propX[k] - c.x, s.propZ[k] - c.z) < 30)
+          : -1;
+        if (next >= 0) {
+          s.reserved.set(next, p.id);
+          t.ref = next;
+          // a fresh clock for each bush, so a long round isn't given up as stuck
+          t.started = s.tick;
+          p.nextThink = s.tick + 600;
+          aimAtBush(s, p, t);
+          p.thought = 'Picking berries into a basket.';
+          return;
+        }
         goStore(s, p, t, 2);
-        p.thought = 'Bringing berries back to camp.';
+        p.thought = basket ? 'Bringing a full basket of berries back to camp.' : 'Bringing berries back to camp.';
       }
       if (t.stage === 2) {
         if (moving(go(s, p, t))) return;
         deposit(s, p);
+        const basket = s.heldBy(p);
+        if (basket?.kind === 'basket' && s.wearTool(basket)) {
+          s.remember(p, 'tool_broke', -1, 0.2, -1, 'Their basket wore through.');
+          s.event('tool', `${p.name}'s basket wore through.`, [p.id], p.x, p.z, 1);
+        }
         finish(s, p);
       }
       return;

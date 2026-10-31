@@ -7,7 +7,7 @@ Conventions (read by src/render/band.ts):
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
   deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
-  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone} attached to a person's hands or shoulder.
+  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,basket,basketFull} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   bld__{hearth,flame,leanto,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
@@ -921,6 +921,63 @@ q.finish("trap__fishtrap")
 q = Part()
 fishtrap(q, True)
 q.finish("trap__fishtrapFull")
+
+
+BERRY = (176, 30, 48)
+BERRY_DK = (110, 20, 40)
+LEAF = (86, 112, 52)
+
+
+def basket(q, full):
+    """A gathering basket hung from the hand by its handle: grass coiled round a ring of withies, wider
+    at the mouth than the foot, a darker rim hoop and a bent-withy handle. Origin at the grip, the top of
+    the handle, so it hangs from wherever the hand is; heaped with berries when full."""
+    rr = random.Random(51 if full else 50)
+    # rings foot to mouth: (z, radius, a binding row)
+    rings = [(-0.088, 0.026, False), (-0.084, 0.031, True), (-0.072, 0.035, False), (-0.058, 0.038, False),
+             (-0.046, 0.040, True), (-0.034, 0.041, False), (-0.024, 0.042, True), (-0.020, 0.043, True)]
+    segs = 12
+    bm = q.bm
+    loops = [[bm.verts.new((math.cos(k / segs * math.tau) * r, math.sin(k / segs * math.tau) * r * 0.86, z)) for k in range(segs)]
+             for z, r, _ in rings]
+    for i in range(len(loops) - 1):
+        a, b = loops[i], loops[i + 1]
+        hoop = rings[i][2] and rings[i + 1][2]
+        for k in range(segs):
+            f = bm.faces.new((a[k], a[(k + 1) % segs], b[(k + 1) % segs], b[k]))
+            # the coils of grass, each row stitched across the one below so the weave staggers
+            q.paint([f], WOOD_DARK if hoop else WICKER if (k + i) % 2 else WICKER_DARK, rr, 0.07)
+    q.paint([bm.faces.new(list(reversed(loops[0])))], WICKER_DARK, rr, 0.04)  # the foot
+    # the inside, a little darker, so the open mouth reads from above
+    inner = [bm.verts.new((math.cos(k / segs * math.tau) * 0.039, math.sin(k / segs * math.tau) * 0.039 * 0.86, -0.022)) for k in range(segs)]
+    top = loops[-1]
+    q.paint([bm.faces.new((top[k], top[(k + 1) % segs], inner[(k + 1) % segs], inner[k])) for k in range(segs)], WOOD_DARK, rr, 0.04)
+    floor = -0.034 if full else -0.080
+    low = [bm.verts.new((v.co.x * 0.92, v.co.y * 0.92, floor)) for v in inner]
+    q.paint([bm.faces.new((inner[k], inner[(k + 1) % segs], low[(k + 1) % segs], low[k])) for k in range(segs)], WICKER_DARK, rr, 0.05)
+    q.paint([bm.faces.new(low)], BERRY_DK if full else WICKER_DARK, rr, 0.04)
+    # the handle: a withy bent over from side to side, lashed on at the rim
+    arc = [Vector((math.cos(t) * 0.040, 0, -0.020 + math.sin(t) * 0.020)) for t in [k / 6 * math.pi for k in range(7)]]
+    for a, b in zip(arc, arc[1:]):
+        q.cyl(4, 0.0026, 0.0026, a, b, WOOD, rr, 0.03, cap=False)
+    for x in (-0.040, 0.040):
+        q.cyl(5, 0.0042, 0.0042, (x, 0, -0.026), (x, 0, -0.016), CORD, rr, 0.0, cap=False)
+    if full:  # a heap of berries standing proud of the rim, a few leaves picked with them
+        for k in range(26):
+            a, r = rr.uniform(0, math.tau), math.sqrt(rr.random()) * 0.034
+            z = -0.026 + (0.034 - r) * 0.42 + rr.uniform(0, 0.004)
+            q.blob((math.cos(a) * r, math.sin(a) * r * 0.86, z), (0.0058, 0.0058, 0.0055), BERRY if k % 4 else BERRY_DK, rr, 0.12, subdiv=1)
+        for k in range(4):
+            a = k / 4 * math.tau + 0.4
+            q.blob((math.cos(a) * 0.024, math.sin(a) * 0.020, -0.016), (0.011, 0.005, 0.0016), LEAF, rr, 0.08)
+
+
+q = Part()
+basket(q, False)
+q.finish("carry__basket")
+q = Part()
+basket(q, True)
+q.finish("carry__basketFull")
 
 # ---------------------------------------------------------------- buildings
 STONE = (128, 122, 114)

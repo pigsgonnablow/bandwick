@@ -19,7 +19,7 @@ export const SKILL_MAX = 20;
  */
 type Lesson = readonly { skill: number; gain: number }[];
 export const TRAINING = {
-  'forage.pick': [{ skill: SK.forage, gain: 0.06 }], // a basket of berries picked
+  'forage.pick': [{ skill: SK.forage, gain: 0.06 }], // a bush's berries picked
   // an armful of grass or reeds cut: handling them is how a weaver gets to know them
   reap: [{ skill: SK.forage, gain: 0.03 }, { skill: SK.weave, gain: 0.03 }],
   dig: [{ skill: SK.build, gain: 0.05 }], // a load of mud or stone dug
@@ -80,8 +80,8 @@ export const TASK_KINDS: TaskKind[] = [
   'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap',
 ];
 
-/** Things a band makes and keeps: for now, the tools for felling. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap'] as const;
+/** Things a band makes and keeps: tools, traps and baskets. */
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -101,7 +101,11 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   snare: { label: 'Snare', uses: 12 },
   // a woven basket funnel in the shallows: about a year
   fishtrap: { label: 'Fish trap', uses: 48 },
+  // a deep basket of willow withies and grass, carried out empty and brought home full: a season or two of picking
+  basket: { label: 'Basket', uses: 40 },
 };
+/** Berries brought home in one trip with a basket: several bushes' worth, where bare hands manage one. */
+export const BASKET_HOLDS = 8;
 
 /**
  * Everything made sitting by the fire is one job, crafting, with a recipe for each thing. The morning
@@ -109,7 +113,7 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
  */
 /** Fiber twisted into one length of cordage. */
 export const FIBER_PER_CORD = 3;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage into the stores, or an item onto the pile */
@@ -153,6 +157,10 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
   fishtrap: {
     makes: 'fishtrap', uses: { fiber: 3, wood: 2 }, work: 40, skill: SK.weave, grow: 0.06, knows: 'fishtraps', doing: 'Weaving a fish trap',
     thought: 'Weaving reeds into a funnel basket for the shallows.', done: 'Wove a fish trap and laid it on the pile.',
+  },
+  basket: {
+    makes: 'basket', uses: { fiber: 3, wood: 1 }, work: 30, skill: SK.weave, grow: 0.05, knows: 'baskets', doing: 'Weaving a basket',
+    thought: 'Weaving grass round a ring of withies for a gathering basket.', done: 'Wove a basket and laid it on the pile.',
   },
 };
 /** One made thing. It lies on its band's stockpile unless someone holds it, or it is set out in the land. */
