@@ -65,6 +65,56 @@ function workDrive(s: Sim, p: Person) {
 }
 const fit = (p: Person, k: number) => 0.7 + Math.min(20, p.skills[k]) * 0.03;
 
+/** The craft someone is practising at their work right now, which a child watching them picks up (-1: nothing to learn from). */
+export function workSkill(q: Person): number {
+  const t = q.task;
+  if (!t) return -1;
+  switch (t.kind) {
+    case 'fell': case 'haul': case 'deadwood': return SK.wood;
+    case 'fish': return SK.fish;
+    case 'build': case 'supply': case 'dig': case 'quarry': return SK.build;
+    case 'forage': case 'reap': return SK.forage;
+    case 'preserve': return SK.hide;
+    case 'trap': return SK.hunt;
+    case 'craft': return t.amount > 0 ? RECIPES[RECIPE_KEYS[t.ref]].skill : -1;
+    default: return -1;
+  }
+}
+/** How much a child takes in from one spell of watching a beginner; more from someone who knows the work well. */
+export const WATCH_GAIN = 0.005;
+/** The grown-up a child would go and watch at work: a parent or whoever raises them first, then the most skilled near by. */
+function teacherFor(s: Sim, p: Person) {
+  let best: Person | null = null, bestS = -Infinity;
+  for (const q of s.people) {
+    if (!q.alive || q.band !== p.band || q === p || s.age(q) < 16) continue;
+    const k = workSkill(q);
+    // nothing to learn from someone no better at it than the child
+    if (k < 0 || q.skills[k] <= p.skills[k] + 0.5) continue;
+    const d = hyp(q.x - p.x, q.z - p.z);
+    if (d > 14 || hyp(q.x - s.camp.x, q.z - s.camp.z) > 16) continue;
+    const kin = q.id === p.mother || q.id === p.father || q.id === p.carer ? 12 : 0;
+    const sc = kin + q.skills[k] - d * 0.5;
+    if (sc > bestS) { bestS = sc; best = q; }
+  }
+  return best;
+}
+/** Grown-ups this old tell the stories by the fire; the oldest one at camp is the one who does. */
+export const STORY_AGE = 40;
+function storyteller(s: Sim, p: Person) {
+  if (s.age(p) < STORY_AGE) return false;
+  const c = s.camp;
+  for (const q of s.people)
+    if (q !== p && q.alive && q.band === p.band && q.birth < p.birth && q.task?.kind !== 'sleep' && hyp(q.x - c.x, q.z - c.z) < 8) return false;
+  return true;
+}
+/** Who is awake and near enough the fire to gather round a story. */
+function nearFire(s: Sim, p: Person) {
+  const c = s.camp;
+  let n = 0;
+  for (const q of s.people) if (q !== p && q.alive && q.band === p.band && s.age(q) >= 3 && !q.indoors && q.task?.kind !== 'sleep' && hyp(q.x - c.x, q.z - c.z) < 8) n++;
+  return n;
+}
+
 /**
  * What this person would sit down to make: of the recipes the morning plan wants and the stores allow,
  * the one most wanted, weighed by how good they are at it.
@@ -116,6 +166,15 @@ export function decide(s: Sim, p: Person) {
   add('socialize', p.belonging < 62 ? ((62 - p.belonging) / 62) * 0.95 + (hour > 17 && !dark ? 0.15 : 0) : 0);
   add('idle', 0.16 + (hour > 18 && !dark ? 0.15 : 0) + (s.has(p, 'lazy') ? 0.1 : 0));
   if (child && age >= 2 && !dark) add('play', 0.5 + (age < 9 ? 0.2 : 0));
+  // a child old enough to follow the work goes to watch a grown-up at it, a parent first, and picks it up
+  // (not out in the cold, though: in a hard frost the children keep to the fire)
+  if (child && age >= 5 && !dark && temp >= 4 && teacherFor(s, p)) add('watch', 0.4 + (age >= 9 ? 0.2 : 0));
+  // of an evening, the band's eldest tells the old stories by the fire, and whoever is about gathers round
+  // (not when the band is short of wood or food: there is work to be done then, and no heart for stories)
+  const evening = hour >= 17 && hour < 21.5 && s.hearthLit() && !s.fireShort() && c.stock.wood >= 8 && !c.rationing && (c.jobs.food ?? 0) < 0.7;
+  if (evening && p.rest > 30 && c.storyNight !== dayOf(s.tick) && busyWith(s, 'tell') === 0 && storyteller(s, p) && nearFire(s, p) >= 2) add('tell', 1.9);
+  const teller = evening ? s.people.find((q) => q !== p && q.alive && q.band === p.band && q.task?.kind === 'tell') : undefined;
+  if (teller && age >= 3 && p.rest > 20 && hyp(p.x - c.x, p.z - c.z) < 12) add('listen', 1.55 + (child ? 0.3 : 0));
   // a hot afternoon: the young go down to the water to cool off
   if (!dark && temp >= 21 && age >= 4 && age < 40 && p.health > HEALTH.swim && hour > 10 && hour < 19)
     add('swim', (child ? 0.42 : 0.24) + Math.min(0.3, (temp - 21) * 0.05) + (s.has(p, 'wanderlust') ? 0.05 : 0));
@@ -281,6 +340,30 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const st = seat(s, p, 1.3);
       p.thought = s.hearthLit() ? 'Sitting by the fire.' : 'Resting near camp.';
       return newTask(s, kind, ti(st.x, st.z), st.x, st.z);
+    }
+    case 'watch': {
+      const q = teacherFor(s, p);
+      if (!q) return null;
+      p.thought = `Going to watch ${q.name} at work.`;
+      return newTask(s, kind, s.tileOf(q), q.x, q.z, q.id, true);
+    }
+    case 'tell': {
+      const st = seat(s, p, 1.0);
+      c.storyNight = dayOf(s.tick);
+      // a story from the band's own past, if it has one: something that happened in the teller's lifetime
+      const told = s.events.filter((e) => e.weight >= 3 && STORY_KINDS.includes(e.kind) && !/ stands\b/.test(e.text) && e.tick > p.birth + 8 * TICKS_PER_DAY * 48
+        && e.tick < s.tick - 20 * TICKS_PER_DAY && e.people.some((id) => s.byId.get(id)?.band === p.band));
+      const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z);
+      t.amount = told.length ? told[s.rAi.int(0, told.length - 1)].id : -1;
+      p.thought = `Telling ${storyOf(s, t.amount, p)}.`;
+      return t;
+    }
+    case 'listen': {
+      const teller = s.people.find((q) => q.alive && q.band === p.band && q.task?.kind === 'tell');
+      if (!teller) return null;
+      const st = seat(s, p, 1.5);
+      p.thought = `Listening to ${teller.name} tell ${storyOf(s, teller.task!.amount, teller)}.`;
+      return newTask(s, kind, ti(st.x, st.z), st.x, st.z, teller.id);
     }
     case 'play': {
       const mom = s.byId.get(p.mother);
@@ -903,6 +986,18 @@ function untakeTraps(s: Sim, t: Task) {
   }
 }
 
+/** The things worth a story: what was done, found, or lost (told in the past, as the chronicle has them). */
+const STORY_KINDS = ['hunt', 'great_hunt', 'discovery', 'death', 'attack', 'build', 'fight'];
+/** What a story is about: "how Ada worked out how to raise a proper hut" ("how they..." when the teller did it), or the old stories. */
+function storyOf(s: Sim, eventId: number, teller: Person) {
+  const e = eventId >= 0 ? s.events.find((q) => q.id === eventId) : undefined;
+  if (!e) return 'the old stories, from before anyone can remember';
+  let text = e.text.replace(/\.$/, '');
+  if (text.startsWith(`${teller.name} `)) text = `they ${text.slice(teller.name.length + 1)}`;
+  else if (/^(The|A|An) /.test(text)) text = text.charAt(0).toLowerCase() + text.slice(1);
+  return `how ${text}`;
+}
+
 /** Off to the bush a picking task is for. */
 function aimAtBush(s: Sim, p: Person, t: Task) {
   t.stage = 0;
@@ -1084,6 +1179,81 @@ export function runTask(s: Sim, p: Person) {
       p.act = ACT.Sit;
       face(p, c.x, c.z);
       if (--t.timer <= 0) finish(s, p);
+      return;
+    }
+    case 'watch': {
+      const q = s.byId.get(t.ref);
+      const k = q ? workSkill(q) : -1;
+      if (!q || !q.alive || k < 0) return finish(s, p);
+      if (t.stage === 0) {
+        // keep up with them as they go about the work
+        if (s.tick % 8 === 0 && s.tileOf(q) !== t.goal) {
+          t.goal = s.tileOf(q);
+          p.path = null;
+        }
+        if (hyp(q.x - p.x, q.z - p.z) > 1.6) {
+          if (moving(go(s, p, t))) return;
+          if (hyp(q.x - p.x, q.z - p.z) > 2.2) return;
+        }
+        t.stage = 1;
+        t.timer = 24;
+        p.path = null;
+        p.thought = `Watching ${q.name} at work.`;
+      }
+      // they moved off: follow
+      if (hyp(q.x - p.x, q.z - p.z) > 2.6) {
+        t.stage = 0;
+        return;
+      }
+      p.act = ACT.Sit;
+      face(p, q.x, q.z);
+      if (--t.timer > 0) return;
+      // they pick up a little of it, more from someone who knows it well, never more than the one they watch
+      trainSkill(p, k, WATCH_GAIN * (0.5 + q.skills[k] / 20));
+      if (p.skills[k] > q.skills[k]) p.skills[k] = q.skills[k];
+      s.adjust(p, q, 1);
+      finish(s, p);
+      return;
+    }
+    case 'tell': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 22;
+      }
+      p.act = ACT.Chat;
+      face(p, c.x, c.z);
+      if (--t.timer > 0) return;
+      // the story told: those who sat through it feel the more a part of the band, the children take in a little
+      // of the teller's own craft, and everyone thinks the better of the one who told it
+      const story = storyOf(s, t.amount, p);
+      const best = p.skills.indexOf(Math.max(...p.skills));
+      let heard = 0;
+      for (const q of s.people) {
+        if (!q.alive || q.task?.kind !== 'listen' || q.task.ref !== p.id || q.task.stage < 1) continue;
+        heard++;
+        q.belonging = clamp(q.belonging + 18);
+        q.mood = clamp(q.mood + 3);
+        s.adjust(q, p, 2);
+        if (s.age(q) < 14 && q.skills[best] < p.skills[best]) trainSkill(q, best, WATCH_GAIN * 0.5);
+        if (!q.memories.some((m) => m.kind === 'story' && s.tick - m.tick < 12 * TICKS_PER_DAY))
+          s.remember(q, 'story', 4, 0.4, p.id, `Heard ${p.name} tell ${story}.`);
+        finish(s, q);
+      }
+      if (heard) p.belonging = clamp(p.belonging + 12);
+      p.thought = heard ? `Told ${story}.` : 'Nobody stayed to listen.';
+      finish(s, p);
+      return;
+    }
+    case 'listen': {
+      const q = s.byId.get(t.ref);
+      if (!q || !q.alive || q.task?.kind !== 'tell') return finish(s, p);
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+      }
+      p.act = ACT.Sit;
+      face(p, q.x, q.z);
       return;
     }
     case 'play': {

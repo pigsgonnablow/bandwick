@@ -133,6 +133,8 @@ export interface Camp {
   leanWinters?: number;
   /** the day someone last set out on the round of the band's traps */
   trapRound?: number;
+  /** the day an elder last told a story by the band's fire */
+  storyNight?: number;
   plan: string[];
 }
 
@@ -1100,7 +1102,7 @@ export class Sim {
     // except wood runs in the cold when the store is low: coming home empty-handed means a cold night
     const emergency = (k === 'fell' || k === 'haul' || k === 'deadwood') && (this.hearth().fuel < 2 || this.camp.stock.wood < 20) && this.tempAt(p) < 12;
     // (a burial, once begun, is seen through: a body far out on the land is not left another night)
-    if (k && !emergency && p.task!.stage === 0 && isDark(this.tick) && !['sleep', 'warm', 'eat', 'fuel', 'socialize', 'idle', 'bury', 'craft'].includes(k)) return true;
+    if (k && !emergency && p.task!.stage === 0 && isDark(this.tick) && !['sleep', 'warm', 'eat', 'fuel', 'socialize', 'idle', 'bury', 'craft', 'tell', 'listen'].includes(k)) return true;
     return false;
   }
 
