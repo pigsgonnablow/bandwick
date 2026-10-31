@@ -7,7 +7,7 @@ exports[`golden histories > seed 1, five years on 1`] = `
   ],
   "events": 48,
   "everLived": 11,
-  "hash": "57e34ce9",
+  "hash": "862d1ee5",
   "homes": 8,
   "pop": 8,
   "stats": {
@@ -50,7 +50,7 @@ exports[`golden histories > seed 2, five years on 1`] = `
   ],
   "events": 53,
   "everLived": 12,
-  "hash": "38693fae",
+  "hash": "39657ecc",
   "homes": 8,
   "pop": 11,
   "stats": {
@@ -93,7 +93,7 @@ exports[`golden histories > seed 3, five years on 1`] = `
   ],
   "events": 65,
   "everLived": 13,
-  "hash": "b4a02c9c",
+  "hash": "f699abb0",
   "homes": 4,
   "pop": 11,
   "stats": {

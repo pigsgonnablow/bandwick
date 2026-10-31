@@ -200,3 +200,41 @@ describe('berries', () => {
     expect(crop('plenty')).toBeCloseTo(usual * 2, 3);
   });
 });
+
+describe('the year\'s fortune', () => {
+  /** Early summer's roll of the dice for the year's fruit and fish. */
+  function roll(r: number) {
+    const s = sim(1);
+    s.tick = 2 * TICKS_PER_YEAR + 14 * TICKS_PER_DAY + 6 * TICKS_PER_HOUR;
+    const fished = s.fishCap.findIndex((c) => c > 0);
+    s.fish[fished] = 0;
+    const events = s.events.length;
+    (s as any).rWild.next = () => r;
+    (s as any).fortune(14);
+    return { s, fished, told: s.events.slice(events).map((e) => e.kind), year: yearOf(s.tick) };
+  }
+
+  it('is now and then a blight on the berries', () => {
+    const { s, told, year, fished } = roll(0.02);
+    expect(s.blightYear).toBe(year);
+    expect(s.plentyYear).toBe(0);
+    expect(told).toContain('blight');
+    expect(s.fish[fished]).toBe(0);
+  });
+
+  it('is now and then a year of plenty, the water filled with fish again', () => {
+    const { s, told, year } = roll(0.1);
+    expect(s.plentyYear).toBe(year);
+    expect(told).toContain('plenty');
+    for (let i = 0; i < s.fish.length; i++) expect(s.fish[i]).toBe(s.fishCap[i]);
+  });
+
+  it('is most years nothing out of the ordinary', () => {
+    const { s, told, fished } = roll(0.5);
+    expect(s.blightYear).toBe(0);
+    expect(s.plentyYear).toBe(0);
+    expect(told).not.toContain('blight');
+    expect(told).not.toContain('plenty');
+    expect(s.fish[fished]).toBe(0);
+  });
+});

@@ -129,11 +129,44 @@ describe('the props of the land', () => {
     expect(s.propType[s.propCount - 1]).toBe(LOGS);
     expect(s.propTile[s.propCount - 1]).toBe(tile);
     const b = new Sim(generateWorld(s.world.params), JSON.parse(JSON.stringify(s.serialize())) as SaveData);
-    expect(b.propCount).toBe(s.propCount);
+    expect(b.propCount).toBe(s.propsToSave().n);
     expect(b.historyHash()).toBe(s.historyHash());
     runTo(s, s.tick + TICKS_PER_DAY);
     runTo(b, b.tick + TICKS_PER_DAY);
     expect(b.historyHash()).toBe(s.historyHash());
+  });
+});
+
+describe('a save', () => {
+  it('leaves out the props that are gone for good, keeps the rest in order, and carries on the same', () => {
+    const s = runYears(sim(1), 2);
+    const gone: number[] = [];
+    for (let k = 0; k < s.propCount; k++) if (!s.propAlive[k]) gone.push(k);
+    expect(gone.length).toBeGreaterThan(0);
+    // someone setting off for a tree that has just come down still points to it
+    const p = s.members().find((q) => s.age(q) >= 16)!;
+    const ghost = gone[gone.length - 1];
+    p.task = { kind: 'fell', stage: 0, goal: s.propTile[ghost], gx: s.propX[ghost], gz: s.propZ[ghost], ref: ghost, timer: 0, started: s.tick, amount: 0, near: true };
+    p.nextThink = s.tick + 1000;
+    const save = JSON.parse(JSON.stringify(s.serialize())) as SaveData;
+    const standing = s.propCount - gone.length;
+    expect(save.props.count).toBe(standing + 1);
+    const b = new Sim(generateWorld(save.params), save);
+    // the props still standing, in the same order
+    const live = (x: Sim) => { const out: number[][] = []; for (let k = 0; k < x.propCount; k++) if (x.propAlive[k]) out.push([x.propType[k], x.propX[k], x.propZ[k], x.propVal[k]]); return out; };
+    expect(live(b)).toEqual(live(s));
+    // the job points to the same fallen tree, at its new place in the list
+    const q = b.byId.get(p.id)!;
+    expect(q.task!.ref).not.toBe(ghost);
+    expect([b.propX[q.task!.ref], b.propZ[q.task!.ref], b.propAlive[q.task!.ref]]).toEqual([s.propX[ghost], s.propZ[ghost], 0]);
+    // notes and reservations follow their props
+    for (const [k, note] of b.propNote) expect(s.propNote.get(s.propsToSave().at.indexOf(k))).toBe(note);
+    expect(b.historyHash()).toBe(s.historyHash());
+    for (let i = 0; i < 3 * TICKS_PER_DAY; i++) {
+      s.step();
+      b.step();
+      if (s.tick % TICKS_PER_DAY === 0) expect(b.historyHash(), `diverged at tick ${s.tick}`).toBe(s.historyHash());
+    }
   });
 });
 
