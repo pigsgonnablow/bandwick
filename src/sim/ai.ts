@@ -765,6 +765,7 @@ export function deposit(s: Sim, p: Person) {
     // handling the food and the thatch is what gives people ideas about keeping them
     if (kind === 'berries' || kind === 'meat' || kind === 'fish') s.practise(p, 'store_food', a);
     if (kind === 'meat' || kind === 'fish') s.practise(p, 'store_meat', a);
+    if (kind === 'berries') s.practise(p, 'store_berries', a);
     if (kind === 'fiber') s.practise(p, 'thatch', a);
   }
   p.carry = CARRY.None;

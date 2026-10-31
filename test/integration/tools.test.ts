@@ -1,6 +1,6 @@
 // Tools are made, kept on the stockpile, taken out for felling and put back, and wear out.
 import { describe, it, expect } from 'vitest';
-import { ITEMS, CARRY, RECIPE_KEYS, SK, BASKET_HOLDS } from '../../src/sim/band';
+import { ITEMS, CARRY, RECIPE_KEYS, SK, BASKET_HOLDS, POT_HOLDS } from '../../src/sim/band';
 import { abandon } from '../../src/sim/ai';
 import { seasonOf, berriesRipe } from '../../src/sim/time';
 import { treeStage, isTreeType } from '../../src/sim/sim';
@@ -161,6 +161,39 @@ describe('tools', () => {
     for (let d = 0; d < 6 && s.toolsOf(c, 'basket').length < 2; d++) runTo(s, s.tick + TICKS_PER_DAY);
     expect(s.toolsOf(c, 'basket').length).toBeGreaterThanOrEqual(1);
     expect(s.toolsOf(c, 'basket').length).toBeLessThanOrEqual(Math.min(4, 1 + Math.floor(s.members().length / 5)));
+  });
+
+  it('keeps berries longer in clay pots, and wears the pots that hold them', () => {
+    const run = (pots: number) => {
+      const s = sim(2);
+      const c = s.camp;
+      if (pots) s.giveTools(c, { pot: pots });
+      c.stock.berries = 30;
+      // one day's going-off, by itself
+      (s as any).spoil();
+      return { left: c.stock.berries, worn: s.toolsOf(c, 'pot').filter((i) => i.wear > 0).length };
+    };
+    const bare = run(0), two = run(2), plenty = run(10);
+    expect(two.left).toBeGreaterThan(bare.left);
+    expect(plenty.left).toBeGreaterThan(two.left);
+    // only the pots with berries in them wear: 30 berries fill five
+    expect(two.worn).toBe(2);
+    expect(plenty.worn).toBe(Math.ceil(30 / POT_HOLDS));
+  });
+
+  it('makes clay pots once the band knows pottery, and digs the clay for them', () => {
+    const s = sim(2);
+    const c = s.camp;
+    s.giveTools(c, { axe: 4, chopper: 2 });
+    expect(s.toolToMake()).toBeNull();
+    c.knows.push('baskets', 'pottery');
+    s.giveTools(c, { basket: 4 });
+    expect(s.toolToMake()).toBe('pot');
+    // stores full enough that nobody is out after food, and no clay in yet
+    Object.assign(c.stock, { wood: 200, preserved: 300, mud: 0 });
+    for (let d = 0; d < 30 && s.toolsOf(c, 'pot').length < 2; d++) runTo(s, s.tick + TICKS_PER_DAY);
+    expect(s.toolsOf(c, 'pot').length).toBeGreaterThanOrEqual(2);
+    expect(s.toolsOf(c, 'pot').every((i) => i.maker >= 0)).toBe(true);
   });
 
   it('makes only the tools the band is short of, counting the ones being made', () => {

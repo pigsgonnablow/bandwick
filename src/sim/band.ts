@@ -80,8 +80,8 @@ export const TASK_KINDS: TaskKind[] = [
   'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap',
 ];
 
-/** Things a band makes and keeps: tools, traps and baskets. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket'] as const;
+/** Things a band makes and keeps: tools, traps, baskets and pots. */
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -103,7 +103,13 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   fishtrap: { label: 'Fish trap', uses: 48 },
   // a deep basket of willow withies and grass, carried out empty and brought home full: a season or two of picking
   basket: { label: 'Basket', uses: 40 },
+  // a coiled clay pot fired in the embers, kept in the stores with berries in it under a lid: it lasts
+  // a few years of daily use before it cracks (each day it holds food counts as a use)
+  pot: { label: 'Clay pot', uses: 150 },
 };
+/** Berries kept in one pot, and how much of the usual going-off still happens to them there. */
+export const POT_HOLDS = 6;
+export const POT_KEEP = 0.4;
 /** Berries brought home in one trip with a basket: several bushes' worth, where bare hands manage one. */
 export const BASKET_HOLDS = 8;
 
@@ -113,13 +119,13 @@ export const BASKET_HOLDS = 8;
  */
 /** Fiber twisted into one length of cordage. */
 export const FIBER_PER_CORD = 3;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage into the stores, or an item onto the pile */
   makes: 'cordage' | ItemKind;
   /** what it uses from the stores */
-  uses: Partial<Record<'wood' | 'fiber' | 'cordage' | 'stone', number>>;
+  uses: Partial<Record<'wood' | 'fiber' | 'cordage' | 'stone' | 'mud', number>>;
   /** ticks of work at the fire, before skill */
   work: number;
   skill: number;
@@ -161,6 +167,11 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
   basket: {
     makes: 'basket', uses: { fiber: 3, wood: 1 }, work: 30, skill: SK.weave, grow: 0.05, knows: 'baskets', doing: 'Weaving a basket',
     thought: 'Weaving grass round a ring of withies for a gathering basket.', done: 'Wove a basket and laid it on the pile.',
+  },
+  pot: {
+    // clay coiled up into a pot, then fired in the embers of the hearth
+    makes: 'pot', uses: { mud: 2, wood: 1 }, work: 44, skill: SK.pot, grow: 0.08, knows: 'pottery', doing: 'Making a clay pot',
+    thought: 'Coiling clay into a pot to fire in the embers.', done: 'Fired a clay pot and set it in the stores.',
   },
 };
 /** One made thing. It lies on its band's stockpile unless someone holds it, or it is set out in the land. */

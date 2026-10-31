@@ -2,7 +2,7 @@
 // carried items, buildings rising as they're built, the hearth fire, its light and smoke.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { ACT, CARRY, FLASH, TASK_KINDS } from '../sim/band';
+import { ACT, CARRY, FLASH, TASK_KINDS, POT_HOLDS } from '../sim/band';
 import { SHAKE } from './props';
 import type { Frame } from '../sim/runner';
 import { WorldData, WATER } from '../sim/types';
@@ -131,7 +131,7 @@ export class BandLayer {
   private buildingMeshes = new Map<string, THREE.InstancedMesh>();
   private flames: THREE.InstancedMesh;
   /** what lies on each stockpile (by building id), and the meshes that show it */
-  private piles = new Map<number, { wood: number; berries: number; meat: number; fish: number; preserved: number }>();
+  private piles = new Map<number, { wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number }>();
   private pileMeshes = new Map<string, THREE.InstancedMesh>();
   /** the snares and fish traps standing in the world, and their meshes (set, and holding a catch) */
   private traps: NonNullable<Frame['traps']> = [];
@@ -200,12 +200,12 @@ export class BandLayer {
     }
     // fire
     const flameGeo = geoms.get('bld__flame') ?? new THREE.ConeGeometry(0.08, 0.25, 5);
-    // the stockpile's contents: split logs stacked at the back, baskets, meat and fish laid on the mat
+    // the stockpile's contents: split logs stacked at the back, pots, baskets, meat and fish laid on the mat
     {
       const pm = new THREE.MeshLambertMaterial({ vertexColors: true });
       pm.onBeforeCompile = (sh) => addCommon(sh);
       pm.customProgramCacheKey = () => 'pile';
-      for (const [key, geo] of [['log', 'pile__log'], ['basket', 'carry__berries'], ['meat', 'carry__meat'], ['fish', 'carry__fish']] as const) {
+      for (const [key, geo] of [['log', 'pile__log'], ['basket', 'carry__berries'], ['meat', 'carry__meat'], ['fish', 'carry__fish'], ['pot', 'pile__pot']] as const) {
         const g = geoms.get(geo);
         if (!g) continue;
         const m = new THREE.InstancedMesh(g, pm, 64);
@@ -1253,7 +1253,7 @@ export class BandLayer {
     if (this.auras.instanceColor) this.auras.instanceColor.needsUpdate = true;
   }
 
-  setPiles(p: { id: number; wood: number; berries: number; meat: number; fish: number; preserved: number }[]) {
+  setPiles(p: { id: number; wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number }[]) {
     this.piles = new Map(p.map((q) => [q.id, q]));
   }
 
@@ -1321,7 +1321,10 @@ export class BandLayer {
       }
       // food on the mat, in rows
       const items: string[] = [];
-      for (let i = 0; i < Math.min(5, Math.ceil(p.berries / 5)); i++) items.push('basket');
+      // the band's pots stand in the front row; berries that don't fit in them sit in open baskets
+      const pots = Math.min(5, p.pots ?? 0);
+      for (let i = 0; i < pots; i++) items.push('pot');
+      for (let i = 0; i < Math.min(5 - pots, Math.ceil(Math.max(0, p.berries - (p.pots ?? 0) * POT_HOLDS) / 5)); i++) items.push('basket');
       for (let i = 0; i < Math.min(4, Math.ceil(p.meat / 6)); i++) items.push('meat');
       for (let i = 0; i < Math.min(4, Math.ceil(p.fish / 4)); i++) items.push('fish');
       for (let i = 0; i < Math.min(3, Math.ceil(p.preserved / 8)); i++) items.push('dried');
@@ -1330,6 +1333,7 @@ export class BandLayer {
         const x = -0.2 + col * 0.1 + (h(i + 200) - 0.5) * 0.02, z = 0.05 + row * 0.085 + (h(i + 300) - 0.5) * 0.02;
         const ry = h(i + 400) * Math.PI * 2;
         if (it === 'basket') place('basket', x, 0.045, z, 0, ry);
+        else if (it === 'pot') place('pot', x, 0.016, z, 0, ry);
         else if (it === 'fish') place('fish', x, 0.028, z, Math.PI / 2, ry);
         else place('meat', x, it === 'dried' ? 0.04 : 0.055, z, 0, ry, it === 'dried' ? 0.75 : 1);
       });

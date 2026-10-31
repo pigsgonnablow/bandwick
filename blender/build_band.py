@@ -9,6 +9,7 @@ Conventions (read by src/render/band.ts):
   deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
   carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,basket,basketFull} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
+  pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
   bld__{hearth,flame,leanto,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
@@ -978,6 +979,46 @@ q.finish("carry__basket")
 q = Part()
 basket(q, True)
 q.finish("carry__basketFull")
+
+POT = (150, 102, 66)
+POT_DK = (118, 78, 50)
+POT_FIRE = (98, 74, 56)   # the dark clouds left where the embers touched it
+HIDE_LID = (176, 140, 98)
+
+
+def pot(q, rr):
+    """A clay pot coiled up by hand and fired in the embers: a round belly on a small flat foot, a short
+    neck and a rolled rim, the coils still showing as faint ridges, smudged dark where the fire touched
+    it; a piece of hide tied over the mouth with cord. Origin at the foot, centred."""
+    # rings foot to rim: (z, radius); every other ring a hair proud, so the coils read
+    prof = [(0.0, 0.016), (0.004, 0.022), (0.010, 0.027), (0.017, 0.030), (0.024, 0.031), (0.031, 0.030),
+            (0.038, 0.027), (0.044, 0.022), (0.048, 0.018), (0.051, 0.017), (0.054, 0.019), (0.056, 0.019)]
+    segs = 12
+    bm = q.bm
+    loops = []
+    for i, (z, r) in enumerate(prof):
+        bump = 1.03 if 1 <= i <= 8 and i % 2 else 1.0
+        loops.append([bm.verts.new((math.cos(k / segs * math.tau) * r * bump, math.sin(k / segs * math.tau) * r * bump, z)) for k in range(segs)])
+    smudge = {(rr.randrange(segs), rr.randrange(2, 7)) for _ in range(7)}
+    for i in range(len(loops) - 1):
+        a, b = loops[i], loops[i + 1]
+        for k in range(segs):
+            f = bm.faces.new((a[k], a[(k + 1) % segs], b[(k + 1) % segs], b[k]))
+            near = any((k == sk or (k - sk) % segs == 1) and i == si for sk, si in smudge)
+            q.paint([f], POT_FIRE if near and i < 8 else POT_DK if i % 2 else POT, rr, 0.06)
+    q.paint([bm.faces.new(list(reversed(loops[0])))], POT_DK, rr, 0.03)
+    # the hide over the mouth, gathered under the rim and tied, its edge hanging in a ruffle
+    top = [bm.verts.new((math.cos(k / segs * math.tau) * 0.021, math.sin(k / segs * math.tau) * 0.021, 0.057)) for k in range(segs)]
+    skirt = [bm.verts.new((math.cos(k / segs * math.tau) * (0.0225 + 0.003 * (k % 2)), math.sin(k / segs * math.tau) * (0.0225 + 0.003 * (k % 2)), 0.047 - 0.003 * (k % 2))) for k in range(segs)]
+    q.paint([bm.faces.new((skirt[k], skirt[(k + 1) % segs], top[(k + 1) % segs], top[k])) for k in range(segs)], HIDE_LID, rr, 0.05)
+    centre = bm.verts.new((0, 0, 0.060))
+    q.paint([bm.faces.new((top[k], top[(k + 1) % segs], centre)) for k in range(segs)], HIDE_LID, rr, 0.04)
+    q.cyl(segs, 0.0195, 0.0195, (0, 0, 0.0505), (0, 0, 0.0525), CORD, rr, 0.0, cap=False)  # the tie under the rim
+
+
+q = Part()
+pot(q, random.Random(52))
+q.finish("pile__pot")
 
 # ---------------------------------------------------------------- buildings
 STONE = (128, 122, 114)

@@ -15,6 +15,7 @@ export type Practice =
   | 'damp_fire' // feeding the fire with damp wood
   | 'store_food' // food carried into the stores (per meal)
   | 'store_meat' // meat and fish carried into the stores (per meal)
+  | 'store_berries' // berries carried into the stores (per meal)
   | 'thatch' // grass and reeds cut and carried in (per bundle)
   | 'fell_chopper' // a tree felled with a hand chopper
   | 'dig_hand' // a trip's digging done with bare hands
@@ -146,6 +147,13 @@ export const DISCOVERIES: Discovery[] = [
     practice: { forage: 1 }, odds: 45,
     found: 'wove grass round a ring of withies into a deep basket, and came home with the berries of a dozen bushes',
     taught: 'weave baskets for gathering', memory: 'Wove the first gathering basket.',
+  },
+  {
+    // (a basket lined with clay to keep the juice in, left too near the fire, comes out hard)
+    key: 'pottery', label: 'Pottery', needs: ['baskets'], requires: [skill(SK.weave, ABLE), skill(SK.build, 8)], near: 'mud',
+    practice: { store_berries: 1 }, odds: 40,
+    found: 'lined a basket with clay, left it in the embers, and found a hard pot where the basket had burned away',
+    taught: 'make pots of fired clay', memory: 'Fired the first clay pot.',
   },
   {
     // (hidework is learned at the drying rack, so it can't be what leads to it)
