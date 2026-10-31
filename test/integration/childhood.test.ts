@@ -20,7 +20,8 @@ describe('childhood', () => {
         const q = s.byId.get(p.task.ref)!;
         expect(s.age(q)).toBeGreaterThanOrEqual(16);
         const k = workSkill(q);
-        expect(k).toBeGreaterThanOrEqual(0);
+        // (a grown-up who finished their work this tick, after the child's turn: the child stops on the next)
+        if (k < 0) continue;
         expect(p.skills[k]).toBeLessThanOrEqual(q.skills[k] + 1e-6);
       }
     }

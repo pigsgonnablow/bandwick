@@ -199,6 +199,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
               {p.carry > 0 && CARRYING[p.carry] && (<><dt>Carrying</dt><dd>{CARRYING[p.carry]}{p.carryAmt > 1 ? ` (${Math.round(p.carryAmt)})` : ''}</dd></>)}
               {p.tool && (<><dt>In hand</dt><dd>A {p.tool}</dd></>)}
               {p.cloak && (<><dt>Wearing</dt><dd>A {p.cloak}</dd></>)}
+              {p.necklace && (<><dt>{p.cloak ? '' : 'Wearing'}</dt><dd>{p.necklace[0].toUpperCase() + p.necklace.slice(1)}</dd></>)}
               <dt>Where</dt>
               <dd>{p.campDist < 3 ? `At ${p.bandName}` : `${Math.round((p.campDist * METERS_PER_UNIT) / 10) * 10} m from ${p.bandName}`}</dd>
             </dl>

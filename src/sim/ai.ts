@@ -1,12 +1,14 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
-import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, train, trainSkill } from './band';
+import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS } from './sim';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, train, trainSkill } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
 const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
+/** A mature or old oak: one that bears acorns. */
+const isOak = (t: number) => isTreeType(t) && treeSpecies(t) === 1 && treeStage(t) >= 2;
 
 interface Option {
   kind: TaskKind;
@@ -73,7 +75,7 @@ export function workSkill(q: Person): number {
     case 'fell': case 'haul': case 'deadwood': return SK.wood;
     case 'fish': return SK.fish;
     case 'build': case 'supply': case 'dig': case 'quarry': return SK.build;
-    case 'forage': case 'reap': case 'roots': return SK.forage;
+    case 'forage': case 'reap': case 'roots': case 'nuts': case 'herbs': return SK.forage;
     case 'preserve': return SK.hide;
     case 'trap': return SK.hunt;
     case 'craft': return t.amount > 0 ? RECIPES[RECIPE_KEYS[t.ref]].skill : -1;
@@ -132,6 +134,39 @@ function craftFor(s: Sim, p: Person): { key: RecipeKey; score: number } | null {
   return best;
 }
 
+/** Someone of the band near camp sick with a fever nobody is nursing now (the nearest to `p`). */
+function feverish(s: Sim, p: Person) {
+  const c = s.camp;
+  let best: Person | undefined, bd = Infinity;
+  for (const q of s.people) {
+    if (q === p || !q.alive || q.band !== p.band || q.sick <= 0 || (q.tended ?? 0) > s.tick) continue;
+    if (hyp(q.x - c.x, q.z - c.z) > 16) continue;
+    if (s.people.some((o) => o.alive && o.task?.kind === 'nurse' && o.task.ref === q.id)) continue;
+    const d = hyp(q.x - p.x, q.z - p.z);
+    if (d < bd) { bd = d; best = q; }
+  }
+  return best;
+}
+/** The band's healer: whoever of its grown-ups knows the plants best. */
+function healerOf(s: Sim) {
+  let best: Person | undefined;
+  for (const q of s.people) if (q.alive && q.band === s.camp.id && s.age(q) >= 16 && q.sick === 0 && (!best || q.skills[SK.forage] > best.skills[SK.forage])) best = q;
+  return best;
+}
+
+/** Who someone would give an ornament to: their partner, else their closest friend in the band (if close enough). */
+function giftFor(s: Sim, p: Person) {
+  const partner = p.partner >= 0 ? s.byId.get(p.partner) : undefined;
+  if (partner && partner.alive && partner.band === p.band) return partner;
+  let best: Person | undefined, bv = 45;
+  for (const [id, v] of p.rel) {
+    if (v <= bv) continue;
+    const q = s.byId.get(id);
+    if (q && q.alive && q.band === p.band && s.age(q) >= 3) { best = q; bv = v; }
+  }
+  return best;
+}
+
 function busyWith(s: Sim, kind: TaskKind) {
   let n = 0;
   for (const q of s.people) if (q.alive && q.band === s.camp.id && q.task?.kind === kind) n++;
@@ -175,6 +210,12 @@ export function decide(s: Sim, p: Person) {
   if (evening && p.rest > 30 && c.storyNight !== dayOf(s.tick) && busyWith(s, 'tell') === 0 && storyteller(s, p) && nearFire(s, p) >= 2) add('tell', 1.9);
   const teller = evening ? s.people.find((q) => q !== p && q.alive && q.band === p.band && q.task?.kind === 'tell') : undefined;
   if (teller && age >= 3 && p.rest > 20 && hyp(p.x - c.x, p.z - c.z) < 12) add('listen', 1.55 + (child ? 0.3 : 0));
+  // the longest night: everyone gathers at the fire for the feast
+  if (c.feastDay === dayOf(s.tick) && hour >= 16.5 && hour < 21.5 && age >= 2 && hyp(p.x - c.x, p.z - c.z) < 24 && !p.memories.some((m) => m.kind === 'midwinter' && dayOf(m.tick) === c.feastDay))
+    add('feast', 2.3);
+  // a tooth or a shell strung on a cord, for a partner or a close friend, now and then
+  if (age >= 14 && !dark && c.stock.trinkets >= 1 && c.stock.fiber >= 1 && s.tick - (p.gave ?? -1e9) > GIFT_DAYS * TICKS_PER_DAY && giftFor(s, p))
+    add('gift', 0.32 + (s.has(p, 'kind') ? 0.1 : 0) + (s.has(p, 'greedy') ? -0.15 : 0));
   // a hot afternoon: the young go down to the water to cool off
   if (!dark && temp >= 21 && age >= 4 && age < 40 && p.health > HEALTH.swim && hour > 10 && hour < 19)
     add('swim', (child ? 0.42 : 0.24) + Math.min(0.3, (temp - 21) * 0.05) + (s.has(p, 'wanderlust') ? 0.05 : 0));
@@ -204,8 +245,14 @@ export function decide(s: Sim, p: Person) {
     if (age >= 11) add('fish', food * fit(p, SK.fish) * 0.85 * crowd('fish'));
     // in autumn, roots dug with a digging stick from under the reeds and the meadow grass: a staple that keeps
     if (age >= 11 && seasonOf(s.tick) === 2 && s.knows('roots')) add('roots', food * fit(p, SK.forage) * 1.1 * crowd('roots'));
+    // and the acorns under the oaks: work the older children can do too
+    if (age >= 9 && seasonOf(s.tick) === 2 && s.knows('nuts')) add('nuts', food * fit(p, SK.forage) * (child ? 1.2 : 1) * crowd('nuts'));
     // grass and reeds for thatch and cordage: work the older children can do too
     if (age >= 9) add('reap', (j.fiber ?? 0) * drive * night * fit(p, SK.forage) * (child ? 1.15 : 1) * crowd('reap'));
+    // healing herbs from the undergrowth, put by for fevers: one person at a time
+    if (age >= 12 && !dark && (j.herbs ?? 0) > 0 && busyWith(s, 'herbs') === 0) add('herbs', j.herbs * drive * fit(p, SK.forage) * 1.1);
+    // a fever in the band, and herbs in the stores: the one who knows the plants best goes to nurse it
+    if (age >= 16 && s.knows('herbs') && c.stock.herbs >= 1 && busyWith(s, 'nurse') < 2 && feverish(s, p)) add('nurse', 1.25 * fit(p, SK.forage) * (healerOf(s) === p ? 1.3 : 0.8));
     // an armful of dry grass from the stores, laid in a home where the old bedding has gone flat
     if (age >= 9 && !dark && (j.bed ?? 0) > 0 && busyWith(s, 'bed') < 2) add('bed', j.bed * drive * fit(p, SK.forage));
     // the round of the snares and fish traps: one person, once a day, by daylight
@@ -448,6 +495,47 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const owner = s.byId.get(b.owner);
       p.thought = b.id === p.home ? 'Fetching dry grass for fresh bedding at home.' : `Fetching dry grass for fresh bedding in ${owner && owner.alive ? `${owner.name}'s ${labelOf(b).toLowerCase()}` : `the ${labelOf(b).toLowerCase()}`}.`;
       return t;
+    }
+    case 'gift': {
+      const q = giftFor(s, p);
+      if (!q || c.stock.trinkets < 1 || c.stock.fiber < 1) return null;
+      c.stock.trinkets -= 1;
+      c.stock.fiber -= 1;
+      const st = seat(s, p, 1.45);
+      const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, q.id);
+      t.amount = 1;
+      p.gave = s.tick;
+      p.thought = `Stringing a necklace for ${q.name}.`;
+      return t;
+    }
+    case 'feast': {
+      const st = seat(s, p, 1.1 + ((p.id * 37) % 5) * 0.12);
+      p.thought = 'To the fire for the midwinter feast.';
+      return newTask(s, kind, ti(st.x, st.z), st.x, st.z);
+    }
+    case 'herbs': {
+      const k = s.nearestProp(c.x, c.z, 24, (k) => isBush(s.propType[k]), (k, d) => -d + ((k * 7919) % 13) * 0.4);
+      if (k < 0) return null;
+      s.reserved.set(k, p.id);
+      p.thought = 'Off to find healing plants in the undergrowth.';
+      return newTask(s, kind, s.propTile[k], s.propX[k] + 0.3, s.propZ[k] + 0.22, k);
+    }
+    case 'nurse': {
+      const q = feverish(s, p);
+      if (!q || c.stock.herbs < 1) return null;
+      c.stock.herbs -= 1; // set aside now so two don't count on the same bundle
+      const t = newTask(s, kind, s.tileOf(q), q.x, q.z, q.id, true);
+      t.amount = 1;
+      p.thought = `Taking herbs to ${q.name}, who is sick with fever.`;
+      return t;
+    }
+    case 'nuts': {
+      if (seasonOf(s.tick) !== 2) return null;
+      const k = s.nearestProp(c.x, c.z, 26, (k) => isOak(s.propType[k]) && !s.nutsTaken.has(k), (_k, d) => -d);
+      if (k < 0) return null;
+      s.reserved.set(k, p.id);
+      p.thought = 'Off to gather acorns under the oaks.';
+      return newTask(s, kind, s.propTile[k], s.propX[k] + 0.35, s.propZ[k] + 0.25, k);
     }
     case 'roots': {
       // (the ground is soft in autumn; by winter it is frozen hard and the tops have died back)
@@ -715,6 +803,15 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
   const t = p.task;
   const st = s.camp.stock;
   if (t) {
+    if (t.kind === 'gift' && t.amount > 0) {
+      st.trinkets += 1;
+      st.fiber += 1;
+      t.amount = 0;
+    }
+    if (t.kind === 'nurse' && t.amount > 0) {
+      st.herbs += t.amount;
+      t.amount = 0;
+    }
     if ((t.kind === 'supply' || t.kind === 'fuel' || t.kind === 'bed') && t.amount > 0) {
       st[t.res ?? 'wood'] += t.amount;
       t.amount = 0;
@@ -874,7 +971,7 @@ export function deposit(s: Sim, p: Person) {
   const st = s.camp.stock;
   const a = p.carryAmt;
   const kind = p.carry === CARRY.Berries ? 'berries' : p.carry === CARRY.Meat ? 'meat' : p.carry === CARRY.Fish ? 'fish' : p.carry === CARRY.Log ? 'wood'
-    : p.carry === CARRY.Fiber ? 'fiber' : p.carry === CARRY.Mud ? 'mud' : p.carry === CARRY.Stone ? 'stone' : p.carry === CARRY.Roots ? 'roots' : '';
+    : p.carry === CARRY.Fiber ? 'fiber' : p.carry === CARRY.Mud ? 'mud' : p.carry === CARRY.Stone ? 'stone' : p.carry === CARRY.Roots ? 'roots' : p.carry === CARRY.Nuts ? 'nuts' : p.carry === CARRY.Herbs ? 'herbs' : '';
   // a deer carried home is skinned by whoever brought it, once the band knows how to work a hide; once it
   // knows how to make cloaks, the hide is kept for one
   if (kind === 'meat' && p.task?.kind === 'hunt' && a >= 4 && s.knows('preserving')) {
@@ -884,7 +981,14 @@ export function deposit(s: Sim, p: Person) {
       st.hides += 1;
       s.book('gathered.hides', 1);
     }
+    if (s.knows('needles') && st.bones < BONES_KEPT) {
+      st.bones = Math.min(BONES_KEPT, st.bones + BONES_PER_DEER);
+      s.book('gathered.bones', BONES_PER_DEER);
+    }
   }
+  // the teeth of a deer brought home, and now and then a shell from the shallows, are kept for ornaments
+  if (kind === 'meat' && p.task?.kind === 'hunt' && a >= 4 && st.trinkets < TRINKETS_KEPT) st.trinkets = Math.min(TRINKETS_KEPT, st.trinkets + TEETH_PER_DEER);
+  if (kind === 'fish' && p.task?.kind === 'fish' && st.trinkets < TRINKETS_KEPT && s.rAi.chance(0.12)) st.trinkets += 1;
   if (kind) {
     st[kind] += a;
     s.book(`gathered.${kind}`, a);
@@ -1071,7 +1175,7 @@ export function runTask(s: Sim, p: Person) {
     return;
   }
   // starving on the way home with food: eat a little of it rather than drop it
-  if (home && p.food < 20 && p.carryAmt >= 1 && (p.carry === CARRY.Berries || p.carry === CARRY.Meat || p.carry === CARRY.Fish || p.carry === CARRY.Roots)) {
+  if (home && p.food < 20 && p.carryAmt >= 1 && (p.carry === CARRY.Berries || p.carry === CARRY.Meat || p.carry === CARRY.Fish || p.carry === CARRY.Roots || p.carry === CARRY.Nuts)) {
     p.carryAmt -= 1;
     p.food = clamp(p.food + 48);
     p.thought = 'Ate some of what they were carrying home.';
@@ -1096,9 +1200,12 @@ export function runTask(s: Sim, p: Person) {
       if (t.stage === 0) {
         if (moving(go(s, p, t))) return;
         t.stage = 1;
-        t.timer = 8;
+        // with the fire lit, meat, fish, roots and acorns are roasted in the embers first
+        t.amount = s.knows('cooking') && s.hearthLit() ? 1 : 0;
+        t.timer = t.amount ? 8 + COOK_TICKS : 8;
       }
-      p.act = ACT.Eat;
+      p.act = t.amount && t.timer > 8 ? ACT.Tend : ACT.Eat;
+      if (p.act === ACT.Tend) p.thought = 'Roasting something in the embers.';
       face(p, c.x, c.z);
       if (--t.timer > 0) return;
       // a portion is enough to fill about half a belly: the very hungry eat more, up to two helpings
@@ -1106,13 +1213,15 @@ export function runTask(s: Sim, p: Person) {
       // while the band rations its stores, only the very hungry get a full share
       const small = c.rationing && p.food >= 35;
       const want = small ? portion * 0.5 : portion * Math.max(1, Math.min(2, (88 - p.food) / 48));
+      // (cooked, the same food fills more: less of it makes a meal)
       let got = 0;
       const st = c.stock;
-      for (const k of ['berries', 'fish', 'meat', 'roots', 'preserved'] as const) {
-        const take = Math.min(st[k], want - got);
+      for (const k of ['berries', 'fish', 'meat', 'roots', 'nuts', 'preserved'] as const) {
+        const worth = t.amount && COOKED.includes(k) ? COOK_GAIN : 1;
+        const take = Math.min(st[k], (want - got) / worth);
         st[k] -= take;
         s.book(`eaten.${k}`, take);
-        got += take;
+        got += take * worth;
         if (got >= want - 1e-6) break;
       }
       p.food = clamp(p.food + 48 * (got / portion));
@@ -1480,6 +1589,193 @@ export function runTask(s: Sim, p: Person) {
       finish(s, p);
       return;
     }
+    case 'gift': {
+      const q = s.byId.get(t.ref);
+      if (!q || !q.alive) {
+        abandon(s, p);
+        p.nextThink = s.tick;
+        return;
+      }
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 18;
+      }
+      if (t.stage === 1) {
+        p.act = ACT.Sit;
+        face(p, c.x, c.z);
+        if (--t.timer > 0) return;
+        t.stage = 2;
+        t.goal = s.tileOf(q);
+        t.gx = q.x;
+        t.gz = q.z;
+        t.near = true;
+        p.path = null;
+        p.thought = `Taking a necklace to ${q.name}.`;
+      }
+      if (t.stage === 2) {
+        if (s.tick % 8 === 0 && s.tileOf(q) !== t.goal) {
+          t.goal = s.tileOf(q);
+          p.path = null;
+        }
+        if (hyp(q.x - p.x, q.z - p.z) > 1.3) {
+          if (moving(go(s, p, t))) return;
+          if (hyp(q.x - p.x, q.z - p.z) > 1.8) return;
+        }
+        t.stage = 3;
+        t.timer = 8;
+      }
+      p.act = ACT.Chat;
+      face(p, q.x, q.z);
+      if (--t.timer > 0) return;
+      t.amount = 0;
+      q.necklace = p.id;
+      s.book('gifts.given', 1);
+      const partner = q.id === p.partner;
+      s.adjust(q, p, partner ? 6 : 10);
+      s.adjust(p, q, 3);
+      q.belonging = clamp(q.belonging + 15);
+      s.remember(q, 'gift', 8, 1, p.id, `${p.name} gave them a necklace of teeth and shells.`);
+      p.thought = `Gave ${q.name} a necklace.`;
+      finish(s, p);
+      return;
+    }
+    case 'feast': {
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 40;
+      }
+      // eating, talking and singing round the fire
+      p.act = t.timer % 14 < 7 ? ACT.Eat : ACT.Chat;
+      face(p, c.x, c.z);
+      if (--t.timer > 0) return;
+      const st = c.stock;
+      let got = 0;
+      const want = s.age(p) < 12 ? FEAST_MEAL * 0.6 : FEAST_MEAL;
+      for (const k of ['meat', 'fish', 'preserved', 'nuts', 'roots', 'berries'] as const) {
+        const take = Math.min(st[k], want - got);
+        st[k] -= take;
+        s.book(`eaten.${k}`, take);
+        got += take;
+        if (got >= want - 1e-6) break;
+      }
+      p.food = clamp(p.food + 48 * got);
+      p.belonging = clamp(p.belonging + 30);
+      s.book('feast.ate', 1);
+      for (const q of s.people) if (q !== p && q.alive && q.task?.kind === 'feast' && q.task.stage >= 1) s.adjust(p, q, 1.5);
+      s.remember(p, 'midwinter', 14, 1, -1, `Feasted by the fire at ${c.name} on the longest night.`);
+      p.thought = 'Full, and warm, and among their own.';
+      finish(s, p);
+      return;
+    }
+    case 'herbs': {
+      if (t.stage === 0) {
+        if (!s.propAlive[t.ref]) return finish(s, p);
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = Math.max(12, Math.round(26 * (1.2 - p.skills[SK.forage] * 0.02)));
+      }
+      if (t.stage === 1) {
+        p.act = ACT.Gather;
+        face(p, s.propX[t.ref], s.propZ[t.ref]);
+        if (--t.timer > 0) return;
+        s.reserved.delete(t.ref);
+        p.carry = CARRY.Herbs;
+        p.carryAmt = 2 + p.skills[SK.forage] * 0.05;
+        train(p, 'herbs');
+        goStore(s, p, t, 2);
+        p.thought = 'Bringing healing herbs back to dry by the fire.';
+      }
+      if (t.stage === 2) {
+        if (moving(go(s, p, t))) return;
+        deposit(s, p);
+        finish(s, p);
+      }
+      return;
+    }
+    case 'nurse': {
+      const q = s.byId.get(t.ref);
+      if (!q || !q.alive || q.sick <= 0) {
+        // they got better (or worse) first: the herbs go back
+        abandon(s, p);
+        p.nextThink = s.tick;
+        return;
+      }
+      if (t.stage === 0) {
+        if (s.tick % 8 === 0 && s.tileOf(q) !== t.goal) {
+          t.goal = s.tileOf(q);
+          p.path = null;
+        }
+        if (hyp(q.x - p.x, q.z - p.z) > 1.2) {
+          if (moving(go(s, p, t))) return;
+          if (hyp(q.x - p.x, q.z - p.z) > 2) return;
+        }
+        t.stage = 1;
+        t.timer = 20;
+        p.path = null;
+        p.thought = `Nursing ${q.name}'s fever with herbs.`;
+      }
+      if (hyp(q.x - p.x, q.z - p.z) > 2.4) {
+        t.stage = 0;
+        return;
+      }
+      p.act = ACT.Tend;
+      face(p, q.x, q.z);
+      if (--t.timer > 0) return;
+      q.tended = s.tick + NURSE_DAYS * TICKS_PER_DAY;
+      t.amount = 0;
+      s.book('herbs.used', 1);
+      train(p, 'herbs');
+      s.adjust(q, p, 6);
+      s.adjust(p, q, 2);
+      if (!q.memories.some((m) => m.kind === 'nursed' && s.tick - m.tick < 12 * TICKS_PER_DAY))
+        s.remember(q, 'nursed', 6, 0.5, p.id, `Was nursed through a fever by ${p.name}, with herbs.`);
+      p.thought = `Gave ${q.name} herbs for the fever.`;
+      finish(s, p);
+      return;
+    }
+    case 'nuts': {
+      if (t.stage === 0) {
+        if (!s.propAlive[t.ref] || s.nutsTaken.has(t.ref)) {
+          if (p.carry !== CARRY.Nuts) return finish(s, p);
+          goStore(s, p, t, 2);
+          return;
+        }
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = Math.max(10, Math.round(22 * (1.2 - p.skills[SK.forage] * 0.02)));
+      }
+      if (t.stage === 1) {
+        p.act = ACT.Gather;
+        face(p, s.propX[t.ref], s.propZ[t.ref]);
+        if (--t.timer > 0) return;
+        // an old oak drops more than one just come to bearing
+        const got = (treeStage(s.propType[t.ref]) >= 3 ? 5 : 3.5) + p.skills[SK.forage] * 0.06;
+        s.nutsTaken.set(t.ref, s.tick + TICKS_PER_DAY * 40);
+        s.reserved.delete(t.ref);
+        p.carry = CARRY.Nuts;
+        p.carryAmt = Math.min(NUTS_LOAD, p.carryAmt + got);
+        train(p, 'nuts');
+        const next = p.carryAmt < NUTS_LOAD - 1 ? s.nearestProp(p.x, p.z, 5, (k) => isOak(s.propType[k]) && !s.nutsTaken.has(k)) : -1;
+        if (next >= 0) {
+          s.reserved.set(next, p.id);
+          t.ref = next;
+          t.started = s.tick;
+          aimAtBush(s, p, t);
+          p.thought = 'Gathering acorns.';
+          return;
+        }
+        goStore(s, p, t, 2);
+        p.thought = 'Carrying a bag of acorns back to camp, to soak in the stream.';
+      }
+      if (t.stage === 2) {
+        if (moving(go(s, p, t))) return;
+        deposit(s, p);
+        finish(s, p);
+      }
+      return;
+    }
     case 'roots': {
       if (t.stage === -1) {
         // to the pile for a digging stick, then out to the plants
@@ -1698,6 +1994,8 @@ export function runTask(s: Sim, p: Person) {
         if (moving(go(s, p, t))) return;
         t.stage = 1;
         t.timer = Math.max(Math.round(rc.work * 0.42), Math.round(rc.work * (1.2 - p.skills[rc.skill] * 0.025)));
+        // a bone needle and awl from the pile make short work of the sewing
+        if (SEWN.includes(key) && s.toolsOf(c, 'needle').length) t.timer = Math.round(t.timer * NEEDLE_SPEED);
         if (s.hearthLit()) p.thought = rc.thought.replace(/\.$/, ' by the fire.');
       }
       p.act = ACT.Sit;
@@ -1713,6 +2011,9 @@ export function runTask(s: Sim, p: Person) {
       t.amount = 0;
       trainSkill(p, rc.skill, rc.grow);
       p.thought = rc.done;
+      if (key === 'cloak') s.practise(p, 'sew');
+      const needle = SEWN.includes(key) ? s.toolsOf(c, 'needle')[0] : undefined;
+      if (needle) s.wearTool(needle);
       finish(s, p);
       return;
     }
@@ -1810,6 +2111,8 @@ export function runTask(s: Sim, p: Person) {
         const cones = treeSpecies(s.propType[k]) === 0 && treeStage(s.propType[k]) >= 1 ? CONES : 0;
         p.carryAmt = DEADWOOD_BY_STAGE[treeStage(s.propType[k])] + cones;
         train(p, 'deadwood');
+        // the acorns in the leaves under an oak
+        s.practise(p, 'deadwood');
         goStore(s, p, t, 2);
         p.thought = cones ? 'Bringing branches and pine cones back to camp.' : 'Bringing firewood back to camp.';
       }

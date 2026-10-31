@@ -25,13 +25,15 @@ const PHRASE: Record<string, string> = {
   preserve: 'is drying meat and fish', bury: 'is burying the dead', explore: 'is exploring', deadwood: 'is gathering fallen branches', swim: 'is swimming to cool off',
   reap: 'is cutting grass and reeds', craft: 'is making something by the fire', dig: 'is digging mud by the water', quarry: 'is quarrying stone', trap: 'is going round the traps',
   watch: 'is watching a grown-up at work, to learn it', tell: 'is telling a story by the fire', listen: 'is listening to a story by the fire',
-  bed: 'is laying fresh grass to sleep on', roots: 'is digging roots for the winter',
+  bed: 'is laying fresh grass to sleep on', roots: 'is digging roots for the winter', nuts: 'is gathering acorns under the oaks',
+  herbs: 'is looking for healing plants', nurse: 'is nursing someone through a fever',
+  gift: 'is making a necklace for someone dear', feast: 'is feasting by the fire on the longest night',
 };
 /** How much a viewer would want to see each task. */
 const INTEREST: Record<string, number> = {
   hunt: 6, bury: 6.5, mourn: 4.5, build: 3.5, fell: 3.2, fish: 2.8, haul: 2, supply: 2, forage: 2.2, preserve: 2.2,
   socialize: 1.8, play: 2.2, eat: 1.4, fuel: 1.6, eatwild: 1.6, warm: 1.2, idle: 0.6, sleep: 0.1, explore: 2, deadwood: 1.8, swim: 3.4,
-  reap: 1.8, craft: 1.2, dig: 2, quarry: 2.4, trap: 2.2, watch: 2, tell: 3.6, listen: 1.4, bed: 1.6, roots: 2.4,
+  reap: 1.8, craft: 1.2, dig: 2, quarry: 2.4, trap: 2.2, watch: 2, tell: 3.6, listen: 1.4, bed: 1.6, roots: 2.4, nuts: 1.8, herbs: 1.6, nurse: 3.2, gift: 2.6, feast: 4.2,
 };
 
 export class Director {

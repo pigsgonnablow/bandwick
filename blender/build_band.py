@@ -7,7 +7,7 @@ Conventions (read by src/render/band.ts):
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
   deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
-  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,basket,basketFull} attached to a person's hands or shoulder.
+  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,basket,basketFull} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
   bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
@@ -816,6 +816,41 @@ for k in range(6):  # the dry stems, gathered in the hand
     q.cyl(3, 0.0022, 0.0015, (0, 0, -0.006), (math.cos(a) * 0.012, math.sin(a) * 0.012, 0.04 + rr.uniform(0, 0.015)), GRASS_DK, rr, 0.1, cap=False)
 q.cyl(8, 0.0075, 0.0075, (0, 0, -0.008), (0, 0, 0.002), ROPE_TIE, rr, 0.03, cap=False)  # the tie
 q.finish("carry__roots")
+
+q = Part()  # acorns carried home in a hide bag gathered up at the neck, a few spilling over the rim
+rr = random.Random(51)
+ACORN = (150, 108, 58)
+ACORN_CUP = (104, 84, 54)
+for v in q.blob((0, 0, -0.03), (0.038, 0.034, 0.036), HIDE_CARRY, rr, 0.05, noise=0.1):
+    if v.co.z > -0.004:
+        k = (v.co.z + 0.004) / 0.03
+        v.co.x *= 1 - 0.55 * min(1.0, k)
+        v.co.y *= 1 - 0.55 * min(1.0, k)
+q.cyl(8, 0.021, 0.021, (0, 0, -0.006), (0, 0, -0.001), ROPE_TIE, rr, 0.03, cap=False)  # the drawstring
+for k in range(6):  # acorns heaped in the open neck
+    a, r = k / 6 * math.tau + rr.uniform(-0.3, 0.3), rr.uniform(0.004, 0.011)
+    c = (math.cos(a) * r, math.sin(a) * r, 0.001 + rr.uniform(0, 0.006))
+    q.blob(c, (0.0058, 0.0058, 0.0078), ACORN, rr, 0.08, subdiv=1)
+    q.blob((c[0], c[1], c[2] + 0.005), (0.0062, 0.0062, 0.003), ACORN_CUP, rr, 0.06, subdiv=1)
+q.finish("carry__nuts")
+
+q = Part()  # a bundle of healing plants: leafy stems and a few flower heads, tied with a twist of grass
+rr = random.Random(52)
+LEAF = (82, 124, 58)
+LEAF_DK = (58, 92, 44)
+FLOWER = (226, 210, 120)
+for k in range(9):
+    a = k / 9 * math.tau + rr.uniform(-0.25, 0.25)
+    base = Vector((math.cos(a) * 0.003, math.sin(a) * 0.003, -0.05))
+    top = Vector((math.cos(a) * 0.022, math.sin(a) * 0.018, 0.045 + rr.uniform(0, 0.02)))
+    q.cyl(3, 0.0018, 0.0012, base, top, LEAF_DK, rr, 0.08, cap=False)
+    for j in range(2):  # a pair of leaves up the stem
+        at = base.lerp(top, 0.45 + j * 0.3)
+        q.blob((at.x * 1.25, at.y * 1.25, at.z), (0.0095, 0.006, 0.0032), LEAF if (k + j) % 2 else LEAF_DK, rr, 0.08, noise=0.1)
+    if k % 3 == 0:
+        q.blob(tuple(top), (0.005, 0.005, 0.004), FLOWER, rr, 0.06)
+q.cyl(8, 0.0072, 0.0072, (0, 0, -0.03), (0, 0, -0.021), GRASS_DK, rr, 0.03, cap=False)  # the tie
+q.finish("carry__herbs")
 
 # ---------------------------------------------------------------- tools and traps
 WOOD = (138, 104, 66)
