@@ -1,29 +1,25 @@
-// The finer rules of discovery: what each one needs first, where it can happen, and what hurries it.
+// The finer rules of discovery: what each one needs first, who can have the idea, and where.
 import { describe, it, expect } from 'vitest';
-import { DISCOVERY, knowHowFor } from '../../src/sim/know';
-import { seasonOf, START_TICK, TICKS_PER_DAY } from '../../src/sim/time';
+import { DISCOVERY, knowHowFor, meets, ELITE } from '../../src/sim/know';
+import { SK, Person } from '../../src/sim/band';
 import { sim } from '../helpers';
 
-/** The first tick from the start that falls in a season. */
-const inSeason = (k: number) => {
-  let t = START_TICK;
-  while (seasonOf(t) !== k) t += TICKS_PER_DAY;
-  return t;
-};
+/** Make someone a master of every craft. */
+const master = (p: Person) => { p.skills.fill(20); return p; };
 
 describe('know-how', () => {
   it('gains nothing toward a discovery before what it needs is known', () => {
     const s = sim(2);
-    const adult = s.members().find((p) => s.age(p) >= 20)!;
+    const adult = master(s.members().find((p) => s.age(p) >= 20)!);
     // daub and the storehouse both need huts first
-    s.practise(adult, 'thatch', 200);
-    s.practise(adult, 'store_food', 500);
-    expect(s.camp.practice.daub ?? 0).toBe(0);
-    expect(s.camp.practice.storehouse ?? 0).toBe(0);
+    s.practise(adult, 'thatch', 2000);
+    s.practise(adult, 'store_food', 5000);
+    for (let i = 0; i < 500; i++) s.practise(adult, 'build');
     expect(s.knows('daub')).toBe(false);
+    expect(s.knows('storehouse')).toBe(false);
     s.camp.knows.push('huts');
-    s.practise(adult, 'thatch', 1);
-    expect(s.camp.practice.daub ?? (s.knows('daub') ? 1 : 0)).toBeGreaterThan(0);
+    for (let i = 0; i < 2000 && !s.knows('daub'); i++) s.practise(adult, 'thatch');
+    expect(s.knows('daub')).toBe(true);
   });
 
   it('only finds wattle-and-daub where there is mud, and stonework where there is stone', () => {
@@ -31,50 +27,54 @@ describe('know-how', () => {
     s.mudSpots.length = 0;
     s.quarryTiles.length = 0;
     s.camp.knows.push('huts');
-    const adult = s.members().find((p) => s.age(p) >= 20)!;
+    const adult = master(s.members().find((p) => s.age(p) >= 20)!);
     for (let i = 0; i < 500; i++) s.practise(adult, 'build');
     expect(s.knows('daub')).toBe(false);
     expect(s.knows('stonework')).toBe(false);
-    expect(s.camp.practice.daub).toBeUndefined();
-    expect(s.camp.practice.stonework).toBeUndefined();
   });
 
-  it('counts each kind of work toward the discoveries it leads to', () => {
+  it('comes only to someone who has mastered the crafts around it, however long they work', () => {
     const s = sim(1);
     const adult = s.members().find((p) => s.age(p) >= 20)!;
-    const before = { ...s.camp.practice };
-    s.practise(adult, 'grave');
-    s.practise(adult, 'fell_chopper');
-    s.practise(adult, 'damp_fire');
-    const gained = (k: string) => s.knows(k) || (s.camp.practice[k] ?? 0) > (before[k] ?? 0);
-    expect(gained('digstick')).toBe(true);
-    expect(gained('axe')).toBe(true);
-    expect(gained('woodshed')).toBe(true);
-    // a grave counts three times what a trip's digging does
-    if (!s.knows('digstick')) expect(s.camp.practice.digstick! - (before.digstick ?? 0)).toBe(3);
+    const huts = DISCOVERY.get('huts')!;
+    adult.skills[SK.wood] = 11.9;
+    adult.skills[SK.weave] = 20;
+    expect(meets(adult, huts)).toBe(-1);
+    for (let i = 0; i < 5000; i++) s.practise(adult, 'night_out');
+    expect(s.knows('huts')).toBe(false);
+    adult.skills[SK.wood] = 12;
+    expect(meets(adult, huts)).toBe(0);
+    for (let i = 0; i < 5000 && !s.knows('huts'); i++) s.practise(adult, 'night_out');
+    expect(s.knows('huts')).toBe(true);
+    expect(s.events.some((e) => e.kind === 'discovery' && e.people[0] === adult.id)).toBe(true);
   });
 
-  it('comes faster in hardship: huts and the windbreak in the cold, drying in a hungry year, daub in winter', () => {
+  it('comes sooner the further past the mark someone is', () => {
+    const tries = (level: number) => {
+      let total = 0;
+      for (const seed of [1, 2, 3, 4, 5, 6]) {
+        const s = sim(seed);
+        const adult = s.members().find((p) => s.age(p) >= 20)!;
+        adult.skills[SK.fish] = level;
+        adult.skills[SK.weave] = 20;
+        let i = 0;
+        while (i < 5000 && !s.knows('fishtraps')) { s.practise(adult, 'fish_fiber'); i++; }
+        total += i;
+      }
+      return total;
+    };
+    expect(tries(20)).toBeLessThan(tries(ELITE));
+  });
+
+  it('comes only from the work that leads to it', () => {
     const s = sim(1);
-    const c = s.camp;
-    const at = (tick: number) => ({ ...s, tick }) as unknown as typeof s;
-    const spring = inSeason(0), autumn = inSeason(2), winter = inSeason(3);
-    for (const k of ['huts', 'windbreak']) {
-      const h = DISCOVERY.get(k)!.hurry!;
-      expect(h(at(spring), c)).toBe(1);
-      expect(h(at(autumn), c)).toBeGreaterThan(1);
-      expect(h(at(winter), c)).toBeGreaterThan(h(at(autumn), c));
-    }
-    const dry = DISCOVERY.get('preserving')!.hurry!;
-    expect(dry(s, { ...c, hungryWinters: 0, famine: false })).toBe(1);
-    expect(dry(s, { ...c, hungryWinters: 1 })).toBeGreaterThan(1);
-    const daub = DISCOVERY.get('daub')!.hurry!;
-    expect(daub(at(winter), c)).toBeGreaterThan(daub(at(spring), c));
-    // a storehouse is thought of when food lies spoiling in the summer stores
-    const store = DISCOVERY.get('storehouse')!.hurry!;
-    const summer = inSeason(1);
-    expect(store(at(summer), { ...c, stock: { ...c.stock, berries: 40, fish: 0 } })).toBeGreaterThan(1);
-    expect(store(at(summer), { ...c, stock: { ...c.stock, berries: 5, fish: 0 } })).toBe(1);
+    const adult = master(s.members().find((p) => s.age(p) >= 20)!);
+    for (let i = 0; i < 500; i++) s.practise(adult, 'grave');
+    expect(s.knows('digstick')).toBe(true);
+    expect(s.knows('axe')).toBe(false);
+    expect(s.knows('snares')).toBe(false);
+    for (let i = 0; i < 500 && !s.knows('axe'); i++) s.practise(adult, 'fell_chopper');
+    expect(s.knows('axe')).toBe(true);
   });
 
   it('asks for the right know-how for every building', () => {

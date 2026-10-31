@@ -16,7 +16,7 @@ import {
   isDark, temperature, berriesRipe, freshFrozen, seasonPos, seasonOf, ageYears, yearOf, dayOf,
 } from './time';
 import { decide, runTask, abandon, sendHome, delivering, FAR_GRAVE } from './ai';
-import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor } from './know';
+import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets } from './know';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 const TREE_TYPES = SPECIES.length * STAGES * TREE_VARIANTS;
@@ -34,6 +34,10 @@ export const STAGE_WORD = ['sapling', 'young', 'mature', 'old'];
 export const DAMP_BURN = 1.2;
 /** How far a fire's warmth reaches, and with a windbreak behind it. */
 export const WARM_RADIUS = 2.6;
+/** the crafts beyond the everyday ones, and the discovery that gives the band a use for each (pottery has none yet) */
+const SKILL_SHOWN_BY: Partial<Record<number, string>> = { [SK.hide]: 'preserving' };
+/** the most skill anyone starts with at anything */
+export const START_SKILL_MAX = 10;
 /** how fast fish come back in winter, against the rest of the year */
 export const WINTER_FISH = 0.25;
 /** a winter catch, against a catch the rest of the year */
@@ -110,8 +114,6 @@ export interface Camp {
   founded: number;
   /** what the band has discovered (keys of DISCOVERIES), in the order it learned them */
   knows: string[];
-  /** experience built up toward each thing it doesn't know yet */
-  practice: Record<string, number>;
   /** what a newcomer who married in will teach the band, and when */
   learning?: { k: string; at: number; by: number }[];
   /** how and when it came to know each thing it knows (absent for what it knew in saves from before this was kept) */
@@ -431,7 +433,6 @@ export class Sim {
       if (old.knowsPreserving) knew.add('preserving');
       if (old.knowsStonework) knew.add('stonework');
       c.knows = DISCOVERIES.filter((d) => knew.has(d.key) || (d.key !== 'preserving' && d.key !== 'stonework')).map((d) => d.key);
-      c.practice = {};
       delete old.knowsPreserving;
       delete old.knowsStonework;
     }
@@ -594,7 +595,7 @@ export class Sim {
       hearth: -1, x: (tile % N) + 0.5, z: Math.floor(tile / N) + 0.5, tile,
       stock, graveyard: -1, founded: this.tick,
       // a daughter band knows all its parent did
-      knows: prev && parent === prev.id ? prev.knows.slice() : [], practice: {},
+      knows: prev && parent === prev.id ? prev.knows.slice() : [],
       learned: prev && parent === prev.id ? prev.learned?.slice() ?? [] : [],
       famine: false, hungryWinters: 0, jobs: {}, plan: [],
     };
@@ -845,7 +846,8 @@ export class Sim {
     }
     const age = ageYears(this.tick, birth);
     const skills = new Float32Array(SKILLS.length);
-    for (let k = 0; k < SKILLS.length; k++) skills[k] = age < 8 ? 0 : Math.min(14, r.range(1, 4) + Math.max(0, age - 10) * r.range(0.1, 0.35));
+    // a grown-up comes with some skill at everything, but nobody arrives a master: that is earned by the work
+    for (let k = 0; k < SKILLS.length; k++) skills[k] = age < 8 ? 0 : Math.min(START_SKILL_MAX, r.range(1, 4) + Math.max(0, age - 10) * r.range(0.1, 0.35));
     const p: Person = {
       id: this.nextId++, band: this.camp ? this.camp.id : 0, name: this.uniqueName(sex), sex, birth, mother, father, partner: -1,
       samesex: r.chance(0.08), alive: true, death: 0, cause: '', buried: false,
@@ -1403,7 +1405,7 @@ export class Sim {
   }
   /** The crafts a person's card shows: the everyday ones, and the rest once the band has a use for them. */
   shownSkills(c = this.camp) {
-    return SKILLS.map((_, k) => k).filter((k) => k <= SK.weave || DISCOVERIES.some((d) => d.skill === k && this.knows(d.key, c)));
+    return SKILLS.map((_, k) => k).filter((k) => k <= SK.weave || (SKILL_SHOWN_BY[k] !== undefined && this.knows(SKILL_SHOWN_BY[k]!, c)));
   }
   /**
    * Whoever is clearly the band's best at a craft gets known for it ("Ada, the toolmaker"); someone who
@@ -1471,14 +1473,12 @@ export class Sim {
       const w = d.practice[what];
       if (!w || c.knows.includes(d.key) || !d.needs.every((k) => c.knows.includes(k))) continue;
       if (d.near && !this.nearCamp(c, d.near)) continue;
-      const add = w * amount;
-      const exp = (c.practice[d.key] ?? 0) + add;
-      c.practice[d.key] = exp;
-      let chance = (add * 2 * exp) / (d.need * d.need);
+      // only someone who has mastered the crafts around it can have the idea
+      const past = meets(p, d);
+      if (past < 0) continue;
+      let chance = ((w * amount) / d.odds) * (1 + past / 2);
       if (this.has(p, 'curious')) chance *= 2;
       if (this.has(p, 'industrious')) chance *= 1.3;
-      chance *= 0.8 + Math.min(20, p.skills[d.skill]) * 0.03;
-      chance *= d.hurry?.(this, c) ?? 1;
       if (this.rAi.next() < chance) this.discover(c, d, p);
     }
   }
@@ -1525,7 +1525,6 @@ export class Sim {
   /** A band comes to know something, and the chronicle keeps how and when. */
   private learn(c: Camp, k: string, how: Learned['how'], by = -1, from?: string) {
     c.knows.push(k);
-    delete c.practice[k];
     (c.learned ??= []).push({ k, tick: this.tick, how, by, ...(from ? { from } : {}) });
   }
 
@@ -2058,7 +2057,6 @@ export class Sim {
     for (const k of Object.keys(stock) as (keyof Stock)[]) stock[k] *= 0.8; // not everything can be carried
     const nc = this.foundCamp(site, stock, c.id, lead.id);
     nc.knows = c.knows.slice();
-    nc.practice = { ...c.practice };
     nc.learning = c.learning?.slice();
     nc.learned = c.learned?.slice();
     this.takeUpTraps(c);

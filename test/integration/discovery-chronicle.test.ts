@@ -11,13 +11,14 @@ describe('discoveries in the chronicle', () => {
   it('keeps who worked something out, and when', () => {
     const s = sim(2);
     const adult = s.members().find((p) => s.age(p) >= 20)!;
+    adult.skills.fill(20);
     for (let i = 0; i < 400 && !s.knows('huts'); i++) s.practise(adult, 'night_out');
     expect(s.camp.learned).toEqual([{ k: 'huts', tick: s.tick, how: 'found', by: adult.id }]);
     const [band] = bandDiscoveries(s.chronicle());
     expect(band.known).toEqual([{ key: 'huts', label: 'Huts', year: 1, how: ['worked out by ', { id: adult.id }] }]);
     // what it doesn't know yet, and what has to come first
     expect(band.unknown.find((u) => u.key === 'huts')).toBeUndefined();
-    expect(band.unknown.find((u) => u.key === 'storehouse')!.needs).toEqual([]);
+    expect(band.unknown.find((u) => u.key === 'storehouse')!.needs).toEqual(['Drying and smoking']);
     expect(band.unknown.find((u) => u.key === 'daub')).toBeDefined();
   });
 
@@ -36,6 +37,7 @@ describe('discoveries in the chronicle', () => {
     const s = sim(1);
     const c = s.camp;
     const adult = s.members().find((p) => s.age(p) >= 20)!;
+    adult.skills.fill(20);
     for (let i = 0; i < 400 && !s.knows('huts'); i++) s.practise(adult, 'night_out');
     s.tick += 10;
     const daughter = s.foundCamp(c.tile + 40, { ...stock }, c.id, -1);

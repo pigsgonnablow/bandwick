@@ -1,7 +1,7 @@
 // What each band has come to know, and how: the Chronicle's Discoveries page, worked out from the chronicle
 // alone so it can be tested without a page to draw it on.
 import type { Chronicle, Learned } from '../sim/sim';
-import { DISCOVERIES, DISCOVERY } from '../sim/know';
+import { DISCOVERIES, DISCOVERY, describeRequirement } from '../sim/know';
 import { TICKS_PER_YEAR } from '../sim/time';
 
 type Camp = Chronicle['camps'][number];
@@ -21,7 +21,8 @@ export interface BandDiscoveries {
   camp: Camp;
   known: KnownRow[];
   /** what it doesn't know yet, and what it has to know first */
-  unknown: { key: string; label: string; needs: string[] }[];
+  /** asks: who could have the idea, "woodcutting 12 and weaving 8" */
+  unknown: { key: string; label: string; needs: string[]; asks: string }[];
 }
 
 const yearOf = (t: number) => Math.floor(t / TICKS_PER_YEAR) + 1;
@@ -55,6 +56,7 @@ export function bandDiscoveries(c: Chronicle): BandDiscoveries[] {
     const unknown = DISCOVERIES.filter((d) => !camp.knows.includes(d.key)).map((d) => ({
       key: d.key, label: d.label,
       needs: d.needs.filter((k) => !camp.knows.includes(k)).map((k) => DISCOVERY.get(k)!.label),
+      asks: d.requires.map(describeRequirement).join(' and '),
     }));
     return { camp, known, unknown };
   });

@@ -2,10 +2,11 @@
 // things that exist, nothing needs itself first, and every cost is sensible. A new row that breaks
 // one of these rules fails here before it can fail somewhere stranger in a long run.
 import { describe, it, expect } from 'vitest';
-import { DISCOVERIES, DISCOVERY, knowHowFor } from '../../src/sim/know';
+import { DISCOVERIES, DISCOVERY, knowHowFor, skillsIn, describeRequirement, Requirement } from '../../src/sim/know';
+import { START_SKILL_MAX } from '../../src/sim/sim';
 import {
   BUILD, BUILD_KINDS, ITEMS, ITEM_KINDS, MATERIALS, RECIPES, RECIPE_KEYS, SKILLS, TASK_KINDS, TRAP_KINDS,
-  specOf, wallsFor, labelOf,
+  specOf, wallsFor, labelOf, TRAINING, SKILL_MAX,
 } from '../../src/sim/band';
 
 describe('discoveries', () => {
@@ -16,10 +17,26 @@ describe('discoveries', () => {
       expect(d.found, d.key).toBeTruthy();
       expect(d.taught, d.key).toBeTruthy();
       expect(d.memory, d.key).toBeTruthy();
-      expect(d.need, d.key).toBeGreaterThan(0);
-      expect(d.skill, d.key).toBeGreaterThanOrEqual(0);
-      expect(d.skill, d.key).toBeLessThan(SKILLS.length);
+      expect(d.odds, d.key).toBeGreaterThan(0);
+      expect(d.requires.length, d.key).toBeGreaterThan(0);
     }
+  });
+
+  it('ask only for skills someone can train past the starting cap, to a level they can reach', () => {
+    // every skill some work trains: the lessons, and the crafts
+    const trained = new Set<number>([...Object.values(TRAINING).flatMap((l) => l.map((x) => x.skill)), ...RECIPE_KEYS.map((k) => RECIPES[k].skill)]);
+    for (const d of DISCOVERIES)
+      for (const r of d.requires) {
+        const walk = (q: Requirement): void => {
+          if (q.kind === 'any') return q.of.forEach(walk);
+          expect(q.skill, d.key).toBeGreaterThanOrEqual(0);
+          expect(q.skill, d.key).toBeLessThan(SKILLS.length);
+          expect(q.level, `${d.key} asks ${describeRequirement(q)}`).toBeLessThanOrEqual(SKILL_MAX);
+          if (q.level > START_SKILL_MAX) expect(trained.has(q.skill), `${d.key}: nothing trains ${SKILLS[q.skill]}`).toBe(true);
+        };
+        walk(r);
+        expect(skillsIn(r).length, d.key).toBeGreaterThan(0);
+      }
   });
 
   it('are each led to by some work, every unit of it counting for something', () => {
