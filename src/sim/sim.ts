@@ -1006,10 +1006,15 @@ export class Sim {
     this.updateDeer();
   }
 
+  /** Who carries an infant about: their mother, else their father, else whoever took them in. */
+  carerOf(p: Person) {
+    const m = this.byId.get(p.mother), f = this.byId.get(p.father);
+    return m && m.alive ? m : f && f.alive ? f : this.byId.get(p.carer);
+  }
+
   /** Infants stay with their mother (or whoever looks after them). */
   private carriedInfant(p: Person) {
-    const m = this.byId.get(p.mother), f = this.byId.get(p.father), fo = this.byId.get(p.carer);
-    const carer = m && m.alive ? m : f && f.alive ? f : fo;
+    const carer = this.carerOf(p);
     p.task = null;
     if (carer && carer.alive) {
       p.x = carer.x + 0.12;
@@ -2183,7 +2188,9 @@ export class Sim {
         this.adjust(p, q, 45);
         this.adjust(q, p, 45);
         this.pair(p, q, false);
-        this.join([goer], home);
+        // a baby still carried goes along in the arms that carry it
+        const babies = this.members(from).filter((b) => this.age(b) < 2 && this.carerOf(b) === goer);
+        this.join([goer, ...babies], home);
         // an adult brings what their old band knew, and teaches it after a season
         for (const k of this.unknownTo(from, home)) {
           if (home.learning?.some((l) => l.k === k)) continue;

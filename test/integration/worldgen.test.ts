@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { generateWorld } from '../../src/sim/worldgen';
 import { DEFAULT_PARAMS, WATER, T, LEVELS } from '../../src/sim/types';
+import { Sim } from '../../src/sim/sim';
+import { TICKS_PER_DAY } from '../../src/sim/time';
+import { runChecked } from '../../tools/lib/invariants';
 import { world } from '../helpers';
 
 describe('generateWorld', () => {
@@ -14,6 +17,24 @@ describe('generateWorld', () => {
 
   it('makes different worlds from different seeds', () => {
     expect(world(1, 64).hash).not.toBe(world(2, 64).hash);
+  });
+
+  it('makes the larger map the game offers, an island a band can settle and live on', () => {
+    const w = world(4471, 256);
+    const N = w.size;
+    expect(N).toBe(256);
+    for (let k = 0; k < N; k++)
+      for (const i of [k, (N - 1) * N + k, k * N, k * N + N - 1]) expect(w.water[i]).toBe(WATER.Sea);
+    let land = 0;
+    for (let i = 0; i < N * N; i++) if (w.water[i] === WATER.None) land++;
+    expect(land / (N * N)).toBeGreaterThan(0.2);
+    const s = new Sim(w);
+    expect(s.living().length).toBe(10);
+    for (const p of s.living()) expect(s.grid.walkable(s.tileOf(p))).toBe(true);
+    // a season on it breaks nothing
+    const checker = runChecked(s, 0.25);
+    expect(checker.report()).toEqual([]);
+    expect(s.tick).toBeGreaterThan(12 * TICKS_PER_DAY);
   });
 
   for (const seed of [1, 2, 3]) {

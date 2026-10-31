@@ -2,7 +2,7 @@
 // season (slower in a storehouse, hardly at all once dried), the fire eating wood, and fished-out
 // water filling again.
 import { describe, it, expect } from 'vitest';
-import { DAMP_BURN } from '../../src/sim/sim';
+import { DAMP_BURN, WINTER_FISH, BITTER_CATCH } from '../../src/sim/sim';
 import { Stock, specOf } from '../../src/sim/band';
 import { TICKS_PER_SEASON, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR, isDark, seasonOf } from '../../src/sim/time';
 import { sim } from '../helpers';
@@ -135,6 +135,37 @@ describe('fish', () => {
     expect(seen[0]).toBeLessThan(cap * 0.1);
     expect(Math.max(...seen)).toBeLessThanOrEqual(cap);
     expect(seen.at(-1)).toBeGreaterThan(cap * 0.95);
+  });
+
+  it('come back slower in winter, and slower still in a bitter one', () => {
+    const s = sim(1);
+    const i = s.fishCap.findIndex((c) => c > 0);
+    /** What six hours bring back to half-empty water, in a season and a year's weather. */
+    const regrow = (season: number, anomaly: number) => {
+      s.fish[i] = s.fishCap[i] / 2;
+      s.tick = TICKS_PER_YEAR + season * TICKS_PER_SEASON + 2 * TICKS_PER_HOUR * 6;
+      s.anomaly = anomaly;
+      (s as any).hourly();
+      return s.fish[i] - s.fishCap[i] / 2;
+    };
+    const summer = regrow(1, 0);
+    expect(summer).toBeGreaterThan(0);
+    // (a bitter year's summer is no different)
+    expect(regrow(1, -3)).toBeCloseTo(summer, 5);
+    expect(regrow(3, 0)).toBeCloseTo(summer * WINTER_FISH, 5);
+    expect(regrow(3, -3)).toBeCloseTo(summer * WINTER_FISH * BITTER_CATCH, 5);
+  });
+
+  it('only lie deeper in a winter that came in bitter', () => {
+    const s = sim(1);
+    const at = (season: number, anomaly: number) => {
+      s.anomaly = anomaly;
+      return s.bitterWinter(TICKS_PER_YEAR + season * TICKS_PER_SEASON + 1);
+    };
+    expect(at(3, -2.6)).toBe(true);
+    expect(at(3, -2.5)).toBe(false);
+    expect(at(3, 1)).toBe(false);
+    for (const season of [0, 1, 2]) expect(at(season, -3)).toBe(false);
   });
 
   it('do not come back between the six-hour marks', () => {
