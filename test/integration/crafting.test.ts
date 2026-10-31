@@ -7,6 +7,8 @@ import { sim, runTo, runYears } from '../helpers';
 describe('crafting', () => {
   it('twists cordage and makes tools as recipes of one job, each growing its own skill', () => {
     const s = sim(2);
+    // fiber in the stores to twist, so the test is of crafting and not of how the year's reaping went
+    s.camp.stock.fiber += 20;
     const before = new Map(s.members().map((p) => [p.id, Array.from(p.skills)]));
     const seen = new Set<string>();
     for (let d = 0; d < 48; d++) {

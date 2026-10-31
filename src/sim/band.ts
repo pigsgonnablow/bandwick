@@ -71,13 +71,13 @@ export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, S
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
-  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap';
+  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
-  'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap',
+  'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen',
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets and pots. */
