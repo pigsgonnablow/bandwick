@@ -168,12 +168,14 @@ export function decide(s: Sim, p: Person) {
     }
     if ((j.fuel ?? 0) > 0.5 && c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', j.fuel * (dark ? 1.1 : 1));
     // from late afternoon, bank the fire with enough to see the night through (in the dark, ahead of sleep)
-    if ((dark || hour >= 15) && age >= 13 && busyWith(s, 'fuel') === 0 && s.fireShort()) add('fuel', dark ? 2.0 : 1.0);
+    // (someone bringing wood from far across the land doesn't stop those at camp from feeding it now)
+    const fueling = s.fuelOnHand(c);
+    if ((dark || hour >= 15) && age >= 13 && !fueling && busyWith(s, 'fuel') < 2 && s.fireShort()) add('fuel', dark ? 2.0 : 1.0);
     // a dying fire in the cold is everyone's problem: a few go for wood whatever the hour
     const fireLow = s.hearth().fuel < 2;
     // (even the weak: a cold hearth in a hungry winter is how a whole band dies)
     if (fireLow && temp < 9 && age >= 13 && p.health > 12) {
-      if (c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', 2.1);
+      if (c.stock.wood >= 1 && !fueling && busyWith(s, 'fuel') < 2) add('fuel', 2.1);
       else if (c.stock.wood < 3) {
         const fetching = busyWith(s, 'fell') + busyWith(s, 'haul') + busyWith(s, 'deadwood');
         if (fetching < 4) {

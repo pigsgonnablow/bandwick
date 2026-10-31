@@ -1070,6 +1070,10 @@ export class Sim {
     }
   }
 
+  /** Whether someone of the band is feeding its fire, near enough to it to do so soon. */
+  fuelOnHand(c: Camp) {
+    return this.people.some((q) => q.alive && q.band === c.id && q.task?.kind === 'fuel' && hyp(q.x - c.x, q.z - c.z) < 6);
+  }
   private urgent(p: Person) {
     const k = p.task?.kind;
     // starving: go and eat. Only when the store is bare is it worth staying out to hunt, fish or forage
@@ -1088,9 +1092,10 @@ export class Sim {
     // (feeding the fire is how they get warm: nobody turns away from it to go and sit by it cold)
     if (p.warmth < (woodRun ? 8 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel') return true;
     // the fire keeper wakes in the night when the fire will not last till morning
-    if (k === 'sleep' && isDark(this.tick) && this.fireShort() && !this.people.some((q) => q.alive && q.band === p.band && q.task?.kind === 'fuel') && this.fireKeeper() === p) return true;
+    if (k === 'sleep' && isDark(this.tick) && this.fireShort() && !this.fuelOnHand(this.camp) && this.fireKeeper() === p) return true;
     // worn out on the way home with a load: the bed is at camp, where they're going anyway
-    if (p.rest < 8 && k !== 'sleep' && !delivering(p) && !graveDug) return true;
+    // (and with the wood for the fire in their arms, they put it on before they lie down)
+    if (p.rest < 8 && k !== 'sleep' && k !== 'fuel' && !delivering(p) && !graveDug) return true;
     // at nightfall, workers who haven't started back yet call it a day
     // except wood runs in the cold when the store is low: coming home empty-handed means a cold night
     const emergency = (k === 'fell' || k === 'haul' || k === 'deadwood') && (this.hearth().fuel < 2 || this.camp.stock.wood < 20) && this.tempAt(p) < 12;
