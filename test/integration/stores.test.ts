@@ -2,9 +2,9 @@
 // season (slower in a storehouse, hardly at all once dried), the fire eating wood, and fished-out
 // water filling again.
 import { describe, it, expect } from 'vitest';
-import { DAMP_BURN, WINTER_FISH, BITTER_CATCH } from '../../src/sim/sim';
+import { DAMP_BURN, WINTER_FISH, BITTER_CATCH, isBerry } from '../../src/sim/sim';
 import { Stock, specOf } from '../../src/sim/band';
-import { TICKS_PER_SEASON, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR, isDark, seasonOf } from '../../src/sim/time';
+import { TICKS_PER_SEASON, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR, isDark, seasonOf, yearOf } from '../../src/sim/time';
 import { sim } from '../helpers';
 import type { Sim } from '../../src/sim/sim';
 
@@ -175,5 +175,28 @@ describe('fish', () => {
     s.tick = TICKS_PER_YEAR + TICKS_PER_HOUR;
     (s as any).hourly();
     expect(s.fish[i]).toBe(0);
+  });
+});
+
+describe('berries', () => {
+  /** The fruit on every bush on the morning they ripen, in an ordinary year, a blighted one or a year of plenty. */
+  function crop(year: 'ordinary' | 'blight' | 'plenty') {
+    const s = sim(1);
+    s.tick = 2 * TICKS_PER_YEAR + 18 * TICKS_PER_DAY + 6 * TICKS_PER_HOUR;
+    const y = yearOf(s.tick);
+    s.blightYear = year === 'blight' ? y : 0;
+    s.plentyYear = year === 'plenty' ? y : 0;
+    for (let k = 0; k < s.propCount; k++) if (isBerry(s.propType[k])) s.propVal[k] = 0;
+    (s as any).berries(18);
+    let total = 0;
+    for (let k = 0; k < s.propCount; k++) if (s.propAlive[k] && isBerry(s.propType[k])) total += s.propVal[k];
+    return total;
+  }
+
+  it('ripen on the bushes in late summer: barely any in a blighted year, twice as many in a year of plenty', () => {
+    const usual = crop('ordinary');
+    expect(usual).toBeGreaterThan(0);
+    expect(crop('blight')).toBeCloseTo(usual * 0.15, 3);
+    expect(crop('plenty')).toBeCloseTo(usual * 2, 3);
   });
 });

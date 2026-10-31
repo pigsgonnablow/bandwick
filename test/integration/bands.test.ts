@@ -4,9 +4,10 @@
 // run, so the tests set the scene and call the step that decides it directly.
 import { describe, it, expect } from 'vitest';
 import { Sim, SaveData } from '../../src/sim/sim';
-import { foodTotal, Person, Stock } from '../../src/sim/band';
+import { foodTotal, Person, Stock, CARRY } from '../../src/sim/band';
 import { generateWorld } from '../../src/sim/worldgen';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, seasonOf } from '../../src/sim/time';
+import { InvariantChecker } from '../../tools/lib/invariants';
 import { sim, runTo } from '../helpers';
 
 const empty = (): Stock => ({ berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 });
@@ -174,6 +175,108 @@ describe('a pairing across bands', () => {
   });
 });
 
+describe('a household', () => {
+  it('is a grown-up, their partner, their unpartnered children under twenty, and the little ones they look after', () => {
+    const s = sim(1);
+    // the first band: a couple with two children, and the woman's mother living with them
+    const father = s.members().find((p) => p.partner >= 0 && p.sex === 1 && s.members().some((q) => q.father === p.id))!;
+    const mother = s.byId.get(father.partner)!;
+    const kids = s.members().filter((q) => q.father === father.id);
+    expect(kids.length).toBeGreaterThan(0);
+    const ids = (ps: Person[]) => ps.map((p) => p.id).sort((a, b) => a - b);
+    expect(ids(s.household(father))).toEqual(ids([father, mother, ...kids]));
+    expect(ids(s.household(mother))).toEqual(ids([father, mother, ...kids]));
+    // (the grandmother is kin, but heads her own household)
+    const gran = s.byId.get(mother.mother)!;
+    expect(s.household(father)).not.toContain(gran);
+    // a child with a partner of their own has left the household; so has one of twenty
+    kids[0].partner = 999;
+    expect(s.household(father)).not.toContain(kids[0]);
+    kids[0].partner = -1;
+    kids[0].birth = s.tick - 21 * TICKS_PER_YEAR;
+    expect(s.household(father)).not.toContain(kids[0]);
+    // a little one they took in is part of it
+    const orphan = s.members().find((q) => s.age(q) < 14 && q.mother !== mother.id)!;
+    orphan.carer = mother.id;
+    expect(s.household(father)).toContain(orphan);
+    // a partner who lives with another band is not
+    const other = neighbour(s);
+    (s as any).join([mother], other);
+    expect(s.household(father)).not.toContain(mother);
+  });
+});
+
+describe('the last few of a band', () => {
+  it('go to live with the nearest band, which learns all they knew', () => {
+    const s = sim(1);
+    const home = s.camp;
+    const near = neighbour(s);
+    // (and another band, further off)
+    const farTile = s.chooseSite({ from: home, min: 40, max: 120, avoid: 12 });
+    expect(farTile).toBeGreaterThanOrEqual(0);
+    const far = s.foundCamp(farTile, empty(), -1, -1);
+    s.camp = near;
+    const few = grow(s, 1);
+    s.camp = home;
+    near.knows = ['huts', 'preserving'];
+    expect(home.knows).not.toContain('huts');
+    expect((s as any).considerMerge(near)).toBe(true);
+    expect(near.gone).toBe(s.tick);
+    for (const p of few) expect(p.band).toBe(home.id);
+    expect(s.members(far)).toEqual([]);
+    expect(home.knows).toEqual(expect.arrayContaining(['huts', 'preserving']));
+    expect(home.learned!.filter((l) => l.how === 'newcomers').map((l) => [l.k, l.from])).toEqual([['huts', near.name], ['preserving', near.name]]);
+    expect(s.events.at(-1)!.text).toBe(`The newcomers from ${near.name} showed the people of ${home.name} how to raise huts and dry and smoke meat and fish.`);
+  });
+
+  it('stay where they are while they are enough to go on', () => {
+    const s = sim(1);
+    const home = s.camp;
+    const near = neighbour(s);
+    s.camp = near;
+    grow(s, 4);
+    s.camp = home;
+    expect((s as any).considerMerge(near)).toBe(false);
+    expect(near.gone).toBe(0);
+  });
+});
+
+describe('a band hungry winter after winter', () => {
+  it('looks for land by water with more fish in it', () => {
+    let better = 0;
+    for (const seed of [1, 2, 3]) {
+      const s = sim(seed);
+      const c = s.camp;
+      const fishAt = (i: number) => (s as any).fishNear(i % s.N, Math.floor(i / s.N), 10);
+      const plain = s.chooseSite({ from: c, min: 12, max: 60, avoid: 18, reachFrom: c.tile });
+      const fishy = s.chooseSite({ from: c, min: 12, max: 60, avoid: 18, reachFrom: c.tile, fish: true });
+      expect(fishy).toBeGreaterThanOrEqual(0);
+      expect(fishAt(fishy)).toBeGreaterThanOrEqual(fishAt(plain));
+      if (fishAt(fishy) > fishAt(plain)) better++;
+    }
+    expect(better).toBeGreaterThan(0);
+  });
+});
+
+describe('someone joining another band', () => {
+  it('takes the tool in their hands along, and it belongs to the new band from then on', () => {
+    const s = sim(1);
+    const home = s.camp;
+    const other = neighbour(s);
+    const p = s.members(home).find((q) => s.age(q) >= 16)!;
+    const tool = s.toolsOf(home)[0];
+    tool.holder = p.id;
+    (s as any).join([p], other);
+    expect(p.band).toBe(other.id);
+    expect(tool.holder).toBe(p.id);
+    expect(tool.band).toBe(other.id);
+    expect(s.toolsOf(home)).not.toContain(tool);
+    const checker = new InvariantChecker(s);
+    checker.check();
+    expect(checker.report()).toEqual([]);
+  });
+});
+
 describe('a feud', () => {
   /** Two grown-ups of the first band who loathe each other; the healthier, a, strikes first. */
   function feud(regardForKiller: number) {
@@ -266,6 +369,60 @@ describe('a famine', () => {
     (s as any).life();
     expect(c.famine).toBe(false);
     expect(s.events.some((e) => e.kind === 'famine_end')).toBe(true);
+  });
+
+  it('in summer is a famine, but not a hungry winter', () => {
+    const s = sim(1);
+    while (seasonOf(s.tick) !== 1) runTo(s, s.tick + 200);
+    const c = s.camp;
+    for (const k of ['berries', 'meat', 'fish', 'preserved'] as const) c.stock[k] = 0;
+    for (const p of s.members()) p.food = 10;
+    (s as any).life();
+    expect(c.famine).toBe(true);
+    expect(c.hungryWinters).toBe(0);
+  });
+});
+
+describe('out on the land alone after dark', () => {
+  /** An adult far from camp and everyone, set upon by wolves in a winter night; escape when the odds beat 0.7. */
+  function attacked(spear: boolean) {
+    const s = sim(1);
+    while (seasonOf(s.tick) !== 3) runTo(s, s.tick + 200);
+    const c = s.camp;
+    const p = s.members().find((q) => s.age(q) >= 16 && s.age(q) <= 60)!;
+    p.traits = [];
+    const spot = s.chooseSite({ from: c, min: 25, max: 50 });
+    Object.assign(p, { x: (spot % s.N) + 0.5, z: Math.floor(spot / s.N) + 0.5, health: 100, carry: spear ? CARRY.Spear : CARRY.None });
+    const r = (s as any).rWild;
+    r.chance = (q: number) => q < 0.01 || q > 0.7;
+    (s as any).wildAttack(p);
+    return { s, p, c };
+  }
+
+  it('is sometimes set upon, and a spear in hand is the difference between getting away and not', () => {
+    const bare = attacked(false);
+    expect(bare.p.alive).toBe(false);
+    expect(bare.p.cause).toBe('wolves');
+    const armed = attacked(true);
+    expect(armed.p.alive).toBe(true);
+    expect(armed.p.health).toBe(55);
+    expect(armed.s.events.at(-1)!.text).toBe(`${armed.p.name} was attacked by wolves and barely got away.`);
+  });
+
+  it('never happens near camp, nor with someone close by', () => {
+    for (const where of ['camp', 'company'] as const) {
+      const s = sim(1);
+      const c = s.camp;
+      const p = s.members().find((q) => s.age(q) >= 16)!;
+      const q = s.members().find((x) => x !== p && s.age(x) >= 16)!;
+      const spot = s.chooseSite({ from: c, min: 25, max: 50 });
+      Object.assign(p, { x: where === 'camp' ? c.x + 5 : (spot % s.N) + 0.5, z: where === 'camp' ? c.z : Math.floor(spot / s.N) + 0.5, health: 100 });
+      if (where === 'company') Object.assign(q, { x: p.x + 2, z: p.z });
+      (s as any).rWild.chance = () => false;
+      (s as any).wildAttack(p);
+      expect(p.alive).toBe(true);
+      expect(p.health).toBe(100);
+    }
   });
 });
 
