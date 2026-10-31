@@ -11,6 +11,46 @@ export const OPPOSED: [Trait, Trait][] = [['industrious', 'lazy'], ['brave', 'ca
 export const SKILLS = ['foraging', 'woodcutting', 'building', 'hunting', 'fishing', 'toolmaking', 'weaving', 'pottery', 'hidework'] as const;
 export type Skill = (typeof SKILLS)[number];
 export const SK = { forage: 0, wood: 1, build: 2, hunt: 3, fish: 4, tool: 5, weave: 6, pot: 7, hide: 8 } as const;
+/** The top of every skill. */
+export const SKILL_MAX = 20;
+/**
+ * What each piece of work teaches: the skills it trains, and how much a beginner gains in each. Every gain
+ * goes through `trainSkill`, which makes the last steps toward mastery the slowest.
+ */
+type Lesson = readonly { skill: number; gain: number }[];
+export const TRAINING = {
+  'forage.pick': [{ skill: SK.forage, gain: 0.06 }], // a basket of berries picked
+  // an armful of grass or reeds cut: handling them is how a weaver gets to know them
+  reap: [{ skill: SK.forage, gain: 0.03 }, { skill: SK.weave, gain: 0.03 }],
+  dig: [{ skill: SK.build, gain: 0.05 }], // a load of mud or stone dug
+  // (building is the rarest work, a few roofs a year: each spell of it teaches the most)
+  build: [{ skill: SK.build, gain: 0.3 }], // a spell of work on a building site
+  fell: [{ skill: SK.wood, gain: 0.08 }], // a tree brought down
+  deadwood: [{ skill: SK.wood, gain: 0.02 }], // an armful of fallen branches
+  'hunt.kill': [{ skill: SK.hunt, gain: 0.35 }],
+  'hunt.miss': [{ skill: SK.hunt, gain: 0.05 }],
+  'trap.catch': [{ skill: SK.hunt, gain: 0.03 }], // a catch taken from a snare or fish trap
+  'fish.catch': [{ skill: SK.fish, gain: 0.12 }],
+  'fish.miss': [{ skill: SK.fish, gain: 0.03 }],
+  preserve: [{ skill: SK.hide, gain: 0.1 }], // a batch hung on the drying rack
+} as const satisfies Record<string, Lesson>;
+export type Training = keyof typeof TRAINING;
+
+/** How much of a gain someone at this level still takes in: all of it at first, little near the top. */
+export const learnRate = (level: number) => Math.max(0.05, 1 - level / (SKILL_MAX + 2));
+
+/** How fast everyone learns, against the gains in the tables: the one knob for how long mastery takes. */
+export const SKILL_PACE = 3;
+
+/** A skill grows by `gain` as a beginner would take it in. */
+export function trainSkill(p: Person, k: number, gain: number) {
+  p.skills[k] = Math.min(SKILL_MAX, p.skills[k] + gain * SKILL_PACE * learnRate(p.skills[k]));
+}
+/** A piece of work done: the skills it trains grow. */
+export function train(p: Person, what: Training) {
+  for (const l of TRAINING[what] as Lesson) trainSkill(p, l.skill, l.gain);
+}
+
 /** What a person is known as when they are clearly the band's best at a craft. */
 export const CRAFT_TITLES: Partial<Record<number, string>> = { [SK.tool]: 'toolmaker', [SK.weave]: 'weaver', [SK.pot]: 'potter', [SK.hide]: 'hideworker' };
 

@@ -5,6 +5,6 @@
   into main, .github/workflows/discord-merge-summary.yml posts that section to the Discord dev
   log. Without it, only the PR title is posted.
 - Almost everything a band can do is a discovery. A new feature (a building, tool, job or recipe)
-  gets a row in `src/sim/know.ts`, with what it needs first, the practice that leads to it and what
-  hurries it, and the planner only uses it once the band knows it. Tune its timing with
+  gets a row in `src/sim/know.ts`, with what it needs first, the skills someone has to master
+  before they can think of it and the work during which the idea comes, and the planner only uses it once the band knows it. Tune its timing with
   `npx tsx tools/discoveries.ts`.

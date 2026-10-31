@@ -2,7 +2,7 @@
 // the winter is rationed; and the hungry and cold still keep the fire fed.
 import { describe, it, expect } from 'vitest';
 import { decide, runTask } from '../../src/sim/ai';
-import { seasonOf, hourOf, TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/time';
+import { seasonOf, hourOf, yearOf, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../../src/sim/time';
 import { sim, runTo } from '../helpers';
 
 describe('hunger', () => {
@@ -72,5 +72,28 @@ describe('hunger', () => {
       s.step();
     }
     expect(h.fuel).toBeGreaterThan(0);
+  });
+
+  it('counts the winters a band rations running, and a band that rations winter after winter moves', () => {
+    const s = sim(1);
+    const c = s.camp;
+    // the year turns: a winter rationed through adds to the run, a winter with enough ends it
+    const toNewYear = () => runTo(s, (Math.floor(s.tick / TICKS_PER_YEAR) + 1) * TICKS_PER_YEAR + 7 * TICKS_PER_HOUR);
+    toNewYear();
+    c.rationedIn = yearOf(s.tick);
+    c.leanWinters = 1;
+    toNewYear();
+    expect(c.leanWinters).toBe(2);
+    // a winter with plenty laid in
+    c.stock.preserved = 5000;
+    toNewYear();
+    expect(c.leanWinters).toBe(0);
+    // three lean winters running, settled long enough: in time they give up the camp for better land
+    c.leanWinters = 3;
+    c.settled = s.tick - 3 * TICKS_PER_YEAR;
+    let moved = false;
+    for (let i = 0; i < 40 && !moved; i++) moved = (s as any).considerMove(c);
+    expect(moved).toBe(true);
+    expect(s.events.at(-1)!.text).toContain(`The people of ${c.name} gave up their camp after hard years.`);
   });
 });

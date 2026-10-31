@@ -1,8 +1,12 @@
 // Bands start with the old ways only, and learn the rest by doing the work that leads to it.
 import { describe, it, expect } from 'vitest';
 import { DISCOVERIES, knowHowFor } from '../../src/sim/know';
+import { Person } from '../../src/sim/band';
 import { START_TICK, TICKS_PER_DAY } from '../../src/sim/time';
+import { START_SKILL_MAX } from '../../src/sim/sim';
 import { sim, runTo, runYears } from '../helpers';
+
+const masterOf = (p: Person) => { p.skills.fill(20); return p; };
 
 describe('discovery', () => {
   it('starts knowing nothing new, and builds only what it has found out', () => {
@@ -19,26 +23,26 @@ describe('discovery', () => {
     }
   });
 
-  it('finds huts by the first autumn in most worlds', () => {
+  it('finds huts in its first years in most worlds, once someone is good enough with timber', () => {
     let found = 0;
     const seeds = [1, 2, 3, 4, 5, 6];
     for (const seed of seeds) {
-      const s = runTo(sim(seed), START_TICK + 19 * TICKS_PER_DAY);
+      const s = runTo(sim(seed), START_TICK + 2 * 48 * TICKS_PER_DAY);
       if (s.knows('huts', s.camps[0])) found++;
     }
     expect(found).toBeGreaterThanOrEqual(seeds.length - 1);
   });
 
-  it('only builds up experience from adults, and someone always has the idea in the end', () => {
+  it('starts no one as a master of anything', () => {
+    for (const seed of [1, 2, 3]) for (const p of sim(seed).members()) for (const v of p.skills) expect(v).toBeLessThanOrEqual(START_SKILL_MAX);
+  });
+
+  it('never comes to a child, however skilled', () => {
     const s = sim(2);
     const kid = s.members().find((p) => s.age(p) < 14)!;
-    s.practise(kid, 'night_out', 50);
-    expect(s.camp.practice.huts ?? 0).toBe(0);
-    const adult = s.members().find((p) => s.age(p) >= 20)!;
-    for (let i = 0; i < 400 && !s.knows('huts'); i++) s.practise(adult, 'night_out');
-    expect(s.knows('huts')).toBe(true);
-    expect(s.camp.practice.huts).toBeUndefined();
-    expect(s.events.some((e) => e.kind === 'discovery' && e.people[0] === adult.id)).toBe(true);
+    kid.skills.fill(20);
+    for (let i = 0; i < 2000; i++) s.practise(kid, 'night_out');
+    expect(s.knows('huts')).toBe(false);
   });
 
   it('tells the first in the world to find something out as the story, and later bands more quietly', () => {
@@ -48,7 +52,7 @@ describe('discovery', () => {
     const other = s.foundCamp(c.tile + 40, { ...stock }, -1, -1);
     other.knows.push('huts');
     s.camp = c;
-    const adult = s.members().find((p) => s.age(p) >= 20)!;
+    const adult = masterOf(s.members().find((p) => s.age(p) >= 20)!);
     for (let i = 0; i < 400 && !s.knows('huts'); i++) s.practise(adult, 'night_out');
     const e = s.events.find((e) => e.kind === 'discovery' && e.people[0] === adult.id)!;
     expect(e.text).toBe(`${adult.name} of ${c.name} worked out how to raise huts, as other bands had before.`);

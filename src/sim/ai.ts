@@ -1,8 +1,8 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
-import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS } from './band';
+import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH } from './sim';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, train, trainSkill } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
@@ -893,10 +893,6 @@ function wearStick(s: Sim, p: Person, stick: Item) {
   s.event('tool', `${p.name}'s digging stick broke.`, [p.id], p.x, p.z, 1);
 }
 
-function skillUp(p: Person, k: number, amt: number) {
-  p.skills[k] = Math.min(20, p.skills[k] + amt);
-}
-
 // ---------------------------------------------------------------- task execution
 export function runTask(s: Sim, p: Person) {
   const t = p.task!;
@@ -1157,7 +1153,7 @@ export function runTask(s: Sim, p: Person) {
           p.carryAmt -= 0.5;
           p.food = clamp(p.food + 20);
         }
-        skillUp(p, SK.forage, 0.06);
+        train(p, 'forage.pick');
         goStore(s, p, t, 2);
         p.thought = 'Bringing berries back to camp.';
       }
@@ -1190,7 +1186,7 @@ export function runTask(s: Sim, p: Person) {
         s.reserved.delete(t.ref);
         p.carry = CARRY.Fiber;
         p.carryAmt += take;
-        skillUp(p, SK.forage, 0.03);
+        train(p, 'reap');
         // an armful is more than one tussock: cut the next one close by before walking back
         const next = p.carryAmt < 5 ? nextClump(s, p.x, p.z, 2.5) : -1;
         if (next >= 0 && !s.reserved.has(next)) {
@@ -1241,7 +1237,7 @@ export function runTask(s: Sim, p: Person) {
         p.carryAmt = dig ? (stick?.kind === 'stick' ? 3 : 2) : 2;
         if (dig && stick?.kind === 'stick') wearStick(s, p, stick);
         else if (dig) s.practise(p, 'dig_hand');
-        skillUp(p, SK.build, 0.04);
+        train(p, 'dig');
         goStore(s, p, t, 2);
         p.thought = dig ? 'Carrying a basket of mud back to camp.' : 'Carrying stone back to camp.';
       }
@@ -1290,7 +1286,7 @@ export function runTask(s: Sim, p: Person) {
             if (got > 0) {
               if (it.kind === 'snare') t.amount += got;
               else t.fish = (t.fish ?? 0) + got;
-              skillUp(p, SK.hunt, 0.03);
+              train(p, 'trap.catch');
             }
             it.catch = 0;
             p.thought = got > 0 ? (it.kind === 'snare' ? 'A hare in the snare.' : `${got} fish in the trap.`) : it.kind === 'snare' ? 'Nothing in this snare.' : 'The trap is empty.';
@@ -1344,7 +1340,7 @@ export function runTask(s: Sim, p: Person) {
         s.book(`made.${rc.makes}`, 1);
       }
       t.amount = 0;
-      skillUp(p, rc.skill, rc.grow);
+      trainSkill(p, rc.skill, rc.grow);
       p.thought = rc.done;
       finish(s, p);
       return;
@@ -1390,7 +1386,7 @@ export function runTask(s: Sim, p: Person) {
         s.propNote.set(stump, `${art(what) === 'an' ? 'An' : 'A'} ${what}, felled by ${p.name} in the ${s.when(s.tick)}.`);
         s.removeProp(k);
         s.stats.felled++;
-        skillUp(p, SK.wood, 0.08);
+        train(p, 'fell');
         const tool = s.heldBy(p);
         if (tool) {
           // hacking through a trunk with a stone in the fist is what gives people the idea of a haft
@@ -1442,7 +1438,7 @@ export function runTask(s: Sim, p: Person) {
         // under a pine, a few cones go in with the branches
         const cones = treeSpecies(s.propType[k]) === 0 && treeStage(s.propType[k]) >= 1 ? CONES : 0;
         p.carryAmt = DEADWOOD_BY_STAGE[treeStage(s.propType[k])] + cones;
-        skillUp(p, SK.wood, 0.02);
+        train(p, 'deadwood');
         goStore(s, p, t, 2);
         p.thought = cones ? 'Bringing branches and pine cones back to camp.' : 'Bringing firewood back to camp.';
       }
@@ -1529,7 +1525,7 @@ export function runTask(s: Sim, p: Person) {
               for (const q of s.members()) s.remember(q, 'feast', 15, 1, p.id, `Feasted after ${p.name}'s great hunt.`);
             }
           }
-          skillUp(p, SK.hunt, 0.35);
+          train(p, 'hunt.kill');
           s.practise(p, 'hunt');
           if (p.kills === 1) s.remember(p, 'first_kill', 18, 2, -1, 'Brought down their first deer.');
           if (s.stats.kills === 1) s.event('hunt', `${p.name} brought down the band's first deer at ${s.camp.name}.`, [p.id], p.x, p.z, 3);
@@ -1538,7 +1534,7 @@ export function runTask(s: Sim, p: Person) {
           goStore(s, p, t, 1);
           p.thought = 'Carrying the kill home.';
         } else {
-          skillUp(p, SK.hunt, 0.05);
+          train(p, 'hunt.miss');
           s.practise(p, 'hunt', 0.2);
           p.thought = 'Missed. Following the herd.';
           p.path = null;
@@ -1568,9 +1564,9 @@ export function runTask(s: Sim, p: Person) {
         const chance = 0.42 + p.skills[SK.fish] * 0.028 + (s.fish[w] / Math.max(1, s.fishCap[w])) * 0.18 - (seasonOf(s.tick) === 3 ? 0.12 : 0);
         flash(p, FLASH.Stab);
         if (r.next() < chance) {
-          const got = Math.min(s.fish[w], Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (seasonOf(s.tick) === 3 ? WINTER_CATCH : 1)));
+          const got = Math.min(s.fish[w], Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (seasonOf(s.tick) === 3 ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1)));
           s.fish[w] -= got;
-          skillUp(p, SK.fish, 0.12);
+          train(p, 'fish.catch');
           // standing in the shallows with reeds to hand is what makes someone think of a woven trap
           if (c.stock.fiber >= 3) s.practise(p, 'fish_fiber', got < 3 ? 1.5 : 1);
           p.carry = CARRY.Fish;
@@ -1581,7 +1577,7 @@ export function runTask(s: Sim, p: Person) {
           t.amount = 1;
           t.timer = 24;
           p.thought = 'Nothing biting yet.';
-          skillUp(p, SK.fish, 0.03);
+          train(p, 'fish.miss');
         } else {
           p.thought = 'Caught nothing today.';
           if (c.stock.fiber >= 3) s.practise(p, 'fish_fiber', 1.5);
@@ -1639,7 +1635,7 @@ export function runTask(s: Sim, p: Person) {
       if (!b.builders.includes(p.id)) b.builders.push(p.id);
       if (s.tick % 10 === 0) s.buildingsVersion++;
       if (s.tick % 20 === 0) {
-        skillUp(p, SK.build, 0.05);
+        train(p, 'build');
         s.practise(p, 'build');
         if (b.kind === 'leanto') s.practise(p, 'leanto');
       }
@@ -1709,7 +1705,7 @@ export function runTask(s: Sim, p: Person) {
       c.stock.preserved += t.amount * 0.9;
       s.book('dried', t.amount);
       t.amount = 0;
-      skillUp(p, SK.hide, 0.1);
+      train(p, 'preserve');
       finish(s, p);
       return;
     }

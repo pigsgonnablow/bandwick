@@ -15,7 +15,7 @@ const years = Number(get('--years', '20'));
 const size = Number(get('--size', '128'));
 
 const causes: Record<string, number> = {};
-let wornDown = 0, illness = 0, hungryWinters = 0, rationedWinters = 0, bandsRationed = 0, bands = 0, bandWinters = 0, worldsLost = 0, earlyEnd = 0, grew = 0;
+let longest = 0, oldBands = 0, oldLean = 0, wornDown = 0, illness = 0, hungryWinters = 0, rationedWinters = 0, bandsRationed = 0, bands = 0, bandWinters = 0, worldsLost = 0, earlyEnd = 0, grew = 0;
 for (const seed of seeds) {
   const sim = new Sim(generateWorld({ ...DEFAULT_PARAMS, seed, size }));
   const end = sim.tick + years * TICKS_PER_YEAR;
@@ -63,6 +63,18 @@ for (const seed of seeds) {
     mine[c] = (mine[c] ?? 0) + 1;
   }
   const lean = [...winterLow.values()].filter((d) => d < 1).length;
+  // the longest run of winters a band rationed through, and bands settled five years that still knew a lean one
+  let run = 0;
+  const byBand = new Map<string, number[]>();
+  for (const k of rationed) { const [id, y] = k.split(':'); (byBand.get(id) ?? byBand.set(id, []).get(id)!).push(Number(y)); }
+  for (const ys of byBand.values()) { ys.sort((a, b) => a - b); let n = 1; for (let i = 1; i < ys.length; i++) { n = ys[i] === ys[i - 1] + 1 ? n + 1 : 1; run = Math.max(run, n); } run = Math.max(run, 1); }
+  longest = Math.max(longest, run);
+  for (const c of sim.camps) {
+    const settled = [...winterLow.keys()].filter((k) => k.startsWith(`${c.id}:`)).map((k) => Number(k.split(':')[1])).filter((y) => y - yearOf(c.founded) >= 5);
+    if (!settled.length) continue;
+    oldBands++;
+    if (settled.some((y) => rationed.has(`${c.id}:${y}`))) oldLean++;
+  }
   hungryWinters += lean;
   rationedWinters += rationed.size;
   const ids = new Set([...winterLow.keys()].map((k) => k.split(':')[0]));
@@ -77,11 +89,12 @@ for (const seed of seeds) {
   if (pop > 10) grew++;
   console.log(
     `seed ${seed}: pop ${pop}, short of food ${(peckish / samples * 100).toFixed(1)}% starving ${(hungry / samples * 100).toFixed(2)}% cold ${(cold / samples * 100).toFixed(2)}% of the time, ` +
-    `rationed ${rationed.size}/${winterLow.size} winters, ran out ${lean}, leanest stores ${lowest.toFixed(1)} days, ` +
+    `rationed ${rationed.size}/${winterLow.size} winters (at most ${run} running), ran out ${lean}, leanest stores ${lowest.toFixed(1)} days, ` +
     `deaths ${Object.entries(mine).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}${firstGone ? ', FIRST BAND DIED OUT EARLY' : ''}`,
   );
 }
 console.log(`\nwinters rationed ${rationedWinters} of ${bandWinters} band-winters; bands that ever rationed ${bandsRationed} of ${bands}; stores ran out (under a day) ${hungryWinters}`);
+console.log(`bands settled five years or more that still rationed a winter after that ${oldLean} of ${oldBands}; longest run of rationed winters ${longest}`);
 console.log(`worlds that lost someone to hunger or cold ${worldsLost}/${seeds.length}, first band gone early ${earlyEnd}/${seeds.length}, grew ${grew}/${seeds.length}`);
 console.log(`illness deaths that came to the hungry, cold or weak ${wornDown} of ${illness}`);
 console.log(`deaths: ${Object.entries(causes).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);

@@ -630,7 +630,7 @@ function Discoveries({ c, go, byId }: { c: Chron; go: (id: number) => void; byId
             ) : <p class="small muted">Only the old ways: fire, the chopper and spear, cordage, the lean-to.</p>}
             {unknown.length > 0 && (
               <p class="small muted">
-                Not yet: {unknown.map((u, i) => <span key={u.key} title={u.needs.length ? `Needs ${u.needs.join(', ')} first` : undefined}>{i ? ', ' : ''}{u.label}{u.needs.length ? '*' : ''}</span>)}
+                Not yet: {unknown.map((u, i) => <span key={u.key} title={`The idea of someone with ${u.asks}${u.needs.length ? `, once ${u.needs.join(', ')} is known` : ''}`}>{i ? ', ' : ''}{u.label}{u.needs.length ? '*' : ''}</span>)}
               </p>
             )}
           </section>

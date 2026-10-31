@@ -28,8 +28,9 @@ describe('tools', () => {
           }
         }
       }
-      // within two years the band has found the axe and made some
-      expect(s.knows('axe', s.camps[0]), `seed ${seed}`).toBe(true);
+      // once the band has the axe (a master woodcutter's idea, which can take years), it makes some
+      if (!s.knows('axe', s.camps[0])) s.camps[0].knows.push('axe');
+      runTo(s, s.tick + 48 * TICKS_PER_DAY);
       expect(s.items.filter((i) => i.kind === 'axe' && i.maker >= 0).length, `seed ${seed}`).toBeGreaterThan(0);
     }
   });
