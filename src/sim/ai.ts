@@ -2,7 +2,7 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
 import { isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, train, trainSkill } from './band';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, train, trainSkill } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
@@ -73,7 +73,7 @@ export function workSkill(q: Person): number {
     case 'fell': case 'haul': case 'deadwood': return SK.wood;
     case 'fish': return SK.fish;
     case 'build': case 'supply': case 'dig': case 'quarry': return SK.build;
-    case 'forage': case 'reap': return SK.forage;
+    case 'forage': case 'reap': case 'roots': return SK.forage;
     case 'preserve': return SK.hide;
     case 'trap': return SK.hunt;
     case 'craft': return t.amount > 0 ? RECIPES[RECIPE_KEYS[t.ref]].skill : -1;
@@ -202,8 +202,12 @@ export function decide(s: Sim, p: Person) {
       add('hunt', food * fit(p, SK.hunt) * nerve * 0.95 * crowd('hunt'));
     }
     if (age >= 11) add('fish', food * fit(p, SK.fish) * 0.85 * crowd('fish'));
+    // in autumn, roots dug with a digging stick from under the reeds and the meadow grass: a staple that keeps
+    if (age >= 11 && seasonOf(s.tick) === 2 && s.knows('roots')) add('roots', food * fit(p, SK.forage) * 1.1 * crowd('roots'));
     // grass and reeds for thatch and cordage: work the older children can do too
     if (age >= 9) add('reap', (j.fiber ?? 0) * drive * night * fit(p, SK.forage) * (child ? 1.15 : 1) * crowd('reap'));
+    // an armful of dry grass from the stores, laid in a home where the old bedding has gone flat
+    if (age >= 9 && !dark && (j.bed ?? 0) > 0 && busyWith(s, 'bed') < 2) add('bed', j.bed * drive * fit(p, SK.forage));
     // the round of the snares and fish traps: one person, once a day, by daylight
     if (age >= 12 && !dark && (j.trap ?? 0) > 0 && c.trapRound !== dayOf(s.tick) && busyWith(s, 'trap') === 0)
       add('trap', j.trap * drive * fit(p, SK.hunt));
@@ -427,6 +431,35 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       // a basket from the pile if there's one to be had: it comes home with several bushes' worth
       const basket = s.toolFor(p, ['basket']);
       if (basket && takeFromPile(s, p, t, basket)) p.thought = 'Fetching a basket to pick berries.';
+      return t;
+    }
+    case 'bed': {
+      if (c.stock.fiber < BED_FIBER) return null;
+      // their own home first, else the nearest whose grass has gone flat
+      const homes = s.buildings.filter((b) => b.band === p.band && b.built && (b.kind === 'hut' || b.kind === 'leanto') && (b.bedding ?? 0) <= 4
+        && s.people.some((q) => q.alive && q.home === b.id) && !s.people.some((q) => q.alive && q.task?.kind === 'bed' && q.task.ref === b.id));
+      if (!homes.length) return null;
+      const b = homes.find((h) => h.id === p.home) ?? homes.sort((a, b) => hyp(a.x - p.x, a.z - p.z) - hyp(b.x - p.x, b.z - p.z) || a.id - b.id)[0];
+      const st = s.storeSpot(true);
+      const t = newTask(s, kind, st.tile, st.x, st.z, b.id);
+      t.amount = BED_FIBER;
+      t.res = 'fiber';
+      c.stock.fiber -= BED_FIBER; // set aside now so others don't count it twice
+      const owner = s.byId.get(b.owner);
+      p.thought = b.id === p.home ? 'Fetching dry grass for fresh bedding at home.' : `Fetching dry grass for fresh bedding in ${owner && owner.alive ? `${owner.name}'s ${labelOf(b).toLowerCase()}` : `the ${labelOf(b).toLowerCase()}`}.`;
+      return t;
+    }
+    case 'roots': {
+      // (the ground is soft in autumn; by winter it is frozen hard and the tops have died back)
+      if (seasonOf(s.tick) !== 2) return null;
+      const stick = s.toolFor(p, ['stick']);
+      if (!stick) return null;
+      const k = s.nearestProp(c.x, c.z, 24, (k) => isFiberPlant(s.propType[k]) && !s.rootsTaken.has(k), (k, d) => -d - (isReeds(s.propType[k]) ? 0 : 1.5));
+      if (k < 0) return null;
+      s.reserved.set(k, p.id);
+      const t = newTask(s, kind, s.propTile[k], s.propX[k] + 0.3, s.propZ[k] + 0.22, k);
+      p.thought = isReeds(s.propType[k]) ? 'Digging roots from under the reeds.' : 'Digging roots in the meadow.';
+      if (takeFromPile(s, p, t, stick)) p.thought = 'Fetching a digging stick to dig roots.';
       return t;
     }
     case 'reap': {
@@ -682,7 +715,7 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
   const t = p.task;
   const st = s.camp.stock;
   if (t) {
-    if ((t.kind === 'supply' || t.kind === 'fuel') && t.amount > 0) {
+    if ((t.kind === 'supply' || t.kind === 'fuel' || t.kind === 'bed') && t.amount > 0) {
       st[t.res ?? 'wood'] += t.amount;
       t.amount = 0;
       if (p.carry === CARRY.Log || p.carry === CARRY.Fiber || p.carry === CARRY.Mud || p.carry === CARRY.Stone) { p.carry = CARRY.None; p.carryAmt = 0; }
@@ -841,7 +874,17 @@ export function deposit(s: Sim, p: Person) {
   const st = s.camp.stock;
   const a = p.carryAmt;
   const kind = p.carry === CARRY.Berries ? 'berries' : p.carry === CARRY.Meat ? 'meat' : p.carry === CARRY.Fish ? 'fish' : p.carry === CARRY.Log ? 'wood'
-    : p.carry === CARRY.Fiber ? 'fiber' : p.carry === CARRY.Mud ? 'mud' : p.carry === CARRY.Stone ? 'stone' : '';
+    : p.carry === CARRY.Fiber ? 'fiber' : p.carry === CARRY.Mud ? 'mud' : p.carry === CARRY.Stone ? 'stone' : p.carry === CARRY.Roots ? 'roots' : '';
+  // a deer carried home is skinned by whoever brought it, once the band knows how to work a hide; once it
+  // knows how to make cloaks, the hide is kept for one
+  if (kind === 'meat' && p.task?.kind === 'hunt' && a >= 4 && s.knows('preserving')) {
+    train(p, 'skin');
+    s.practise(p, 'carcass');
+    if (s.knows('cloaks') && st.hides < HIDES_KEPT) {
+      st.hides += 1;
+      s.book('gathered.hides', 1);
+    }
+  }
   if (kind) {
     st[kind] += a;
     s.book(`gathered.${kind}`, a);
@@ -1028,7 +1071,7 @@ export function runTask(s: Sim, p: Person) {
     return;
   }
   // starving on the way home with food: eat a little of it rather than drop it
-  if (home && p.food < 20 && p.carryAmt >= 1 && (p.carry === CARRY.Berries || p.carry === CARRY.Meat || p.carry === CARRY.Fish)) {
+  if (home && p.food < 20 && p.carryAmt >= 1 && (p.carry === CARRY.Berries || p.carry === CARRY.Meat || p.carry === CARRY.Fish || p.carry === CARRY.Roots)) {
     p.carryAmt -= 1;
     p.food = clamp(p.food + 48);
     p.thought = 'Ate some of what they were carrying home.';
@@ -1065,7 +1108,7 @@ export function runTask(s: Sim, p: Person) {
       const want = small ? portion * 0.5 : portion * Math.max(1, Math.min(2, (88 - p.food) / 48));
       let got = 0;
       const st = c.stock;
-      for (const k of ['berries', 'fish', 'meat', 'preserved'] as const) {
+      for (const k of ['berries', 'fish', 'meat', 'roots', 'preserved'] as const) {
         const take = Math.min(st[k], want - got);
         st[k] -= take;
         s.book(`eaten.${k}`, take);
@@ -1106,8 +1149,11 @@ export function runTask(s: Sim, p: Person) {
         p.indoors = t.ref >= 0;
       }
       p.act = ACT.Sleep;
-      p.rest = clamp(p.rest + (p.indoors ? 1.35 : 0.85));
-      p.thought = p.indoors ? 'Asleep at home.' : 'Asleep by the fire.';
+      // fresh grass to lie on: a deeper sleep than on the bare ground
+      const bed = p.indoors ? s.buildings.find((b) => b.id === t.ref) : undefined;
+      const soft = (bed?.bedding ?? 0) > 0;
+      p.rest = clamp(p.rest + (p.indoors ? 1.35 : 0.85) * (soft ? BED_REST : 1));
+      p.thought = p.indoors ? (soft ? 'Asleep at home on fresh grass.' : 'Asleep at home.') : 'Asleep by the fire.';
       const dark = isDark(s.tick);
       if ((!dark && p.rest >= 96) || (!dark && hourOf(s.tick) > 7.5 && p.rest > 65) || s.tick - t.started > 150) {
         p.indoors = false;
@@ -1396,6 +1442,97 @@ export function runTask(s: Sim, p: Person) {
       }
       return;
     }
+    case 'bed': {
+      const b = s.buildings.find((q) => q.id === t.ref);
+      if (!b || !b.built) {
+        // the grass goes back to the store (and only once)
+        abandon(s, p);
+        p.nextThink = s.tick;
+        return;
+      }
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        p.carry = CARRY.Fiber;
+        p.carryAmt = t.amount;
+        t.stage = 1;
+        t.goal = b.tile;
+        t.gx = b.x + 0.5;
+        t.gz = b.z + 0.5;
+        t.near = true;
+        p.path = null;
+        p.thought = 'Carrying an armful of dry grass for bedding.';
+      }
+      if (t.stage === 1) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 2;
+        t.timer = 14;
+      }
+      p.act = ACT.Gather;
+      face(p, b.x + 0.5, b.z + 0.5);
+      if (--t.timer > 0) return;
+      b.bedding = BED_DAYS;
+      s.book('bedding', t.amount);
+      t.amount = 0;
+      p.carry = CARRY.None;
+      p.carryAmt = 0;
+      s.buildingsVersion++;
+      p.thought = 'Shook out the old bedding and laid fresh grass to sleep on.';
+      finish(s, p);
+      return;
+    }
+    case 'roots': {
+      if (t.stage === -1) {
+        // to the pile for a digging stick, then out to the plants
+        if (moving(go(s, p, t))) return;
+        aimAtBush(s, p, t);
+        p.thought = 'Off to dig roots with a digging stick.';
+        return;
+      }
+      if (t.stage === 0) {
+        if (!s.propAlive[t.ref] || s.rootsTaken.has(t.ref)) {
+          if (p.carry !== CARRY.Roots) return finish(s, p);
+          goStore(s, p, t, 2);
+          return;
+        }
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = Math.max(10, Math.round(24 * (1.2 - p.skills[SK.forage] * 0.02)));
+      }
+      if (t.stage === 1) {
+        p.act = ACT.Dig;
+        face(p, s.propX[t.ref], s.propZ[t.ref]);
+        if (--t.timer > 0) return;
+        // a clump gives up its roots once a year; they grow again from what is left in the ground
+        const got = (isReeds(s.propType[t.ref]) ? 3.5 : 2.5) + p.skills[SK.forage] * 0.06;
+        s.rootsTaken.set(t.ref, s.tick + TICKS_PER_DAY * 40);
+        s.reserved.delete(t.ref);
+        p.carry = CARRY.Roots;
+        p.carryAmt = Math.min(ROOTS_LOAD, p.carryAmt + got);
+        train(p, 'roots');
+        s.practise(p, 'dig_stick', 0.5);
+        const stick = s.heldBy(p);
+        if (stick?.kind === 'stick' && s.rAi.chance(0.3)) wearStick(s, p, stick);
+        // a load is more than one clump: dig the next close by before walking back
+        const next = p.carryAmt < ROOTS_LOAD - 1 && s.heldBy(p)?.kind === 'stick'
+          ? s.nearestProp(p.x, p.z, 4, (k) => isFiberPlant(s.propType[k]) && !s.rootsTaken.has(k)) : -1;
+        if (next >= 0) {
+          s.reserved.set(next, p.id);
+          t.ref = next;
+          t.started = s.tick;
+          aimAtBush(s, p, t);
+          p.thought = 'Digging roots.';
+          return;
+        }
+        goStore(s, p, t, 2);
+        p.thought = 'Carrying a bundle of roots back to camp.';
+      }
+      if (t.stage === 2) {
+        if (moving(go(s, p, t))) return;
+        deposit(s, p);
+        finish(s, p);
+      }
+      return;
+    }
     case 'reap': {
       if (t.stage === 0) {
         if (!s.propAlive[t.ref] || s.propVal[t.ref] < 0.5) {
@@ -1467,8 +1604,10 @@ export function runTask(s: Sim, p: Person) {
         // with a digging stick a full basket; scraping with bare hands, two loads
         const stick = dig ? s.heldBy(p) : undefined;
         p.carryAmt = dig ? (stick?.kind === 'stick' ? 3 : 2) : 2;
-        if (dig && stick?.kind === 'stick') wearStick(s, p, stick);
-        else if (dig) s.practise(p, 'dig_hand');
+        if (dig && stick?.kind === 'stick') {
+          wearStick(s, p, stick);
+          s.practise(p, 'dig_stick');
+        } else if (dig) s.practise(p, 'dig_hand');
         train(p, 'dig');
         goStore(s, p, t, 2);
         p.thought = dig ? 'Carrying a basket of mud back to camp.' : 'Carrying stone back to camp.';
@@ -1938,6 +2077,7 @@ export function runTask(s: Sim, p: Person) {
       s.book('dried', t.amount);
       t.amount = 0;
       train(p, 'preserve');
+      s.practise(p, 'rack');
       finish(s, p);
       return;
     }

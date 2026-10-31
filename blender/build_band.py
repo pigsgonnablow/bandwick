@@ -2,15 +2,15 @@
 
 Run headless:  python3 blender/build_band.py [out.glb]
 Conventions (read by src/render/band.ts):
-  villager__{torso,head,arm*,fore*,thigh*,shin*,hairS,hairL,hairB,hairU,beard}  one body in parts, animated in the shader;
-      the game shows one of the four hair pieces (short, long, braids, bun) and, on some men, the beard.
+  villager__{torso,head,arm*,fore*,thigh*,shin*,hairS,hairL,hairB,hairU,beard,cloak}  one body in parts, animated in the shader;
+      the game shows one of the four hair pieces (short, long, braids, bun), on some men the beard, and the cloak on those who have one.
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
   deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
-  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,basket,basketFull} attached to a person's hands or shoulder.
+  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,basket,basketFull} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
-  bld__{hearth,flame,leanto,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
+  bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
 Models face -Y in Blender (= +Z in the game). 1 unit = one 6 m tile; an adult is 0.4 tall.
@@ -801,6 +801,22 @@ for v in q.blob((0, 0, 0), (0.042, 0.03, 0.022), (132, 126, 117), rr, 0.1, noise
     v.co.z = max(-0.016, v.co.z)
 q.finish("carry__stone")
 
+q = Part()  # a bundle of dug roots: fat pale tubers and reed rhizomes, earth still on them, their dry stems tied
+rr = random.Random(50)
+ROOT = (176, 150, 112)
+ROOT_DK = (128, 100, 70)
+for k in range(7):
+    a, r = k / 7 * math.tau + rr.uniform(-0.3, 0.3), rr.uniform(0.006, 0.014)
+    top_ = Vector((math.cos(a) * 0.004, math.sin(a) * 0.004, -0.004))
+    bot_ = Vector((math.cos(a) * r * 1.8, math.sin(a) * r * 1.5, -0.05 - rr.uniform(0, 0.025)))
+    q.cyl(5, 0.0045, 0.009 + rr.uniform(0, 0.004), top_, top_.lerp(bot_, 0.55), ROOT if k % 3 else ROOT_DK, rr, 0.08)
+    q.cyl(5, 0.009 + rr.uniform(0, 0.004), 0.003, top_.lerp(bot_, 0.55), bot_, ROOT if k % 3 else ROOT_DK, rr, 0.08, cap=True)
+for k in range(6):  # the dry stems, gathered in the hand
+    a = k / 6 * math.tau
+    q.cyl(3, 0.0022, 0.0015, (0, 0, -0.006), (math.cos(a) * 0.012, math.sin(a) * 0.012, 0.04 + rr.uniform(0, 0.015)), GRASS_DK, rr, 0.1, cap=False)
+q.cyl(8, 0.0075, 0.0075, (0, 0, -0.008), (0, 0, 0.002), ROPE_TIE, rr, 0.03, cap=False)  # the tie
+q.finish("carry__roots")
+
 # ---------------------------------------------------------------- tools and traps
 WOOD = (138, 104, 66)
 WOOD_DARK = (96, 70, 44)
@@ -1062,6 +1078,47 @@ def shell(q, top, bot, col_top, col_bot, col_rim, rnd, amt=0.05):
     return vt, vb
 
 
+# a hide cloak: a cape over the shoulders and down the back to below the belt, tied at the throat and
+# open down the front. Only those who have one wear it (the game hides it on the rest).
+# Its colour code is part skin, part leather, so each hide comes out a warm tan.
+CLOAK_CODE = (0, 179, 0)  # (0, 0.45, 0) once linearised: 45% skin, the rest leather
+q = Part()
+CZ = [0.158, 0.180, 0.205, 0.232, 0.256, 0.272, 0.283, 0.290]
+
+
+def torso_at(z):
+    for (z0, *a0), (z1, *a1) in zip(TORSO, TORSO[1:]):
+        if z0 <= z <= z1:
+            t = (z - z0) / (z1 - z0)
+            return [u + (v - u) * t for u, v in zip(a0, a1)]
+    return list(TORSO[-1][1:])
+
+
+def cape_row(i, z, out):
+    rx, yf, yb = torso_at(min(z, 0.288))
+    up = i / (len(CZ) - 1)
+    # wide over the shoulders and hanging clear of the body below them; the front opens wider lower down
+    flare = 0.010 + 0.010 * (1 - up) + (0.012 if 0.6 < up < 0.95 else 0.0)
+    gap = 1.25 - 1.0 * up ** 0.7
+    n = 14
+    row = []
+    for k in range(n + 1):
+        t = -math.pi / 2 + gap + k / n * (math.tau - 2 * gap)
+        c, s_ = math.cos(t), math.sin(t)
+        hem = -0.006 * (k % 2) if i == 0 else 0.0  # a ragged hem
+        r = flare + out
+        row.append((sqv(c) * (rx + r), sqv(s_) * ((yb if s_ > 0 else yf) + r * 0.8), z + hem))
+    return row
+
+
+top = [cape_row(i, z, 0.0) for i, z in enumerate(CZ)]
+bot = [cape_row(i, z, -0.0035) for i, z in enumerate(CZ)]
+shell(q, top, bot, lambda i, k: CLOAK_CODE, lambda i, k: CLOAK_CODE, CLOAK_CODE, None)
+# the cord at the throat
+q.box((0, -0.026, 0.284), (0.012, 0.004, 0.004), DARK, raw=True)
+q.finish("villager__cloak")
+
+
 HIDE_DK = (140, 106, 74)
 ROPE_LT = (150, 122, 80)
 HIDE_IN = (118, 90, 62)   # the flesh side, seen from under the shelter
@@ -1129,6 +1186,21 @@ for k in range(7):  # the bed: armfuls of bracken heaped under the low side
     q.blob((-0.18 + k * 0.06, 0.1 + rnd.uniform(-0.03, 0.03), 0.02), (0.06, 0.07, 0.02), BRACKEN if k % 3 else (120, 112, 60), rnd, 0.1, noise=0.3)
 q.blob((0.16, -0.05, 0.022), (0.06, 0.04, 0.022), HIDE_DK, rnd, 0.05, noise=0.2)  # a rolled sleeping hide
 q.finish("bld__leanto")
+
+q = Part()  # fresh grass bedding, shaken out over the old under the lean-to (shown while it is fresh)
+rnd = random.Random(88)
+STRAW = (196, 182, 112)
+STRAW_GN = (160, 168, 92)
+for k in range(46):
+    x, y = rnd.uniform(-0.22, 0.22), rnd.uniform(0.03, 0.18)
+    a = rnd.uniform(0, math.pi)
+    L = rnd.uniform(0.07, 0.13)
+    d = Vector((math.cos(a) * L / 2, math.sin(a) * L / 2, 0))
+    z = 0.034 + rnd.uniform(0, 0.012)
+    q.cyl(3, 0.0035, 0.0025, Vector((x, y, z)) - d, Vector((x, y, z + rnd.uniform(0, 0.008))) + d, STRAW if k % 3 else STRAW_GN, rnd, 0.1, cap=False)
+for k in range(5):  # a few loose heaps of it
+    q.blob((-0.18 + k * 0.09 + rnd.uniform(-0.02, 0.02), 0.1 + rnd.uniform(-0.03, 0.03), 0.034), (0.05, 0.05, 0.014), STRAW, rnd, 0.1, noise=0.3)
+q.finish("bld__bedding")
 
 
 # Huts: two shapes (hut0 a round wall under a tiered cone of thatch, hut1 a beehive dome on a low wall),

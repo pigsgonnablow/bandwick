@@ -9,7 +9,7 @@ import {
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
   Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
-  TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP,
+  TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, CLOAK_WARM, HIDES_PER_CLOAK, BED_FIBER,
 } from './band';
 import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
@@ -47,7 +47,7 @@ export const RATION_BELOW = 0.7;
 /** in a bitter winter, a catch against an ordinary winter's, and how fast the fish come back */
 export const BITTER_CATCH = 0.6;
 /** The jobs whose `ref` is a prop (a tree, a bush, a stand of reeds, a pile of logs). */
-export const PROP_TASKS: TaskKind[] = ['eatwild', 'forage', 'reap', 'fell', 'deadwood', 'haul'];
+export const PROP_TASKS: TaskKind[] = ['eatwild', 'forage', 'reap', 'fell', 'deadwood', 'haul', 'roots'];
 /** winters in a row a band has had to ration before it thinks of finding better land */
 export const LEAN_WINTERS_TO_MOVE = 3;
 export const WARM_RADIUS_SHELTERED = 3.2;
@@ -69,7 +69,7 @@ const STUMP_BASE = propId('stump_v0');
 const LOGS = propId('logs_v0');
 const GRAVE = propId('grave_v0');
 /** Work done with a tool in hand: the tool stays with them until it's done. */
-const TOOL_TASKS: TaskKind[] = ['fell', 'dig', 'bury', 'forage'];
+const TOOL_TASKS: TaskKind[] = ['fell', 'dig', 'bury', 'forage', 'roots'];
 
 /** Annual chance of dying of old age, by age in years (piecewise linear). */
 const MORTALITY: number[][] = [[0, 0.03], [2, 0.012], [5, 0.004], [15, 0.003], [35, 0.006], [50, 0.02], [60, 0.05], [70, 0.13], [80, 0.32], [90, 0.7]];
@@ -199,6 +199,8 @@ export class Sim {
   chopped = new Map<number, number>();
   /** trees whose fallen branches were gathered: prop index -> tick when there is deadwood again */
   deadwoodTaken = new Map<number, number>();
+  /** grass and reed clumps whose roots have been dug this year, until when they grow back */
+  rootsTaken = new Map<number, number>();
   /** targets nobody could reach lately (prop index, or -(tile+1) for fishing spots) -> until tick */
   unreachable = new Map<number, number>();
   fish: Float32Array;
@@ -344,6 +346,7 @@ export class Sim {
       unreachable: remap(this.unreachable),
       chopped: remap(this.chopped),
       deadwoodTaken: remap(this.deadwoodTaken),
+      rootsTaken: remap(this.rootsTaken),
       fish: b64(this.fish),
       game: b64(this.game),
       stats: { ...this.stats },
@@ -371,7 +374,7 @@ export class Sim {
     const keep = new Uint8Array(this.propCount);
     for (let k = 0; k < this.propCount; k++) keep[k] = this.propAlive[k];
     const mark = (k: number) => { if (k >= 0 && k < this.propCount) keep[k] = 1; };
-    for (const m of [this.reserved, this.unreachable, this.chopped, this.deadwoodTaken]) for (const k of m.keys()) mark(k);
+    for (const m of [this.reserved, this.unreachable, this.chopped, this.deadwoodTaken, this.rootsTaken]) for (const k of m.keys()) mark(k);
     for (const p of this.people) if (p.task && PROP_TASKS.includes(p.task.kind)) mark(p.task.ref);
     const at = new Int32Array(this.propCount).fill(-1);
     let n = 0;
@@ -415,6 +418,7 @@ export class Sim {
     this.unreachable = new Map(d.unreachable);
     this.chopped = new Map(d.chopped);
     this.deadwoodTaken = new Map(d.deadwoodTaken);
+    this.rootsTaken = new Map(d.rootsTaken ?? []);
     this.fish.set(new Float32Array(unb64(d.fish).buffer as ArrayBuffer));
     // (saves from before trapping: the land is full of hares)
     if (d.game) this.game.set(new Float32Array(unb64(d.game).buffer as ArrayBuffer));
@@ -432,7 +436,7 @@ export class Sim {
     }
     for (const c of this.camps) if (!c.color) { c.color = this.distinctColor(); c.origin ??= c.parent < 0 ? 'first' : 'amicable'; }
     // saves from before fiber and cordage
-    for (const c of [...this.camps, this.camp]) { c.stock.fiber ??= 0; c.stock.cordage ??= 0; c.stock.mud ??= 0; c.stock.stone ??= 0; }
+    for (const c of [...this.camps, this.camp]) { c.stock.fiber ??= 0; c.stock.cordage ??= 0; c.stock.mud ??= 0; c.stock.stone ??= 0; c.stock.hides ??= 0; c.stock.roots ??= 0; }
     this.events = d.events;
     this.people = d.people.map((p) => ({
       ...p, skills: Float32Array.from(p.skills), rel: new Map(p.rel), path: p.path !== null ? new Int32Array(unb64(p.path).buffer as ArrayBuffer) : null,
@@ -505,6 +509,7 @@ export class Sim {
     this.reserved.delete(k);
     this.chopped.delete(k);
     this.deadwoodTaken.delete(k);
+    this.rootsTaken.delete(k);
     this.propsVersion++;
   }
   private growProps() {
@@ -719,7 +724,7 @@ export class Sim {
     }
     if (best < 0) return null;
     const cx = best % N, cz = (best / N) | 0;
-    const camp = this.foundCamp(best, { berries: 14, meat: 14, fish: 0, preserved: 0, wood: 8, fiber: 4, cordage: 2, mud: 0, stone: 0 }, -1, -1);
+    const camp = this.foundCamp(best, { berries: 14, meat: 14, fish: 0, preserved: 0, wood: 8, fiber: 4, cordage: 2, mud: 0, stone: 0, hides: 0, roots: 0 }, -1, -1);
     camp.origin = strangers ? 'strangers' : 'first';
     const giveAxes = () => (camp.knows.includes('axe') ? 2 : 0);
     // strangers bring some of what is known in the world by now, more the later they come
@@ -1123,7 +1128,9 @@ export class Sim {
       const b = this.buildings.find((q) => q.id === p.home);
       if (b) shelter = specOf(b).shelter;
     }
-    if (temp < 15) p.warmth -= (15 - temp) * 0.018 * (1 - shelter) * (age < 3 || age > 60 ? 1.25 : 1);
+    // a hide cloak keeps off some of the cold, indoors or out
+    const cloak = p.cloak !== undefined ? 1 - CLOAK_WARM : 1;
+    if (temp < 15) p.warmth -= (15 - temp) * 0.018 * (1 - shelter) * (age < 3 || age > 60 ? 1.25 : 1) * cloak;
     else p.warmth += 0.5;
     if (nearFire) p.warmth += sheltered ? 1.7 : 1.3;
     if (p.indoors && shelter > 0 && temp > -2) p.warmth += 0.15;
@@ -1370,8 +1377,11 @@ export class Sim {
     if (!axes && !choppers) return this.knows('axe', c) && this.canCraft('axe', c) ? 'axe' : 'chopper';
     if (this.knows('axe', c) && axes < 2 + Math.floor(ms.length / 8)) return 'axe';
     if (choppers < (this.knows('axe', c) && axes > 0 ? 1 : 2)) return 'chopper';
-    if (this.knows('digstick', c) && have('stick') < (this.knows('daub', c) ? 2 : 1)) return 'stick';
+    // (and a few more for the root diggers, once the band digs roots in autumn)
+    if (this.knows('digstick', c) && have('stick') < (this.knows('daub', c) ? 2 : 1) + (this.knows('roots', c) ? 1 + Math.floor(ms.length / 8) : 0)) return 'stick';
     if (this.knows('baskets', c) && have('basket') < Math.min(4, 1 + Math.floor(ms.length / 5))) return 'basket';
+    // a cloak for everyone past their first year, while there are hides to make them from
+    if (this.knows('cloaks', c) && c.stock.hides >= HIDES_PER_CLOAK && have('cloak') < ms.filter((p) => this.age(p) >= 1).length) return 'cloak';
     if (this.knows('pottery', c) && have('pot') < Math.min(6, 2 + Math.floor(ms.length / 4))) return 'pot';
     return null;
   }
@@ -1390,6 +1400,61 @@ export class Sim {
     const making = this.members(c).filter((p) => p.task?.kind === 'craft' && p.task.amount > 0 && RECIPE_KEYS[p.task.ref] === kind).length;
     return this.toolsOf(c, kind).length + making < (c.jobs[`want.${kind}`] ?? 0);
   }
+  /** Homes lived in whose grass bedding is flat (or nearly), and that nobody is already bringing grass to. */
+  bedsWanted(c = this.camp) {
+    const coming = new Set(this.people.filter((p) => p.alive && p.task?.kind === 'bed').map((p) => p.task!.ref));
+    return this.buildings.filter((b) => b.band === c.id && b.built && (b.kind === 'hut' || b.kind === 'leanto') && (b.bedding ?? 0) <= 4 && !coming.has(b.id)
+      && this.people.some((p) => p.alive && p.home === b.id)).length;
+  }
+  /**
+   * Each morning: cloaks go with their wearers (to a new band, too), come back to the pile from the
+   * dead, and those on the pile go to whoever has none, the very young and the old first. The grass
+   * in the homes goes a day staler.
+   */
+  private dressAndBed() {
+    for (const it of this.items.slice()) {
+      if (it.kind !== 'cloak' || it.wearer === undefined) continue;
+      const w = this.byId.get(it.wearer);
+      if (w && w.alive && w.cloak === it.id) {
+        it.band = w.band;
+        // a day of wear in the cold
+        if (this.tempAt(w) < 10 && this.wearTool(it)) {
+          delete w.cloak;
+          this.remember(w, 'tool_broke', -2, 0.3, -1, 'Their hide cloak wore through.');
+        }
+      } else {
+        if (w && w.cloak === it.id) delete w.cloak;
+        delete it.wearer;
+      }
+    }
+    for (const c of this.liveCamps()) {
+      const free = this.items.filter((i) => i.kind === 'cloak' && i.band === c.id && i.wearer === undefined && i.holder < 0);
+      if (!free.length) continue;
+      const bare = this.members(c).filter((p) => p.cloak === undefined && this.age(p) >= 1)
+        .sort((a, b) => this.coldNeed(b) - this.coldNeed(a) || a.id - b.id);
+      for (const p of bare) {
+        const it = free.shift();
+        if (!it) break;
+        it.wearer = p.id;
+        p.cloak = it.id;
+        p.thought = 'Wrapped in a new hide cloak.';
+      }
+    }
+    for (const b of this.buildings) if ((b.bedding ?? 0) > 0) {
+      b.bedding = Math.max(0, b.bedding! - 1);
+      if (!b.bedding) this.buildingsVersion++;
+    }
+  }
+  /** How much someone feels the cold: the very young and the old the most. */
+  private coldNeed(p: Person) {
+    const age = this.age(p);
+    return age < 3 || age > 60 ? 2 : age < 14 ? 1 : 0;
+  }
+  /** The cloak someone wears, if any. */
+  cloakOf(p: Person) {
+    return p.cloak !== undefined ? this.items.find((i) => i.id === p.cloak) : undefined;
+  }
+
   /** A band leaving its camp takes up its traps and carries them along. */
   takeUpTraps(c: Camp) {
     for (const it of this.items) {
@@ -1534,6 +1599,7 @@ export class Sim {
     // told more quietly
     const known = this.camps.some((o) => o !== c && o.knows.includes(d.key));
     this.learn(c, d.key, 'found', p.id);
+    for (const k of d.brings ?? []) if (!c.knows.includes(k)) this.learn(c, k, 'found', p.id);
     this.remember(p, 'discovery', known ? 20 : 30, 5, -1, known ? `Worked out how to ${d.taught}.` : d.memory);
     if (known) this.event('discovery', `${p.name} of ${c.name} worked out how to ${d.taught}, as other bands had before.`, [p.id], p.x, p.z, 2.5);
     else this.event('discovery', `${p.name} ${d.found}.`, [p.id], p.x, p.z, 5);
@@ -1602,11 +1668,13 @@ export class Sim {
     }
     for (const [k, until] of this.unreachable) if (until <= this.tick) this.unreachable.delete(k);
     for (const [k, until] of this.deadwoodTaken) if (until <= this.tick) this.deadwoodTaken.delete(k);
+    for (const [k, until] of this.rootsTaken) if (until <= this.tick) this.rootsTaken.delete(k);
     this.berries(dayOfYear);
     this.grasses();
     this.trees(dayOfYear);
     this.herdsDaily(dayOfYear);
     this.traps();
+    this.dressAndBed();
     // each band's own day: stores, births and deaths, and the morning plan
     for (const c of this.liveCamps()) {
       this.camp = c;
@@ -1627,7 +1695,7 @@ export class Sim {
     const s = this.camp.stock;
     const before = { ...s };
     this.spoilNow(s);
-    for (const k of ['berries', 'meat', 'fish', 'preserved'] as const) this.book(`spoiled.${k}`, before[k] - s[k]);
+    for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots'] as const) this.book(`spoiled.${k}`, before[k] - s[k]);
   }
   private spoilNow(s: Stock) {
     const cold = seasonOf(this.tick) === 3 ? 0.4 : seasonOf(this.tick) === 0 || seasonOf(this.tick) === 2 ? 0.75 : 1;
@@ -1641,6 +1709,8 @@ export class Sim {
     s.fish *= 1 - 0.05 * cold * store;
     s.meat *= 1 - 0.035 * cold * store;
     s.preserved *= 1 - 0.004;
+    // roots keep most of a winter in a cool store
+    s.roots *= 1 - 0.01 * cold * store;
   }
 
   private berries(dayOfYear: number) {
@@ -2038,7 +2108,7 @@ export class Sim {
     if (site < 0) return false;
     // they take a fair share of the stores with them
     const share = (group.length / ms.length) * 0.85;
-    const take: Stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
+    const take: Stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0 };
     for (const k of Object.keys(take) as (keyof Stock)[]) { take[k] = c.stock[k] * share; c.stock[k] -= take[k]; }
     // and the wood to get a fire going and a first roof up
     const wood = Math.min(c.stock.wood * 0.5, Math.max(0, 16 - take.wood));
@@ -2117,7 +2187,7 @@ export class Sim {
     this.join(ms, nc);
     c.gone = this.tick;
     this.dropSites(c);
-    c.stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
+    c.stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0 };
     this.hearth(c).fuel = 0;
     nc.settled = this.tick;
     for (const p of ms) this.remember(p, 'moved_camp', poorWood ? 4 : 10, 2, -1, `Left ${c.name} behind for ${nc.name}.`);
@@ -2355,7 +2425,7 @@ export class Sim {
       this.event('death_quarrel', `${att.name} killed ${vic.name} in a quarrel. There was nowhere to send ${att.sex ? 'him' : 'her'}.`, [att.id, vic.id], att.x, att.z, 4);
       return;
     }
-    const take: Stock = { berries: 0, meat: Math.min(6, c.stock.meat), fish: 0, preserved: 0, wood: Math.min(6, c.stock.wood), fiber: 0, cordage: 0, mud: 0, stone: 0 };
+    const take: Stock = { berries: 0, meat: Math.min(6, c.stock.meat), fish: 0, preserved: 0, wood: Math.min(6, c.stock.wood), fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0 };
     c.stock.meat -= take.meat;
     c.stock.wood -= take.wood;
     this.book('carried', take.meat + take.wood, c);
@@ -2395,11 +2465,11 @@ export class Sim {
     const l = c.ledger;
     const page = (r: Record<string, number> | undefined) => {
       const g = (k: string) => Math.round(r?.[k] ?? 0);
-      const food = (pre: string) => g(`${pre}.berries`) + g(`${pre}.meat`) + g(`${pre}.fish`) + g(`${pre}.preserved`);
+      const food = (pre: string) => g(`${pre}.berries`) + g(`${pre}.meat`) + g(`${pre}.fish`) + g(`${pre}.preserved`) + g(`${pre}.roots`);
       return {
-        gathered: { berries: g('gathered.berries'), meat: g('gathered.meat'), fish: g('gathered.fish'), wood: g('gathered.wood'), fiber: g('gathered.fiber') },
+        gathered: { berries: g('gathered.berries'), meat: g('gathered.meat'), fish: g('gathered.fish'), roots: g('gathered.roots'), wood: g('gathered.wood'), fiber: g('gathered.fiber') },
         twisted: g('twisted'), thatch: g('built.fiber'), lashed: g('built.cordage'),
-        food: g('gathered.berries') + g('gathered.meat') + g('gathered.fish'),
+        food: g('gathered.berries') + g('gathered.meat') + g('gathered.fish') + g('gathered.roots'),
         eaten: food('eaten'), spoiled: food('spoiled'), dried: g('dried'), burned: g('burned'), built: g('built'),
         carried: g('carried'), brought: g('brought'),
       };
@@ -2419,7 +2489,7 @@ export class Sim {
     const daysToWinterEnd = s < 3 ? (3 - s) * 12 + 12 : (4 - s) * 12;
     const winterNow = s >= 3;
     // berries spoil: count them at half value against the winter
-    const lasting = c.stock.meat + c.stock.fish * 0.8 + c.stock.preserved + c.stock.berries * 0.4;
+    const lasting = c.stock.meat + c.stock.fish * 0.8 + c.stock.preserved + c.stock.roots * 0.9 + c.stock.berries * 0.4;
     // from late summer on, the store has to carry the band through to the end of winter
     const need = meals * (winterNow ? daysToWinterEnd + 2 : s >= 1.75 ? daysToWinterEnd : Math.min(daysToWinterEnd, 20));
     const foodP = clamp01(1.15 - (lasting / Math.max(1, need)) * 0.9, winterNow ? 0.3 : 0.1, 1.2);
@@ -2439,7 +2509,9 @@ export class Sim {
     const siteFiber = owed('fiber') + siteCord * FIBER_PER_CORD;
     const siteMud = owed('mud'), siteStone = owed('stone');
     const fiberHave = c.stock.fiber + c.stock.cordage * FIBER_PER_CORD;
-    const fiberWant = siteFiber + 8;
+    // homes lived in whose grass bedding is flat or nearly so
+    const bedding = this.knows('bedding') && this.bedsWanted(c) > 0;
+    const fiberWant = siteFiber + 8 + (bedding ? BED_FIBER : 0);
     const woodP = clamp01((fuelNeed + siteWood - c.stock.wood) / (fuelNeed + siteWood + 1) * 1.15, 0.08, 1.0);
     const logsLying = this.countProps(LOGS);
     const make = this.toolToMake(c);
@@ -2464,6 +2536,10 @@ export class Sim {
       'craft.stick': make === 'stick' ? 0.5 : 0,
       'craft.basket': make === 'basket' ? 0.45 : 0,
       'craft.pot': make === 'pot' ? 0.4 : 0,
+      // cloaks matter most with the cold coming
+      'craft.cloak': make === 'cloak' ? (s >= 1.5 ? 0.6 : 0.4) : 0,
+      // fresh grass for the homes whose bedding has gone flat, from grass not wanted for a roof
+      bed: bedding && c.stock.fiber - owed('fiber') >= BED_FIBER ? 0.4 : 0,
       // snares and fish traps: more of them when food is short
       'want.snare': traps.snare,
       'want.fishtrap': traps.fishtrap,
@@ -2483,7 +2559,9 @@ export class Sim {
     if (foodP > 0.8) c.plan.push(winterNow ? 'Find food to last the winter' : 'Store food before winter');
     if (woodP > 0.5) c.plan.push(s > 2.0 && !winterNow ? 'Lay in firewood for the winter' : 'Gather wood');
     if (siteFiber > fiberHave) c.plan.push('Cut grass and reeds for thatch and cordage');
-    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : make === 'stick' ? 'Make a digging stick' : make === 'basket' ? 'Weave a basket for gathering' : make === 'pot' ? 'Make a clay pot for the stores' : 'Knap a hand chopper');
+    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : make === 'stick' ? 'Make a digging stick' : make === 'basket' ? 'Weave a basket for gathering' : make === 'pot' ? 'Make a clay pot for the stores' : make === 'cloak' ? 'Sew hide cloaks against the cold' : 'Knap a hand chopper');
+    if (this.knows('roots') && seasonOf(this.tick) === 2) c.plan.push('Dig roots for the winter stores');
+    if (c.jobs.bed) c.plan.push('Lay fresh grass in the homes to sleep on');
 
     this.craftNames(c);
 
@@ -2894,7 +2972,7 @@ export class Sim {
   }
 
   // ------------------------------------------------------------------ snapshots for the renderer
-  static PERSON_STRIDE = 16;
+  static PERSON_STRIDE = 17;
   packPeople(): Float32Array {
     const list = this.people.filter((p) => p.alive || !p.buried);
     const out = new Float32Array(list.length * Sim.PERSON_STRIDE);
@@ -2919,6 +2997,8 @@ export class Sim {
       // the tool in hand: 0 none, else ITEM_KINDS index + 1 (1 chopper, 2 axe, 3 stick, 4 snare, 5 fish trap)
       const tool = this.heldBy(p);
       out[o + 15] = tool ? ITEM_KINDS.indexOf(tool.kind) + 1 : 0;
+      // a hide cloak over the shoulders
+      out[o + 16] = p.cloak !== undefined ? 1 : 0;
     });
     return out;
   }
@@ -2944,14 +3024,14 @@ export class Sim {
       id: b.id, band: b.band, kind: b.kind, x: b.x, z: b.z, rot: b.rot, built: b.built,
       progress: b.built ? 1 : Math.min(0.98, (b.work / Math.max(1, specOf(b).work)) * 0.85 + (b.wood / Math.max(1, specOf(b).wood)) * 0.15),
       walls: b.walls ?? 'wood',
-      fuel: b.fuel, owner: b.owner,
+      fuel: b.fuel, owner: b.owner, bedding: (b.bedding ?? 0) > 0,
     }));
   }
   /** What lies on each band's stockpile, for drawing it (food, and the pots it is kept in, are out of sight once there is a storehouse). */
   packPiles() {
     return this.buildings.filter((b) => b.kind === 'stockpile').map((b) => {
       const c = this.campById(b.band);
-      const st = c && !c.gone ? c.stock : { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
+      const st = c && !c.gone ? c.stock : { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0 };
       const inside = this.buildings.some((q) => q.band === b.band && q.kind === 'storehouse' && q.built);
       const pots = inside || !c ? 0 : this.toolsOf(c, 'pot').length;
       return { id: b.id, wood: st.wood, berries: inside ? 0 : st.berries, meat: inside ? 0 : st.meat, fish: inside ? 0 : st.fish, preserved: inside ? 0 : st.preserved, pots };
@@ -3102,10 +3182,11 @@ export class Sim {
         const res = this.people.filter((p) => p.alive && p.home === b.id);
         for (const p of res) lines.push(L(res.indexOf(p) === 0 ? 'Home to' : '', `${p.name}, ${Math.floor(this.age(p))}`, pref(p.id)));
         if (b.built) lines.push(L('Shelter', `Keeps out ${Math.round(spec.shelter * 100)}% of the cold`));
+        if (b.built && this.knows('bedding')) lines.push(L('Bedding', (b.bedding ?? 0) > 0 ? `Fresh grass, for ${Math.ceil(b.bedding!)} more ${Math.ceil(b.bedding!) === 1 ? 'day' : 'days'}` : 'The bare ground: the grass wants changing'));
       }
       if (b.kind === 'storehouse') {
         const st = this.camp.stock;
-        lines.push(L('Holding', `${Math.round(foodTotal(st))} meals: ${Math.round(st.berries)} berries, ${Math.round(st.meat)} meat, ${Math.round(st.fish)} fish, ${Math.round(st.preserved)} dried`));
+        lines.push(L('Holding', `${Math.round(foodTotal(st))} meals: ${Math.round(st.berries)} berries, ${Math.round(st.meat)} meat, ${Math.round(st.fish)} fish, ${Math.round(st.roots)} roots, ${Math.round(st.preserved)} dried`));
         const walls = b.walls === 'stone' ? 'Its stone walls keep out damp and vermin' : b.walls === 'daub' ? 'Its daubed walls keep it dry' : 'Raised off the ground, it keeps food dry';
         notes.push(`${walls}: food inside spoils ${Math.round((1 - spec.keep) * 100)}% slower. Firewood stays stacked at the stockpile.`);
       }
@@ -3127,11 +3208,13 @@ export class Sim {
           lines.push(L('Berries', `${Math.round(st.berries)} handfuls`));
           lines.push(L('Meat', `${Math.round(st.meat)} meals`));
           lines.push(L('Fish', `${Math.round(st.fish)} meals`));
+          if (st.roots > 0.5) lines.push(L('Roots', `${Math.round(st.roots)} meals`));
           if (st.preserved > 0.5) lines.push(L('Dried', `${Math.round(st.preserved)} meals`));
         }
+        if (st.hides >= 0.5) lines.push(L('Hides', `${Math.floor(st.hides)}, kept for cloaks`));
         const book = this.stores(this.camp);
         const y = book.now;
-        lines.push(L(`This year (${book.year})`, `${y.food} food in (${y.gathered.berries} berries, ${y.gathered.meat} meat, ${y.gathered.fish} fish), ${y.gathered.wood} wood`));
+        lines.push(L(`This year (${book.year})`, `${y.food} food in (${y.gathered.berries} berries, ${y.gathered.meat} meat, ${y.gathered.fish} fish${y.gathered.roots ? `, ${y.gathered.roots} roots` : ''}), ${y.gathered.wood} wood`));
         lines.push(L('Used', `${y.eaten} eaten, ${y.spoiled} spoiled${y.dried ? `, ${y.dried} dried` : ''}; ${y.burned} wood burned, ${y.built} built with`));
         if (y.gathered.fiber + y.twisted > 0) lines.push(L('Fiber', `${y.gathered.fiber} cut, ${y.twisted} twisted into cordage, ${y.thatch} thatch and ${y.lashed} cordage built with`));
         if (book.last.food + book.last.gathered.wood > 0) lines.push(L('Last year', `${book.last.food} food in, ${book.last.eaten} eaten, ${book.last.spoiled} spoiled; ${book.last.gathered.wood} wood in, ${book.last.burned} burned`));
@@ -3287,7 +3370,7 @@ export class Sim {
     const living = this.living();
     const n = Math.max(1, living.length);
     // stores across every band
-    const st: Stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0 };
+    const st: Stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0 };
     for (const c of this.liveCamps()) for (const k of Object.keys(st) as (keyof Stock)[]) st[k] += c.stock[k];
     this.history.push({
       tick: this.tick,
@@ -3318,9 +3401,9 @@ export class Sim {
     for (const c of this.camps) {
       const r = c.ledger?.total ?? {};
       const g = (k: string) => r[k] ?? 0;
-      t.gFood += g('gathered.berries') + g('gathered.meat') + g('gathered.fish');
+      t.gFood += g('gathered.berries') + g('gathered.meat') + g('gathered.fish') + g('gathered.roots');
       t.gWood += g('gathered.wood');
-      for (const k of ['berries', 'meat', 'fish', 'preserved']) { t.eaten += g(`eaten.${k}`); t.spoiled += g(`spoiled.${k}`); }
+      for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots']) { t.eaten += g(`eaten.${k}`); t.spoiled += g(`spoiled.${k}`); }
       t.burned += g('burned');
     }
     for (const k of Object.keys(t) as (keyof typeof t)[]) t[k] = Math.round(t[k]);
@@ -3400,6 +3483,10 @@ export class Sim {
       tool: (() => {
         const it = this.heldBy(p);
         return it ? `${ITEMS[it.kind].label.toLowerCase()}${it.wear >= 0.6 ? ', well worn' : it.wear < 0.1 ? ', new' : ''}` : null;
+      })(),
+      cloak: (() => {
+        const it = this.cloakOf(p);
+        return it ? `hide cloak${it.wear >= 0.6 ? ', well worn' : it.wear < 0.1 ? ', new' : ''}` : null;
       })(),
       indoors: p.indoors,
       campDist: hyp(p.x - this.campOf(p).x, p.z - this.campOf(p).z),
@@ -3499,6 +3586,7 @@ export interface SaveData {
   unreachable: Entries<number, number>;
   chopped: Entries<number, number>;
   deadwoodTaken: Entries<number, number>;
+  rootsTaken?: Entries<number, number>;
   fish: string;
   game?: string;
   stats: Sim['stats'];

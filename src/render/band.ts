@@ -10,7 +10,7 @@ import { addCommon } from './shaderlib';
 import { U } from './env';
 import gait from '../assets/gait.json';
 
-const P_STRIDE = 16;
+const P_STRIDE = 17;
 /** Poses only the renderer chooses (the simulation just says where people are). */
 const SWIM = 19, TREAD = 20;
 const FISH_TASK = TASK_KINDS.indexOf('fish') + 1;
@@ -58,7 +58,7 @@ function baseArm(carry: number, act: number): [number, number, number] {
   if (carry === CARRY.Spear) return act === ACT.Hunt ? [-2.35, -0.35, 0.28] : act === ACT.Fish ? [-2.2, -0.35, 0.28] : [-0.45, -0.75, 0.05];
   if (carry === CARRY.Log || carry === CARRY.Meat || carry === CARRY.Stone) return [-1.55, -1.95, 0.05];
   if (carry === CARRY.Body) return [-1.25, -1.35, 0.05];
-  if (carry === CARRY.Berries || carry === CARRY.Fiber || carry === CARRY.Mud) return [-0.15, -0.55, 0.05];
+  if (carry === CARRY.Berries || carry === CARRY.Fiber || carry === CARRY.Mud || carry === CARRY.Roots) return [-0.15, -0.55, 0.05];
   return [-0.1, -0.5, 0.05];
 }
 /** Where the right hand is (person space) for given arm angles and lean, as the shader bends the body. */
@@ -117,6 +117,8 @@ interface Shown {
   band: number;
   /** the tool in hand: 0 none, 1 chopper, 2 axe, 3 digging stick, 4 snare, 5 fish trap, 6 basket */
   tool: number;
+  /** wears a hide cloak */
+  cloak: boolean;
   /** where the axe swing had got to last frame; whether this stab has hit the water yet */
   swing: number; splashed: boolean;
 }
@@ -167,7 +169,7 @@ export class BandLayer {
       [CARRY.Spear, 'spear'], [CARRY.Body, 'body'], [CARRY.Baby, 'baby'], [AXE, 'axe'], [CHOPPER, 'chopper'],
       [STICK, 'stick'], [SNARE, 'snare'], [FISHTRAP, 'fishtrap'], [BASKET, 'basket'], [BASKET_FULL, 'basketFull'],
       // cut grass in a bundle, clay in a hide, a stone on the shoulder
-      [CARRY.Fiber, 'fiber'], [CARRY.Mud, 'mud'], [CARRY.Stone, 'stone'],
+      [CARRY.Fiber, 'fiber'], [CARRY.Mud, 'mud'], [CARRY.Stone, 'stone'], [CARRY.Roots, 'roots'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
@@ -183,7 +185,7 @@ export class BandLayer {
       this.group.add(m);
     }
     // buildings
-    for (const kind of ['hearth', 'leanto', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed']) {
+    for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -353,6 +355,8 @@ export class BandLayer {
       ['foreL', 8, JT.shoulderL, JT.elbowL], ['foreR', 9, JT.shoulderR, JT.elbowR],
       ['shinL', 10, JT.hipL, JT.kneeL], ['shinR', 11, JT.hipR, JT.kneeR],
       ['hairB', 12, JT.neck, none], ['hairU', 13, JT.neck, none], ['beard', 14, JT.neck, none],
+      // the hide cloak hangs from the shoulders and goes with the upper body
+      ['cloak', 15, JT.hip, none],
     ];
     const list: THREE.BufferGeometry[] = [];
     for (const [name, id, p1, p2] of parts) {
@@ -653,7 +657,7 @@ export class BandLayer {
       if (!s) {
         s = { x: P[o + 1], z: P[o + 2], px: P[o + 1], pz: P[o + 2], y: this.groundAt(P[o + 1], P[o + 2]), angle: 0, act: 0, indoors: false, age: 0, sex: 0, look: 0, seen, task: 0,
           dx: P[o + 1], dz: P[o + 2], want: 0, phase: (id * 0.37) % 1, run: 0, shownAct: P[o + 5], prevAct: P[o + 5], actAt: -1e9, still: 0,
-          flash: P[o + 13], gesture: null, gestAt: 0, gestCarry: 0, carry: P[o + 6], fx: P[o + 3], fz: P[o + 4], swing: 0, splashed: false, band: P[o + 14], tool: P[o + 15] };
+          flash: P[o + 13], gesture: null, gestAt: 0, gestCarry: 0, carry: P[o + 6], fx: P[o + 3], fz: P[o + 4], swing: 0, splashed: false, band: P[o + 14], tool: P[o + 15], cloak: P[o + 16] > 0.5 };
         s.angle = s.want = Math.atan2(P[o + 3] - P[o + 1], P[o + 4] - P[o + 2]) || 0;
         this.people.set(id, s);
       } else {
@@ -670,6 +674,7 @@ export class BandLayer {
       s.fz = P[o + 4];
       s.band = P[o + 14];
       s.tool = P[o + 15];
+      s.cloak = P[o + 16] > 0.5;
       const fx = P[o + 3] - P[o + 1], fz = P[o + 4] - P[o + 2];
       if (fx * fx + fz * fz > 1e-4) s.want = Math.atan2(fx, fz);
       s.act = P[o + 5];
@@ -864,7 +869,7 @@ export class BandLayer {
       const beard = s.sex === 1 && s.age >= 18 && (look >>> 24) % 10 < 5 ? 1 : 0;
       const dead = s.act === ACT.Dead ? 1 : 0;
       const blend = Math.min(1, Math.max(0, (now - s.actAt) / 220));
-      anim.setXYZW(n, s.shownAct, s.prevAct, blend, hairStyle + elder * 4 + dead * 8 + beard * 16);
+      anim.setXYZW(n, s.shownAct, s.prevAct, blend, hairStyle + elder * 4 + dead * 8 + beard * 16 + (s.cloak ? 32 : 0));
       // a one-off move under way
       let gpr = -1;
       const held = this.debugHold.get(id);
@@ -1126,6 +1131,7 @@ export class BandLayer {
       const kind = this.modelOf(b);
       need.set(kind, (need.get(kind) ?? 0) + 1);
       if (!b.built) need.set('site', (need.get('site') ?? 0) + 1);
+      if (b.bedding) need.set('bedding', (need.get('bedding') ?? 0) + 1);
     }
     for (const [kind, n] of need) {
       const m = this.buildingMeshes.get(kind);
@@ -1173,6 +1179,8 @@ export class BandLayer {
         this.auraList.unshift({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, r: 7 + Math.sqrt(pop) * 1.8, c: bc.color, k: 0.3, terr: true });
       }
       if (!b.built) put('site', cx + 0.28, cz + 0.3, rot + 0.6, 1, 0.8);
+      // fresh grass laid under a lean-to (a hut's is out of sight inside)
+      if (b.bedding && b.kind === 'leanto' && b.built) put('bedding', cx, cz, rot, 1, 1, b.band);
       if (b.kind === 'hearth' && b.fuel > 0) fires.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, fuel: b.fuel });
     }
     for (const [kind, m] of this.buildingMeshes) {
@@ -1382,6 +1390,7 @@ function carryOffset(kind: number, act: number) {
     case CARRY.Berries: p.set(0.075, 0.16, 0.04); break;
     case CARRY.Fiber: p.set(0.078, 0.15, 0.035); e.set(0.15, 0, 0); break; // gripped at the tie, heads up
     case CARRY.Mud: p.set(0.076, 0.15, 0.035); break; // hanging from the twist of the hide
+    case CARRY.Roots: p.set(0.076, 0.15, 0.035); break; // held by the tied stems
     case CARRY.Stone: p.set(0.06, 0.315, -0.008); e.set(0, 0.3, 0); break; // on the right shoulder
     case CARRY.Meat: p.set(0, 0.3, -0.03); e.set(0, Math.PI / 2, 0); break;
     case CARRY.Fish: p.set(0.078, 0.15, 0.02); e.set(0, Math.PI / 2, -1.2); break;
@@ -1623,10 +1632,11 @@ void poseVertex(vec3 pos, out vec3 v, out mat3 R) {
   bool left = part > 1.5 && part < 2.5 || part > 3.5 && part < 4.5 || part > 7.5 && part < 8.5 || part > 9.5 && part < 10.5;
   bool leg = part > 3.5 && part < 5.5 || part > 9.5 && part < 11.5;
   bool arm = part > 1.5 && part < 3.5 || part > 7.5 && part < 9.5;
-  bool headish = part > 0.5 && part < 1.5 || part > 5.5 && part < 7.5 || part > 11.5;
-  // only one hair style is shown (parts 6, 7, 12, 13 are styles 0-3), and the beard only on the bearded
+  bool headish = part > 0.5 && part < 1.5 || part > 5.5 && part < 7.5 || part > 11.5 && part < 14.5;
+  // only one hair style is shown (parts 6, 7, 12, 13 are styles 0-3), the beard only on the bearded,
+  // and the cloak (part 15) only on those who have one
   float hairPart = part > 5.5 && part < 7.5 ? part - 6.0 : part > 11.5 && part < 13.5 ? part - 10.0 : -1.0;
-  if ((hairPart > -0.5 && abs(hairPart - hairStyle) > 0.5) || (part > 13.5 && style < 15.5)) { v = vec3(0.0, -1.0, 0.0); R = mat3(0.0); return; }
+  if ((hairPart > -0.5 && abs(hairPart - hairStyle) > 0.5) || (part > 13.5 && part < 14.5 && mod(style, 32.0) < 15.5) || (part > 14.5 && style < 31.5)) { v = vec3(0.0, -1.0, 0.0); R = mat3(0.0); return; }
   // lower joint first (knee, elbow), then the limb it hangs from
   if (part > 9.5 && part < 11.5) turn(v, R, rx(left ? p.knL : p.knR), aPivot2);
   else if (part > 7.5 && part < 9.5) turn(v, R, rx(left ? p.elL : p.elR), aPivot2);
