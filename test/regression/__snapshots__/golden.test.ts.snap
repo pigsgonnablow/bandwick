@@ -7,13 +7,13 @@ exports[`golden histories > seed 1, five years on 1`] = `
   ],
   "events": 46,
   "everLived": 12,
-  "hash": "c4edc864",
+  "hash": "0d83ea39",
   "homes": 8,
   "pop": 11,
   "stats": {
     "births": 2,
     "deaths": 1,
-    "felled": 211,
+    "felled": 212,
     "froze": 0,
     "kills": 46,
     "peak": 11,
@@ -37,6 +37,7 @@ exports[`golden histories > seed 1, five years on 1`] = `
     "Dryjia, 22, died of fever.",
     "Galia sharpened a stout stick, hardened its point in the fire, and found the ground gave way to it.",
     "Galia lashed a stone head to a wooden haft and made the first axe, heavy enough for the big trees.",
+    "Galia lined a basket with clay, left it in the embers, and found a hard pot where the basket had burned away.",
   ],
   "tick": 58895,
 }

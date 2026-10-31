@@ -762,6 +762,16 @@ export function deposit(s: Sim, p: Person) {
   if (kind) {
     st[kind] += a;
     s.book(`gathered.${kind}`, a);
+    // wood brought home to a dead fire goes straight onto it, rather than waiting for someone to fetch it
+    const h = kind === 'wood' ? s.hearth() : undefined;
+    if (h && h.fuel <= 0 && hyp(p.x - s.camp.x, p.z - s.camp.z) < 4) {
+      const put = Math.min(4, Math.floor(st.wood));
+      st.wood -= put;
+      s.book('burned', put);
+      h.fuel = Math.min(12, h.fuel + put);
+      s.buildingsVersion++;
+      p.thought = 'Put an armful of wood straight on the dead fire.';
+    }
     // handling the food and the thatch is what gives people ideas about keeping them
     if (kind === 'berries' || kind === 'meat' || kind === 'fish') s.practise(p, 'store_food', a);
     if (kind === 'meat' || kind === 'fish') s.practise(p, 'store_meat', a);
