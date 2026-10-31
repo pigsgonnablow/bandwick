@@ -169,7 +169,6 @@ describe('healing herbs', () => {
     s.camp.stock.herbs = 1;
     sick.sick = 3;
     nurse.task = { ...task(s, 'nurse', sick, sick.id), amount: 1, near: true };
-    nurse.carry = CARRY.Herbs;
     s.camp.stock.herbs = 0;
     sick.sick = 0;
     runTask(s, nurse);

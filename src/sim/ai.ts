@@ -514,7 +514,7 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       return newTask(s, kind, ti(st.x, st.z), st.x, st.z);
     }
     case 'herbs': {
-      const k = s.nearestProp(c.x, c.z, 24, (k) => isBush(s.propType[k]), (k, d) => -d + ((k * 7919) % 13) * 0.4);
+      const k = s.nearestProp(c.x, c.z, 24, (k) => isBush(s.propType[k]), (k, d) => -d + ((s.propTile[k] * 7919) % 13) * 0.4);
       if (k < 0) return null;
       s.reserved.set(k, p.id);
       p.thought = 'Off to find healing plants in the undergrowth.';

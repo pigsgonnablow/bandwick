@@ -1234,7 +1234,7 @@ export class Sim {
   /** Put down whatever they carry where they stand: logs stay as a pile, food is lost (and booked as spoiled). */
   dropCarry(p: Person) {
     const k = p.carry;
-    const food = k === CARRY.Berries ? 'berries' : k === CARRY.Meat ? 'meat' : k === CARRY.Fish ? 'fish' : '';
+    const food = k === CARRY.Berries ? 'berries' : k === CARRY.Meat ? 'meat' : k === CARRY.Fish ? 'fish' : k === CARRY.Roots ? 'roots' : k === CARRY.Nuts ? 'nuts' : k === CARRY.Herbs ? 'herbs' : '';
     if (food && p.carryAmt > 0) this.book(`spoiled.${food}`, p.carryAmt);
     if (k === CARRY.Log && p.carryAmt > 0) {
       const lp = this.addProp(LOGS, p.x, this.world.groundY[this.tileOf(p)], p.z, 0, 0.8);
