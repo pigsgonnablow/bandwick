@@ -46,6 +46,8 @@ export class InvariantChecker {
       if (c.stock.bones > BONES_KEPT + 2) flag('more bones than are kept', `${at} ${c.name}: ${c.stock.bones}`);
       if (c.stock.trinkets > TRINKETS_KEPT + 2) flag('more teeth and shells than are kept', `${at} ${c.name}: ${c.stock.trinkets}`);
     }
+    // a wild hive is a one-person job: two at once is a band falling over itself
+    for (const c of sim.liveCamps()) if (sim.members(c).filter((p) => p.task?.kind === 'honey').length > 1) flag('two smoking out hives at once', `${at} ${c.name}`);
     for (const it of sim.items) if (it.wearer !== undefined) {
       const w = sim.byId.get(it.wearer);
       if (w?.alive && w.cloak !== it.id) flag('cloak claims a wearer who wears another', `${at} ${it.id} -> ${w.name}`);

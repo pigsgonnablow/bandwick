@@ -58,7 +58,7 @@ function baseArm(carry: number, act: number): [number, number, number] {
   if (carry === CARRY.Spear) return act === ACT.Hunt ? [-2.35, -0.35, 0.28] : act === ACT.Fish ? [-2.2, -0.35, 0.28] : [-0.45, -0.75, 0.05];
   if (carry === CARRY.Log || carry === CARRY.Meat || carry === CARRY.Stone) return [-1.55, -1.95, 0.05];
   if (carry === CARRY.Body) return [-1.25, -1.35, 0.05];
-  if (carry === CARRY.Berries || carry === CARRY.Fiber || carry === CARRY.Mud || carry === CARRY.Roots || carry === CARRY.Nuts || carry === CARRY.Herbs) return [-0.15, -0.55, 0.05];
+  if (carry === CARRY.Berries || carry === CARRY.Fiber || carry === CARRY.Mud || carry === CARRY.Roots || carry === CARRY.Nuts || carry === CARRY.Herbs || carry === CARRY.Eggs || carry === CARRY.Honey || carry === CARRY.Mushrooms) return [-0.15, -0.55, 0.05];
   return [-0.1, -0.5, 0.05];
 }
 /** Where the right hand is (person space) for given arm angles and lean, as the shader bends the body. */
@@ -170,6 +170,7 @@ export class BandLayer {
       [STICK, 'stick'], [SNARE, 'snare'], [FISHTRAP, 'fishtrap'], [BASKET, 'basket'], [BASKET_FULL, 'basketFull'],
       // cut grass in a bundle, clay in a hide, a stone on the shoulder
       [CARRY.Fiber, 'fiber'], [CARRY.Mud, 'mud'], [CARRY.Stone, 'stone'], [CARRY.Roots, 'roots'], [CARRY.Nuts, 'nuts'], [CARRY.Herbs, 'herbs'],
+      [CARRY.Eggs, 'eggs'], [CARRY.Honey, 'honey'], [CARRY.Mushrooms, 'mushrooms'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
@@ -1393,6 +1394,9 @@ function carryOffset(kind: number, act: number) {
     case CARRY.Roots: p.set(0.076, 0.15, 0.035); break; // held by the tied stems
     case CARRY.Nuts: p.set(0.076, 0.15, 0.035); break; // a hide bag, by its neck
     case CARRY.Herbs: p.set(0.078, 0.15, 0.035); e.set(0.15, 0, 0); break; // a bunch, stems in the fist
+    case CARRY.Eggs: p.set(0.076, 0.14, 0.035); break; // a nest of eggs held in the hand
+    case CARRY.Honey: p.set(0.076, 0.14, 0.035); break; // comb on a slab of bark
+    case CARRY.Mushrooms: p.set(0.076, 0.15, 0.035); break; // a small grass basket, by its handle
     case CARRY.Stone: p.set(0.06, 0.315, -0.008); e.set(0, 0.3, 0); break; // on the right shoulder
     case CARRY.Meat: p.set(0, 0.3, -0.03); e.set(0, Math.PI / 2, 0); break;
     case CARRY.Fish: p.set(0.078, 0.15, 0.02); e.set(0, Math.PI / 2, -1.2); break;

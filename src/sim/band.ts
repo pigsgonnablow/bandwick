@@ -41,6 +41,10 @@ export const TRAINING = {
   nuts: [{ skill: SK.forage, gain: 0.04 }],
   // a bundle of healing plants found and cut, or a fever nursed with them
   herbs: [{ skill: SK.forage, gain: 0.05 }],
+  // a clutch of eggs found in the spring, a wild hive smoked out, a basket of mushrooms picked
+  eggs: [{ skill: SK.forage, gain: 0.03 }],
+  honey: [{ skill: SK.forage, gain: 0.06 }],
+  mushrooms: [{ skill: SK.forage, gain: 0.05 }],
 } as const satisfies Record<string, Lesson>;
 export type Training = keyof typeof TRAINING;
 
@@ -74,18 +78,18 @@ export const FLASH = { Thrust: 1, Stab: 2 } as const;
 export const ACT_NAMES = Object.keys(ACT);
 
 /** What a person is carrying. */
-export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10, Roots: 11, Nuts: 12, Herbs: 13 } as const;
+export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10, Roots: 11, Nuts: 12, Herbs: 13, Eggs: 14, Honey: 15, Mushrooms: 16 } as const;
 
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
-  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast';
+  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast' | 'eggs' | 'honey' | 'mushrooms';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
-  'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen', 'bed', 'roots', 'nuts', 'herbs', 'nurse', 'gift', 'feast',
+  'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen', 'bed', 'roots', 'nuts', 'herbs', 'nurse', 'gift', 'feast', 'eggs', 'honey', 'mushrooms',
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
@@ -151,7 +155,17 @@ export const NUTS_LOAD = 8;
 /** Roasted in the embers, a meal of meat, fish, roots or acorns fills this much more; it takes a little longer. */
 export const COOK_GAIN = 1.25;
 export const COOK_TICKS = 6;
-export const COOKED = ['meat', 'fish', 'roots', 'nuts'];
+export const COOKED = ['meat', 'fish', 'roots', 'nuts', 'eggs', 'mushrooms'];
+/** Eggs brought home from the nests of a spring morning (they go off almost as fast as berries). */
+export const EGGS_LOAD = 3;
+/** Honey from one wild hive smoked out in summer; the harm a bad stinging does. */
+export const HONEY_STING = 6;
+/** A spoonful of honey with a meal, while there is some: a treat more than a meal. */
+export const HONEY_TREAT = 0.2;
+/** Mushrooms picked in one autumn trip; the chance a beginner tastes a bad one (less with skill) and the fever it brings. */
+export const MUSHROOMS_LOAD = 6;
+export const BAD_MUSHROOM = 0.22;
+export const BAD_MUSHROOM_DAYS = 3;
 /** Bundles of dried healing herbs a band likes to keep by, and how long one nursing keeps a fever in check. */
 export const HERBS_WANT = 6;
 export const NURSE_DAYS = 2;
@@ -526,6 +540,10 @@ export interface Stock {
   herbs: number;
   bones: number;
   trinkets: number;
+  /** eggs from spring nests, honey from wild hives, mushrooms from the autumn woods (absent in older saves until restored) */
+  eggs: number;
+  honey: number;
+  mushrooms: number;
 }
 
 export interface SimEvent {
@@ -540,7 +558,10 @@ export interface SimEvent {
   weight: number;
 }
 
-export const foodTotal = (s: Stock) => s.berries + s.meat + s.fish + s.preserved + s.roots + s.nuts;
+/** Everything in the stores that can be eaten. */
+export const FOODS = ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts', 'eggs', 'honey', 'mushrooms'] as const;
+export type Food = (typeof FOODS)[number];
+export const foodTotal = (s: Stock) => s.berries + s.meat + s.fish + s.preserved + s.roots + s.nuts + s.eggs + s.honey + s.mushrooms;
 
 /** The health levels the sim acts on (the info window's health tooltip reads them too). */
 export const HEALTH = {

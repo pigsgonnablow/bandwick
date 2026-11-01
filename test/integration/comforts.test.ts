@@ -125,7 +125,7 @@ describe('roots', () => {
     const end = s.tick + TICKS_PER_YEAR;
     while (s.tick < end) {
       s.step();
-      if (s.tick % 20 === 0) for (const p of s.living()) if (p.task?.kind === 'roots' && p.task.stage >= 1) taskSeasons.add(seasonOf(s.tick));
+      if (s.tick % 20 === 0) for (const p of s.living()) if (p.task?.kind === 'roots' && p.task.stage >= 1) taskSeasons.add(seasonOf(p.task.started));
     }
     expect(s.camp.ledger?.total?.['gathered.roots'] ?? 0).toBeGreaterThan(10);
     expect([...taskSeasons]).toEqual([2]);

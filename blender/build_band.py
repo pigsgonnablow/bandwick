@@ -7,7 +7,7 @@ Conventions (read by src/render/band.ts):
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
   deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
-  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,basket,basketFull} attached to a person's hands or shoulder.
+  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,basket,basketFull} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
   bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
@@ -851,6 +851,52 @@ for k in range(9):
         q.blob(tuple(top), (0.005, 0.005, 0.004), FLOWER, rr, 0.06)
 q.cyl(8, 0.0072, 0.0072, (0, 0, -0.03), (0, 0, -0.021), GRASS_DK, rr, 0.03, cap=False)  # the tie
 q.finish("carry__herbs")
+
+q = Part()  # a clutch of eggs in a cupped nest of twigs and grass, held in the hand
+rr = random.Random(53)
+NEST = (128, 104, 68)
+EGG = (214, 206, 180)
+EGG_SPOT = (176, 190, 196)
+for k in range(10):  # the rim, twigs woven round
+    a0, a1 = k / 10 * math.tau, (k + 1.4) / 10 * math.tau
+    q.cyl(3, 0.003, 0.003, (math.cos(a0) * 0.026, math.sin(a0) * 0.026, -0.006 + rr.uniform(-0.002, 0.002)),
+          (math.cos(a1) * 0.026, math.sin(a1) * 0.026, -0.006 + rr.uniform(-0.002, 0.002)), NEST if k % 2 else GRASS_DK, rr, 0.08, cap=False)
+for v in q.blob((0, 0, -0.016), (0.026, 0.026, 0.012), NEST, rr, 0.08, noise=0.15):
+    v.co.z = min(v.co.z, -0.008)  # the cup
+for k, (x, y) in enumerate(((-0.007, -0.004), (0.008, -0.002), (0.0, 0.009))):
+    q.blob((x, y, -0.004), (0.0075, 0.006, 0.006), EGG if k != 1 else EGG_SPOT, rr, 0.04)
+q.finish("carry__eggs")
+
+q = Part()  # honeycomb, dripping, on a slab of bark
+rr = random.Random(54)
+COMB = (222, 168, 54)
+COMB_DK = (186, 128, 34)
+q.box((0, 0, -0.012), (0.06, 0.036, 0.006), BARK, rr, 0.06)
+for k in range(3):  # slabs of comb laid side by side
+    v = q.box((-0.018 + k * 0.018, 0, 0.002), (0.015, 0.03, 0.02), COMB if k % 2 == 0 else COMB_DK, rr, 0.08, taper=0.85)
+q.blob((0.022, -0.016, -0.006), (0.006, 0.004, 0.004), COMB, rr, 0.04)  # a drip
+q.finish("carry__honey")
+
+q = Part()  # a small grass basket of mushrooms, held by its handle
+rr = random.Random(55)
+BASK = (168, 136, 84)
+BASK_DK = (118, 92, 56)
+CAP = (164, 120, 80)
+CAP_PALE = (212, 196, 164)
+STEM = (226, 216, 194)
+for v in q.blob((0, 0, -0.04), (0.03, 0.026, 0.024), BASK, rr, 0.06):
+    v.co.z = min(v.co.z, -0.028)
+q.cyl(10, 0.03, 0.03, (0, 0, -0.03), (0, 0, -0.026), BASK_DK, rr, 0.04, cap=False)  # the rim
+pts = [Vector((math.cos(a) * 0.028, 0, -0.026 + math.sin(a) * 0.03)) for a in [k / 8 * math.pi for k in range(9)]]
+for a_, b_ in zip(pts, pts[1:]):  # the handle, arching over
+    q.cyl(3, 0.0022, 0.0022, a_, b_, BASK_DK, rr, 0.04, cap=False)
+for k in range(5):  # caps peeping over the rim
+    a = k / 5 * math.tau + 0.3
+    x, y = math.cos(a) * 0.014, math.sin(a) * 0.012
+    q.cyl(4, 0.003, 0.003, (x, y, -0.03), (x, y, -0.02), STEM, rr, 0.04, cap=False)
+    for v in q.blob((x, y, -0.018), (0.009, 0.009, 0.005), CAP if k % 2 else CAP_PALE, rr, 0.06):
+        v.co.z = max(v.co.z, -0.02)
+q.finish("carry__mushrooms")
 
 # ---------------------------------------------------------------- tools and traps
 WOOD = (138, 104, 66)

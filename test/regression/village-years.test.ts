@@ -8,7 +8,7 @@ import { generateWorld } from '../../src/sim/worldgen';
 import { TICKS_PER_DAY, TICKS_PER_YEAR } from '../../src/sim/time';
 import { sim } from '../helpers';
 
-const KNOWN = ['preserving', 'bedding', 'cloaks', 'roots', 'digstick', 'nuts', 'cooking', 'herbs', 'needles'];
+const KNOWN = ['preserving', 'bedding', 'cloaks', 'roots', 'digstick', 'nuts', 'cooking', 'herbs', 'needles', 'eggs', 'honey', 'mushrooms'];
 const YEARS = 4;
 
 function villageSim(seed: number) {
@@ -33,9 +33,9 @@ describe('village life over the years', () => {
       }
       expect(checker.report()).toEqual([]);
       expect(s.living().length).toBeGreaterThan(0);
-      for (const k of ['nuts', 'herbs', 'gift', 'feast', 'roots', 'bed']) expect(seen, `someone at ${k}`).toContain(k);
+      for (const k of ['nuts', 'herbs', 'gift', 'feast', 'roots', 'bed', 'eggs', 'honey', 'mushrooms']) expect(seen, `someone at ${k}`).toContain(k);
       // food comes in and is eaten; the new stores are used, not just piled up
-      for (const k of ['nuts', 'roots']) {
+      for (const k of ['nuts', 'roots', 'eggs', 'honey', 'mushrooms']) {
         expect(total(s, `gathered.${k}`), `gathered ${k}`).toBeGreaterThan(0);
         expect(total(s, `eaten.${k}`), `eaten ${k}`).toBeGreaterThan(0);
       }
@@ -64,8 +64,8 @@ function canonical(save: SaveData) {
 }
 
 describe('a save in the middle of village life', () => {
-  for (const kind of ['feast', 'nuts', 'gift', 'nurse'] as const) {
-    it(`made while someone is at ${kind === 'nuts' ? 'the acorns' : `a ${kind}`} carries on identically`, () => {
+  for (const kind of ['feast', 'nuts', 'gift', 'nurse', 'eggs', 'honey', 'mushrooms'] as const) {
+    it(`made while someone is at ${kind === 'nuts' ? 'the acorns' : ['eggs', 'honey', 'mushrooms'].includes(kind) ? `the ${kind}` : `a ${kind}`} carries on identically`, () => {
       const a = villageSim(1);
       const limit = a.tick + 3 * TICKS_PER_YEAR;
       const busy = () => a.living().some((p) => p.task?.kind === kind && p.task.stage >= 1);
