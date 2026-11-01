@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   GARMENTS, SLOTS, RECIPES, RECIPE_KEYS, ITEMS, ITEM_KINDS, SEWN, CARRY, isGarment, BAG_LOAD, SHOES_REST, SHOES_WEAR_EVERY,
-  MEND_AT, MEND_BY, MEND_CORD, CLOAK_WARM, TASK_KINDS, TRAINING, HIDES_PER_CLOAK,
+  MEND_AT, MEND_BY, MEND_CORD, MEND_MAX, CLOAK_WARM, TASK_KINDS, TRAINING, HIDES_PER_CLOAK,
 } from '../../src/sim/band';
 import { DISCOVERY } from '../../src/sim/know';
 import { condition } from '../../src/sim/sim';
@@ -75,6 +75,9 @@ describe('garments', () => {
     expect(MEND_BY).toBeLessThanOrEqual(MEND_AT);
     expect(MEND_CORD).toBeGreaterThan(0);
     expect(MEND_CORD).toBeLessThanOrEqual(1);
+    // a few patches, not a thing that lasts for ever
+    expect(MEND_MAX).toBeGreaterThanOrEqual(2);
+    expect(MEND_MAX * MEND_BY).toBeLessThan(2);
   });
 });
 
@@ -120,7 +123,9 @@ describe('words for the Gear tab', () => {
     expect(gearLine({ label: 'Fur hat', condition: 'worn', maker: { name: 'Ada' } })).toBe('Fur hat, worn. Made by Ada.');
     expect(gearLine({ label: 'Hide cloak', condition: 'good', maker: null, mended: 1, mender: { name: 'Bo' } })).toBe('Hide cloak, good. Mended once, last by Bo.');
     expect(gearLine({ label: 'Hide shoes', condition: 'new', maker: { name: 'Cy' }, mended: 2, mender: null })).toBe('Hide shoes, new. Made by Cy. Mended twice.');
-    expect(gearLine({ label: 'Hide bag', condition: 'worn', maker: null, mended: 5 })).toBe('Hide bag, worn. Mended 5 times.');
+    expect(gearLine({ label: 'Hide bag', condition: 'worn', maker: null, mended: 3 })).toBe('Hide bag, worn. Mended 3 times.');
+    // past patching
+    expect(gearLine({ label: 'Hide bag', condition: 'worn', maker: null, mended: MEND_MAX })).toBe(`Hide bag, worn. Mended ${MEND_MAX} times. Too patched to mend again.`);
   });
 
   it('say how much of the cold is kept off', () => {

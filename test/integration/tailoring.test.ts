@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Sim } from '../../src/sim/sim';
 import type { Person, Item, ItemKind, Task } from '../../src/sim/band';
-import { CARRY, GARMENTS, BAG_LOAD, NUTS_LOAD, SHOES_REST, MEND_AT, MEND_CORD, CLOAK_WARM, ACT, SLOTS, ITEMS, isGarment, SK } from '../../src/sim/band';
+import { CARRY, GARMENTS, BAG_LOAD, NUTS_LOAD, SHOES_REST, MEND_AT, MEND_CORD, CLOAK_WARM, ACT, SLOTS, ITEMS, isGarment, SK, MEND_MAX, EGGS_LOAD, SHOES_WEAR_EVERY } from '../../src/sim/band';
 import { abandon, deposit, runTask } from '../../src/sim/ai';
 import { isTreeType, treeSpecies, treeStage } from '../../src/sim/sim';
 import { generateWorld } from '../../src/sim/worldgen';
@@ -458,8 +458,140 @@ describe('the rules of what is worn', () => {
     broken(() => { q.worn!.head = hat.id; }, () => { delete q.worn!.head; }, /does not know its wearer/);
     // worn and carried in the hand at once
     broken(() => { hat.holder = p.id; }, () => { hat.holder = -1; }, /worn and held/);
+    // patched more often than a thing can be, or by someone who never was
+    broken(() => { hat.mended = MEND_MAX + 1; }, () => { delete hat.mended; }, /past all patching/);
+    broken(() => { hat.mender = 999999; }, () => { delete hat.mender; }, /mended by nobody known/);
+    // a tool is not mended like clothes
+    const axe = garment('axe');
+    broken(() => { axe.mended = 1; }, () => { delete axe.mended; }, /mended like clothes/);
+    s.items = s.items.filter((i) => i !== axe);
     const after = new InvariantChecker(s);
     after.check();
     expect(after.report()).toEqual([]);
+  });
+});
+
+describe('found in review', () => {
+  it('a thing patched over and over is mended no more, and is worn until it wears through', () => {
+    const cloak = garment('cloak', p, 0.8);
+    cloak.mended = MEND_MAX;
+    expect(s.toMend(s.camp).map((i) => i.id)).not.toContain(cloak.id);
+    cloak.mended = MEND_MAX - 1;
+    expect(s.toMend(s.camp).map((i) => i.id)).toContain(cloak.id);
+    // and the band takes up no mending for it
+    cloak.mended = MEND_MAX;
+    s.camp.stock.cordage = 5;
+    (s as unknown as { plan(c: Sim['camp']): void }).plan(s.camp);
+    expect(s.camp.jobs.mend ?? 0).toBe(0);
+  });
+
+  it('a reed cape is knotted by a band that has never thought of cloaks, whatever hides it has', () => {
+    s.camp.knows = s.camp.knows.filter((k) => k !== 'cloaks');
+    if (!s.camp.knows.includes('capes')) s.camp.knows.push('capes');
+    s.giveTools(s.camp, { axe: 6, chopper: 3, stick: 4, basket: 4, needle: 3, pot: 8 });
+    s.camp.stock.hides = 6;
+    s.camp.stock.fiber = 20;
+    s.camp.stock.cordage = 10;
+    expect(s.toolToMake(s.camp)).toBe('cape');
+  });
+
+  it('honeycomb comes home on its bark, the same with a bag or without; eggs fill the bag', () => {
+    const chance = s.rAi.chance;
+    s.rAi.chance = () => false; // (no stings for this)
+    try {
+      const fill = (kind: 'honey' | 'eggs', start: number) => {
+        const k = s.nearestProp(p.x, p.z, 80, (k) => isTreeType(s.propType[k]) && treeStage(s.propType[k]) >= 3);
+        expect(k).toBeGreaterThanOrEqual(0);
+        s.hivesTaken.clear();
+        s.eggsTaken.clear();
+        p.x = s.propX[k];
+        p.z = s.propZ[k];
+        p.carry = kind === 'honey' ? CARRY.Honey : CARRY.Eggs;
+        p.carryAmt = start;
+        p.task = task(kind, { ref: k, stage: 1, timer: 1 });
+        runTask(s, p);
+        return p.carryAmt;
+      };
+      const honeyBare = fill('honey', 3.5);
+      const eggsBare = fill('eggs', EGGS_LOAD - 0.2);
+      garment('bag', p);
+      expect(fill('honey', 3.5)).toBeCloseTo(honeyBare, 9);
+      expect(fill('eggs', EGGS_LOAD - 0.2)).toBeGreaterThan(eggsBare);
+      expect(eggsBare).toBeCloseTo(EGGS_LOAD, 9);
+    } finally {
+      s.rAi.chance = chance;
+    }
+  });
+});
+
+describe('wear and tear', () => {
+  const daily = () => priv(s).dressAndBed();
+  it('a cloak, hat and mittens wear on cold days only; shoes and a bag not by the day at all', () => {
+    const cloak = garment('cloak', p), hat = garment('hat', p), mitts = garment('mittens', p), shoes = garment('shoes', p), bag = garment('bag', p);
+    const cold = s.tempAt(p) < 10;
+    daily();
+    for (const it of [cloak, hat, mitts]) expect(it.wear > 0, it.kind).toBe(cold);
+    expect(shoes.wear).toBe(0);
+    expect(bag.wear).toBe(0);
+    // in the dead of winter they all wear
+    runTo(s, s.tick + 3 * TICKS_PER_SEASON + 2 * TICKS_PER_DAY);
+    for (const it of [cloak, hat, mitts]) it.wear = 0;
+    p.x = s.camp.x + 20;
+    p.z = s.camp.z + 20;
+    if (s.tempAt(p) < 10) {
+      daily();
+      for (const it of [cloak, hat, mitts]) expect(it.wear, it.kind).toBeCloseTo(1 / ITEMS[it.kind].uses, 9);
+    }
+  });
+
+  it('a thing worn through is gone from its place, and its wearer remembers it', () => {
+    const hat = garment('hat', p, 0.9995);
+    const before = p.memories.length;
+    expect(s.wearTool(hat)).toBe(true);
+    expect(p.worn?.head).toBeUndefined();
+    expect(s.items).not.toContain(hat);
+    expect(s.coldKept(p)).toBe(0);
+    // (the shoes and the daily wear tell it as a memory)
+    const shoes = garment('shoes', p, 0.9995);
+    p.act = ACT.Walk;
+    for (let i = 0; i < SHOES_WEAR_EVERY && p.worn?.feet !== undefined; i++) { p.act = ACT.Walk; priv(s).needs(p); s.tick++; }
+    expect(p.worn?.feet).toBeUndefined();
+    expect(s.items).not.toContain(shoes);
+    expect(p.memories.length).toBeGreaterThan(before);
+  });
+
+  it('nobody under a year old, and nobody dead, is handed anything', () => {
+    const dead = s.living().find((o) => o !== p && o.band === p.band)!;
+    s.kill(dead, 'test');
+    for (let i = 0; i < 40; i++) garment((['hat', 'mittens', 'cloak', 'cape', 'shoes', 'bag'] as const)[i % 6]);
+    priv(s).handOut(s.camp);
+    for (const it of s.items) if (it.wearer !== undefined) {
+      const w = s.byId.get(it.wearer)!;
+      expect(w.alive).toBe(true);
+      expect(s.age(w)).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('a better mender takes back more of the wear, and a needle makes quicker work of it', () => {
+    const mend = (skill: number, needle: boolean) => {
+      undress();
+      s.items = s.items.filter((i) => i.kind !== 'needle');
+      if (needle) s.giveTools(s.camp, { needle: 1 });
+      const it = garment('cloak', p, 0.8);
+      s.camp.stock.cordage = 3;
+      p.skills[SK.hide] = skill;
+      p.x = s.camp.x + 1.4;
+      p.z = s.camp.z;
+      p.task = task('mend', { ref: it.id, amount: 1, gx: p.x, gz: p.z, goal: s.tileOf(p) });
+      let ticks = 0;
+      while (p.task && ticks < 500) { runTask(s, p); ticks++; }
+      return { wear: it.wear, ticks };
+    };
+    const novice = mend(0, false), master = mend(20, false), withNeedle = mend(0, true);
+    expect(master.wear).toBeLessThan(novice.wear);
+    expect(novice.wear).toBeLessThan(0.8);
+    expect(master.ticks).toBeLessThan(novice.ticks);
+    expect(withNeedle.ticks).toBeLessThan(novice.ticks);
+    expect(withNeedle.wear).toBeCloseTo(novice.wear, 9);
   });
 });

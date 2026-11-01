@@ -9,7 +9,7 @@ import {
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
   Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
-  TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, SHOES_REST, SHOES_WEAR_EVERY,
+  TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
 } from './band';
 import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
@@ -1447,7 +1447,7 @@ export class Sim {
     if (this.knows('cloaks', c) && c.stock.hides >= HIDES_PER_CLOAK && cloaks < dressed) return 'cloak';
     { const k = small(1); if (k) return k; }
     // and a reed cape for whoever has no cloak and no hide to make one
-    if (this.knows('capes', c) && c.stock.fiber >= 5 && c.stock.cordage >= 1 && cloaks + have('cape') < dressed && c.stock.hides < HIDES_PER_CLOAK) return 'cape';
+    if (this.knows('capes', c) && c.stock.fiber >= 5 && c.stock.cordage >= 1 && cloaks + have('cape') < dressed && (!this.knows('cloaks', c) || c.stock.hides < HIDES_PER_CLOAK)) return 'cape';
     if (this.knows('pottery', c) && have('pot') < Math.min(6, 2 + Math.floor(ms.length / 4))) return 'pot';
     return null;
   }
@@ -1527,7 +1527,7 @@ export class Sim {
   /** Worn things in the band that want mending (most worn first), and nobody is mending already. */
   toMend(c = this.camp) {
     const busy = new Set(this.people.filter((p) => p.alive && p.task?.kind === 'mend').map((p) => p.task!.ref));
-    return this.items.filter((i) => isGarment(i.kind) && i.band === c.id && i.wear >= MEND_AT && !busy.has(i.id)).sort((a, b) => b.wear - a.wear || a.id - b.id);
+    return this.items.filter((i) => isGarment(i.kind) && i.band === c.id && i.wear >= MEND_AT && (i.mended ?? 0) < MEND_MAX && !busy.has(i.id)).sort((a, b) => b.wear - a.wear || a.id - b.id);
   }
   /** What someone wears, for the renderer: 1 cloak, 2 hat, 4 shoes, 8 reed cape, 16 bag, 32 mittens. */
   dressFlags(p: Person) {

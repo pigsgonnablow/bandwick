@@ -5,7 +5,7 @@ import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, yearOf } from '../../src/sim/time';
 import { FAR_GRAVE } from '../../src/sim/ai';
-import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS, GARMENTS, isGarment } from '../../src/sim/band';
+import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS, GARMENTS, isGarment, MEND_MAX } from '../../src/sim/band';
 import { dayOf } from '../../src/sim/time';
 import { knowHowFor } from '../../src/sim/know';
 
@@ -59,6 +59,10 @@ export class InvariantChecker {
       const c = sim.campById(it.band);
       if (!c) { flag('tool of an unknown band', `${at} ${it.kind} ${it.id}`); continue; }
       if (!(it.wear >= 0 && it.wear < 1)) flag('tool worn past breaking', `${at} ${it.kind} ${it.id} ${it.wear}`);
+      // only clothes are mended, and only so often
+      if ((it.mended ?? 0) > 0 && !isGarment(it.kind)) flag('a tool mended like clothes', `${at} ${it.kind} ${it.id}`);
+      if ((it.mended ?? 0) > MEND_MAX) flag('mended past all patching', `${at} ${it.kind} ${it.id} ${it.mended}`);
+      if (it.mender !== undefined && !sim.byId.get(it.mender)) flag('mended by nobody known', `${at} ${it.kind} ${it.id}`);
       const need = RECIPES[it.kind].knows;
       if (need && !c.knows.includes(need)) flag("tool the band doesn't know how to make", `${at} ${c.name}: ${it.kind}`);
       if (it.tile === -2 && !sim.people.some((p) => p.alive && p.task?.kind === 'trap' && p.task.route?.includes(it.id)))

@@ -1,5 +1,5 @@
 // Plain words for what the sim keeps as numbers, shared by the windows (and checked by the tests).
-import { CARRY } from '../sim/band';
+import { CARRY, MEND_MAX } from '../sim/band';
 
 /** What someone has in their arms, by CARRY id. */
 export const CARRYING: Record<number, string> = {
@@ -17,7 +17,8 @@ export function gearLine(it: { label: string; condition: string; maker: { name: 
   const made = it.maker ? ` Made by ${it.maker.name}.` : '';
   const n = it.mended ?? 0;
   const mended = n > 0 ? ` Mended ${n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`}${it.mender ? `, last by ${it.mender.name}` : ''}.` : '';
-  return `${it.label}, ${it.condition}.${made}${mended}`;
+  const patches = n >= MEND_MAX ? ' Too patched to mend again.' : '';
+  return `${it.label}, ${it.condition}.${made}${mended}${patches}`;
 }
 
 /** How much of the cold someone's clothes keep off, in words. */

@@ -178,6 +178,8 @@ export const SHOES_WEAR_EVERY = 80;
 export const MEND_AT = 0.45;
 export const MEND_BY = 0.35;
 export const MEND_CORD = 0.5;
+/** A thing patched this many times is all patches: it is worn until it wears through, and then a new one is made. */
+export const MEND_MAX = 4;
 export const HIDES_PER_CLOAK = 2;
 /** Hides kept in the stores at most (the rest are left: there is only so much a band can scrape and carry). */
 export const HIDES_KEPT = 12;

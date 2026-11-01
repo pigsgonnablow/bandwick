@@ -9,6 +9,8 @@ import { WATER, DIRS4, treeId } from './types';
 const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 /** A full load of something gathered: more with a hide bag over the shoulder. */
 const loadOf = (p: Person, base: number) => base * (p.worn?.shoulder !== undefined ? BAG_LOAD : 1);
+/** A full load of a wild food: honeycomb is carried home on a slab of bark, not in the bag. */
+const gleanLoad = (p: Person, kind: Glean) => (kind === 'honey' ? GLEAN.honey.load : loadOf(p, GLEAN[kind].load));
 /** A mature or old oak: one that bears acorns. */
 const isOak = (t: number) => isTreeType(t) && treeSpecies(t) === 1 && treeStage(t) >= 2;
 
@@ -1876,10 +1878,10 @@ export function runTask(s: Sim, p: Person) {
         }
         const got = t.kind === 'eggs' ? 1 + skill * 0.03 : t.kind === 'honey' ? 2 + skill * 0.04 : 2.5 + skill * 0.05;
         p.carry = g.carry;
-        p.carryAmt = Math.min(loadOf(p, g.load), p.carryAmt + got);
+        p.carryAmt = Math.min(gleanLoad(p, t.kind), p.carryAmt + got);
         train(p, t.kind);
         // eggs and mushrooms: on to the next tree near by while the hands are not full
-        const next = t.kind !== 'honey' && p.carryAmt < loadOf(p, g.load) - 1 ? s.nearestProp(p.x, p.z, 5, (k) => g.tree(s.propType[k]) && !taken.has(k) && !s.reserved.has(k)) : -1;
+        const next = t.kind !== 'honey' && p.carryAmt < gleanLoad(p, t.kind) - 1 ? s.nearestProp(p.x, p.z, 5, (k) => g.tree(s.propType[k]) && !taken.has(k) && !s.reserved.has(k)) : -1;
         if (next >= 0) {
           s.reserved.set(next, p.id);
           t.ref = next;
