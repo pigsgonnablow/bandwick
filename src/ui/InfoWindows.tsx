@@ -4,7 +4,8 @@
 import { useRef } from 'preact/hooks';
 import type { Engine, Snapshot, InfoWin, PersonDetail } from '../main';
 import { WIN_W } from '../main';
-import { SKILLS, CARRY, HEALTH } from '../sim/band';
+import { SKILLS, HEALTH } from '../sim/band';
+import { CARRYING, SLOT_WORDS, gearLine, warmthWords } from './words';
 import { TICKS_PER_YEAR } from '../sim/time';
 import { when, Bar } from './App';
 
@@ -17,10 +18,6 @@ const DOING: Record<string, string> = {
   supply: 'Carrying materials to a building site', fuel: 'Feeding the fire', preserve: 'Drying meat and fish',
   bury: 'Burying the dead', explore: 'Exploring', deadwood: 'Gathering fallen branches', swim: 'Swimming to cool off',
   reap: 'Cutting grass and reeds', craft: 'Making things by the fire', dig: 'Digging mud', quarry: 'Quarrying stone', trap: 'Going round the traps',
-};
-const CARRYING: Record<number, string> = {
-  [CARRY.Log]: 'a log', [CARRY.Berries]: 'berries', [CARRY.Meat]: 'meat', [CARRY.Fish]: 'fish',
-  [CARRY.Body]: 'the body of the dead', [CARRY.Spear]: 'a spear', [CARRY.Baby]: 'a baby', [CARRY.Fiber]: 'grass and cordage', [CARRY.Mud]: 'a basket of mud', [CARRY.Stone]: 'stone',
 };
 const NEEDS: [keyof PersonDetail['needs'], string][] = [['food', 'Food'], ['rest', 'Rest'], ['warmth', 'Warmth'], ['belonging', 'Company'], ['safety', 'Safety']];
 const NEED_WORDS: Record<keyof PersonDetail['needs'], string> = { food: 'hunger', rest: 'tiredness', warmth: 'cold', belonging: 'loneliness', safety: 'fear' };
@@ -161,12 +158,35 @@ function ThingBody({ c, engine }: { c: NonNullable<InfoWin['card']>; engine: Eng
   );
 }
 
-const TABS = [['now', 'Now'], ['family', 'Family'], ['skills', 'Skills'], ['story', 'Story']] as const;
+const TABS = [['now', 'Now'], ['gear', 'Gear'], ['family', 'Family'], ['skills', 'Skills'], ['story', 'Story']] as const;
+
+/** A small figure dressed as they are: each place on the body filled in where they wear something. */
+function GearFigure({ p }: { p: PersonDetail }) {
+  const on = (slot: string) => p.gear.some((g) => g.slot === slot && g.item);
+  const kind = (slot: string) => p.gear.find((g) => g.slot === slot)?.item?.kind;
+  const fill = (slot: string) => (on(slot) ? (kind(slot) === 'cape' ? '#c9b77a' : '#8a6a46') : 'none');
+  return (
+    <svg class="gear-figure" viewBox="0 0 60 120" width="48" height="96" role="img" aria-label="What they wear">
+      <g fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.55">
+        <circle cx="30" cy="16" r="9" />
+        <path d="M18 30 h24 l4 40 h-32 z" />
+        <path d="M18 32 l-8 30 M42 32 l8 30" />
+        <path d="M22 70 l-2 40 M38 70 l2 40" />
+      </g>
+      <path d="M21 13 a9 9 0 0 1 18 0 v2 h-18 z" fill={fill('head')} />
+      <path d="M16 29 h28 l5 44 h-38 z" fill={fill('body')} opacity="0.85" />
+      <circle cx="10" cy="64" r="3.5" fill={fill('hands')} /><circle cx="50" cy="64" r="3.5" fill={fill('hands')} />
+      <path d="M15 108 h8 v5 h-10 z M37 108 h8 l2 5 h-10 z" fill={fill('feet')} />
+      {on('shoulder') && <><path d="M18 32 L46 66" stroke="#5c4630" stroke-width="2" /><rect x="42" y="62" width="10" height="11" rx="2" fill="#8a6a46" /></>}
+      {p.necklace && <path d="M24 28 q6 6 12 0" stroke="#e8dcc0" stroke-width="1.6" fill="none" />}
+    </svg>
+  );
+}
 
 function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snapshot; engine: Engine }) {
   const age = Math.floor(p.age);
   const ageWord = p.age < 2 ? 'infant' : p.age < 14 ? (p.sex ? 'boy' : 'girl') : p.age >= 58 ? (p.sex ? 'old man' : 'old woman') : p.sex ? 'man' : 'woman';
-  const tab = p.alive || w.tab !== 'now' ? w.tab : 'story';
+  const tab = p.alive || (w.tab !== 'now' && w.tab !== 'gear') ? w.tab : 'story';
   const who = (r: { id: number; name: string; alive?: boolean } | null) =>
     r ? (
       <button class={`link${r.alive === false ? ' gone' : ''}`} onClick={() => engine.select(r.id)}>
@@ -184,7 +204,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
       </div>
       <div class="tabs" role="tablist">
         {TABS.map(([k, label]) => (
-          <button key={k} role="tab" class="tab" aria-selected={tab === k} onClick={() => engine.setWinTab(w.key, k)} disabled={k === 'now' && !p.alive}>
+          <button key={k} role="tab" class="tab" aria-selected={tab === k} onClick={() => engine.setWinTab(w.key, k)} disabled={(k === 'now' || k === 'gear') && !p.alive}>
             {label}
           </button>
         ))}
@@ -198,8 +218,10 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
               <dd>{p.doing ?? (p.task ? DOING[p.task] ?? p.task : 'Nothing much')}{p.indoors ? ', indoors' : ''}</dd>
               {p.carry > 0 && CARRYING[p.carry] && (<><dt>Carrying</dt><dd>{CARRYING[p.carry]}{p.carryAmt > 1 ? ` (${Math.round(p.carryAmt)})` : ''}</dd></>)}
               {p.tool && (<><dt>In hand</dt><dd>A {p.tool}</dd></>)}
-              {p.cloak && (<><dt>Wearing</dt><dd>A {p.cloak}</dd></>)}
-              {p.necklace && (<><dt>{p.cloak ? '' : 'Wearing'}</dt><dd>{p.necklace[0].toUpperCase() + p.necklace.slice(1)}</dd></>)}
+              {(() => {
+                const worn = [...p.gear.filter((g) => g.item).map((g) => g.item!.label.toLowerCase()), ...(p.necklace ? [p.necklace] : [])];
+                return worn.length > 0 && (<><dt>Wearing</dt><dd>{worn[0][0].toUpperCase() + worn.join(', ').slice(1)}</dd></>);
+              })()}
               <dt>Where</dt>
               <dd>{p.campDist < 3 ? `At ${p.bandName}` : `${Math.round((p.campDist * METERS_PER_UNIT) / 10) * 10} m from ${p.bandName}`}</dd>
             </dl>
@@ -211,6 +233,28 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
               <div class="need" title={moodTip(p)}><span>Mood</span><Bar v={p.mood} warn={MOOD_LOW} /><b>{Math.round(p.mood)}</b></div>
             </div>
             <div class="chips">{p.traits.map((t) => <span key={t} class="chip">{t}</span>)}</div>
+          </>
+        )}
+        {tab === 'gear' && p.alive && (
+          <>
+            <div class="gear">
+              <GearFigure p={p} />
+              <dl class="rows compact">
+                {p.gear.map((g) => (
+                  <>
+                    <dt>{SLOT_WORDS[g.slot]}</dt>
+                    <dd class={g.item ? '' : 'muted'}>{g.item ? gearLine(g.item) : 'Nothing'}</dd>
+                  </>
+                ))}
+                <dt>Neck</dt>
+                <dd class={p.necklace ? '' : 'muted'}>{p.necklace ? p.necklace[0].toUpperCase() + p.necklace.slice(1) + '.' : 'Nothing'}</dd>
+                <dt>In hand</dt>
+                <dd class={p.toolDetail ? '' : 'muted'}>{p.toolDetail ? gearLine(p.toolDetail) : 'Nothing'}</dd>
+                <dt>Carrying</dt>
+                <dd class={p.carry > 0 && CARRYING[p.carry] ? '' : 'muted'}>{p.carry > 0 && CARRYING[p.carry] ? `${CARRYING[p.carry][0].toUpperCase()}${CARRYING[p.carry].slice(1)}${p.carryAmt > 1 ? ` (${Math.round(p.carryAmt)})` : ''}` : 'Nothing'}</dd>
+              </dl>
+            </div>
+            <p class="small muted" style={{ margin: '8px 0 0' }}>{warmthWords(p.coldKept)}.</p>
           </>
         )}
         {tab === 'family' && (

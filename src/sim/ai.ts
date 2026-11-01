@@ -2,11 +2,13 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, train, trainSkill } from './band';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, train, trainSkill } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
 const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
+/** A full load of something gathered: more with a hide bag over the shoulder. */
+const loadOf = (p: Person, base: number) => base * (p.worn?.shoulder !== undefined ? BAG_LOAD : 1);
 /** A mature or old oak: one that bears acorns. */
 const isOak = (t: number) => isTreeType(t) && treeSpecies(t) === 1 && treeStage(t) >= 2;
 
@@ -87,7 +89,7 @@ export function workSkill(q: Person): number {
     case 'fish': return SK.fish;
     case 'build': case 'supply': case 'dig': case 'quarry': return SK.build;
     case 'forage': case 'reap': case 'roots': case 'nuts': case 'herbs': case 'eggs': case 'honey': case 'mushrooms': return SK.forage;
-    case 'preserve': return SK.hide;
+    case 'preserve': case 'mend': return SK.hide;
     case 'trap': return SK.hunt;
     case 'craft': return t.amount > 0 ? RECIPES[RECIPE_KEYS[t.ref]].skill : -1;
     default: return -1;
@@ -283,6 +285,9 @@ export function decide(s: Sim, p: Person) {
       const pick = craftFor(s, p);
       if (pick) add('craft', pick.score * drive * (dark ? (s.hearthLit() ? 0.4 : 0.06) : 0.85) * crowd('craft'));
     }
+    // something worn thin, mended by the fire before it wears through: evening work, like the sewing
+    if (age >= 12 && (j.mend ?? 0) > 0 && busyWith(s, 'mend') < 2)
+      add('mend', j.mend * drive * fit(p, SK.hide) * (dark ? (s.hearthLit() ? 0.9 : 0.05) : 0.7));
     // logs lying within a walk of camp are fetched before another tree comes down
     const logsNear = logsNearCamp(s);
     if (age >= 13) {
@@ -647,6 +652,17 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       p.thought = rc.thought;
       return t;
     }
+    case 'mend': {
+      const it = s.toMend(c)[0];
+      if (!it || c.stock.cordage < MEND_CORD) return null;
+      c.stock.cordage -= MEND_CORD; // set aside now
+      const st = seat(s, p, 1.45);
+      const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, it.id);
+      t.amount = 1;
+      const w = it.wearer !== undefined ? s.byId.get(it.wearer) : undefined;
+      p.thought = `Mending ${w ? (w === p ? 'their own' : `${w.name}'s`) : 'a'} ${s.itemLabel(it)} by the fire.`;
+      return t;
+    }
     case 'fell': {
       // an axe fells any tree; a hand chopper only saplings and young ones; without either, no felling
       const tool = s.toolFor(p, ['axe', 'chopper']);
@@ -836,6 +852,10 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
       st.fiber += 1;
       t.amount = 0;
     }
+    if (t.kind === 'mend' && t.amount > 0) {
+      st.cordage += MEND_CORD;
+      t.amount = 0;
+    }
     if (t.kind === 'nurse' && t.amount > 0) {
       st.herbs += t.amount;
       t.amount = 0;
@@ -1018,6 +1038,11 @@ export function deposit(s: Sim, p: Person) {
   // the teeth of a deer brought home, and now and then a shell from the shallows, are kept for ornaments
   if (kind === 'meat' && p.task?.kind === 'hunt' && a >= 4 && st.trinkets < TRINKETS_KEPT) st.trinkets = Math.min(TRINKETS_KEPT, st.trinkets + TEETH_PER_DEER);
   if (kind === 'fish' && p.task?.kind === 'fish' && st.trinkets < TRINKETS_KEPT && s.rAi.chance(0.12)) st.trinkets += 1;
+  // a load brought home in a hide bag is a use of it
+  if (p.worn?.shoulder !== undefined && (kind === 'berries' || kind === 'roots' || kind === 'nuts' || kind === 'herbs' || kind === 'eggs' || kind === 'mushrooms')) {
+    const bag = s.wornIn(p, 'shoulder');
+    if (bag && s.wearTool(bag)) s.remember(p, 'tool_broke', -2, 0.3, -1, 'Their hide bag split at the seams.');
+  }
   if (kind) {
     st[kind] += a;
     s.book(`gathered.${kind}`, a);
@@ -1626,6 +1651,30 @@ export function runTask(s: Sim, p: Person) {
       finish(s, p);
       return;
     }
+    case 'mend': {
+      const it = s.items.find((i) => i.id === t.ref);
+      if (!it) return abandon(s, p);
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = Math.max(10, Math.round(26 * (1.2 - p.skills[SK.hide] * 0.025) * (s.toolsOf(c, 'needle').length ? NEEDLE_SPEED : 1)));
+      }
+      p.act = ACT.Sit;
+      face(p, c.x, c.z);
+      if (--t.timer > 0) return;
+      // patched and restitched: not new, but good for a while yet
+      it.wear = Math.max(0, it.wear - MEND_BY * (0.8 + Math.min(20, p.skills[SK.hide]) * 0.02));
+      it.mended = (it.mended ?? 0) + 1;
+      it.mender = p.id;
+      t.amount = 0;
+      s.book('mended', 1);
+      train(p, 'mend');
+      const w = it.wearer !== undefined ? s.byId.get(it.wearer) : undefined;
+      if (w && w !== p && w.alive) s.adjust(w, p, 2);
+      p.thought = `Mended ${w ? (w === p ? 'their own' : `${w.name}'s`) : 'a'} ${s.itemLabel(it)}.`;
+      finish(s, p);
+      return;
+    }
     case 'gift': {
       const q = s.byId.get(t.ref);
       if (!q || !q.alive) {
@@ -1727,7 +1776,7 @@ export function runTask(s: Sim, p: Person) {
         if (--t.timer > 0) return;
         s.reserved.delete(t.ref);
         p.carry = CARRY.Herbs;
-        p.carryAmt = 2 + p.skills[SK.forage] * 0.05;
+        p.carryAmt = loadOf(p, 2 + p.skills[SK.forage] * 0.05);
         train(p, 'herbs');
         goStore(s, p, t, 2);
         p.thought = 'Bringing healing herbs back to dry by the fire.';
@@ -1827,10 +1876,10 @@ export function runTask(s: Sim, p: Person) {
         }
         const got = t.kind === 'eggs' ? 1 + skill * 0.03 : t.kind === 'honey' ? 2 + skill * 0.04 : 2.5 + skill * 0.05;
         p.carry = g.carry;
-        p.carryAmt = Math.min(g.load, p.carryAmt + got);
+        p.carryAmt = Math.min(loadOf(p, g.load), p.carryAmt + got);
         train(p, t.kind);
         // eggs and mushrooms: on to the next tree near by while the hands are not full
-        const next = t.kind !== 'honey' && p.carryAmt < g.load - 1 ? s.nearestProp(p.x, p.z, 5, (k) => g.tree(s.propType[k]) && !taken.has(k) && !s.reserved.has(k)) : -1;
+        const next = t.kind !== 'honey' && p.carryAmt < loadOf(p, g.load) - 1 ? s.nearestProp(p.x, p.z, 5, (k) => g.tree(s.propType[k]) && !taken.has(k) && !s.reserved.has(k)) : -1;
         if (next >= 0) {
           s.reserved.set(next, p.id);
           t.ref = next;
@@ -1869,9 +1918,9 @@ export function runTask(s: Sim, p: Person) {
         s.nutsTaken.set(t.ref, s.tick + TICKS_PER_DAY * 40);
         s.reserved.delete(t.ref);
         p.carry = CARRY.Nuts;
-        p.carryAmt = Math.min(NUTS_LOAD, p.carryAmt + got);
+        p.carryAmt = Math.min(loadOf(p, NUTS_LOAD), p.carryAmt + got);
         train(p, 'nuts');
-        const next = p.carryAmt < NUTS_LOAD - 1 ? s.nearestProp(p.x, p.z, 5, (k) => isOak(s.propType[k]) && !s.nutsTaken.has(k)) : -1;
+        const next = p.carryAmt < loadOf(p, NUTS_LOAD) - 1 ? s.nearestProp(p.x, p.z, 5, (k) => isOak(s.propType[k]) && !s.nutsTaken.has(k)) : -1;
         if (next >= 0) {
           s.reserved.set(next, p.id);
           t.ref = next;
@@ -1917,13 +1966,13 @@ export function runTask(s: Sim, p: Person) {
         s.rootsTaken.set(t.ref, s.tick + TICKS_PER_DAY * 40);
         s.reserved.delete(t.ref);
         p.carry = CARRY.Roots;
-        p.carryAmt = Math.min(ROOTS_LOAD, p.carryAmt + got);
+        p.carryAmt = Math.min(loadOf(p, ROOTS_LOAD), p.carryAmt + got);
         train(p, 'roots');
         s.practise(p, 'dig_stick', 0.5);
         const stick = s.heldBy(p);
         if (stick?.kind === 'stick' && s.rAi.chance(0.3)) wearStick(s, p, stick);
         // a load is more than one clump: dig the next close by before walking back
-        const next = p.carryAmt < ROOTS_LOAD - 1 && s.heldBy(p)?.kind === 'stick'
+        const next = p.carryAmt < loadOf(p, ROOTS_LOAD) - 1 && s.heldBy(p)?.kind === 'stick'
           ? s.nearestProp(p.x, p.z, 4, (k) => isFiberPlant(s.propType[k]) && !s.rootsTaken.has(k)) : -1;
         if (next >= 0) {
           s.reserved.set(next, p.id);
@@ -2125,7 +2174,7 @@ export function runTask(s: Sim, p: Person) {
       t.amount = 0;
       trainSkill(p, rc.skill, rc.grow);
       p.thought = rc.done;
-      if (key === 'cloak') s.practise(p, 'sew');
+      if (key === 'cloak' || (isGarment(rc.makes) && SEWN.includes(key))) s.practise(p, 'sew');
       const needle = SEWN.includes(key) ? s.toolsOf(c, 'needle')[0] : undefined;
       if (needle) s.wearTool(needle);
       finish(s, p);

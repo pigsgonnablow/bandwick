@@ -2,7 +2,7 @@
 
 Run headless:  python3 blender/build_band.py [out.glb]
 Conventions (read by src/render/band.ts):
-  villager__{torso,head,arm*,fore*,thigh*,shin*,hairS,hairL,hairB,hairU,beard,cloak}  one body in parts, animated in the shader;
+  villager__{torso,head,arm*,fore*,thigh*,shin*,hairS,hairL,hairB,hairU,beard,cloak,hat,cape,bag}  one body in parts, animated in the shader;
       the game shows one of the four hair pieces (short, long, braids, bun), on some men the beard, and the cloak on those who have one.
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
@@ -1198,6 +1198,60 @@ shell(q, top, bot, lambda i, k: CLOAK_CODE, lambda i, k: CLOAK_CODE, CLOAK_CODE,
 # the cord at the throat
 q.box((0, -0.026, 0.284), (0.012, 0.004, 0.004), DARK, raw=True)
 q.finish("villager__cloak")
+
+# a fur hat: a cap of hide over the hair with a rolled fur brim. Shown only on those who wear one.
+HAT_CODE = (0, 0.42, 0.22)   # hide with the fur showing: part skin, part hair colour
+FUR_CODE = (0, 0.22, 0.55)
+q = Part()
+hn = 14
+hts = [-math.pi / 2 + (k + 0.5) / hn * math.tau for k in range(hn)]
+hzs = [0.337, 0.346, 0.356, 0.364, 0.370]
+hrows = []
+for j, z in enumerate(hzs):
+    g = 0.0105 - j * 0.0008
+    row = []
+    for t in hts:
+        p_ = on_skull(z, t, g)
+        p_.z += j * 0.0012
+        row.append(p_)
+    hrows.append(row)
+tuck = [on_skull(0.339, t, -0.002) for t in hts]
+vs, _ = grid(q, [tuck] + hrows, lambda i, k: HAT_CODE if i else FUR_CODE)
+fan(q, vs[-1], (0, HEAD_Y + 0.002, HEAD_TOP + 0.014), HAT_CODE)
+brim = [[on_skull(0.335, t, 0.0125) for t in hts], [on_skull(0.341, t, 0.0145) for t in hts], [on_skull(0.347, t, 0.0118) for t in hts]]
+grid(q, brim, lambda i, k: FUR_CODE)
+q.finish("villager__hat")
+
+# a reed cape: shorter than the cloak and stiffer, the reeds knotted in rows, a ragged hem. Pale straw.
+STRAW_CODE = (0, 0.86, 0)
+STRAW_DK = (0, 0.68, 0.08)
+q = Part()
+CZ2 = [0.178, 0.198, 0.220, 0.242, 0.262, 0.276, 0.286, 0.292]
+
+
+def reed_row(i, z, out):
+    row = cape_row(i, z, out + 0.004)
+    if i == 0:  # the hem: reed ends of every length
+        row = [(x, y, z_ - 0.008 * ((k * 7) % 3) / 2) for k, (x, y, z_) in enumerate(row)]
+    return row
+
+
+top = [reed_row(i, z, 0.0) for i, z in enumerate(CZ2)]
+bot = [reed_row(i, z, -0.004) for i, z in enumerate(CZ2)]
+shell(q, top, bot, lambda i, k: STRAW_CODE if i % 2 else STRAW_DK, lambda i, k: STRAW_DK, STRAW_DK, None)
+q.box((0, -0.028, 0.286), (0.012, 0.004, 0.004), DARK, raw=True)
+q.finish("villager__cape")
+
+# a hide bag at the right hip, its strap over the left shoulder
+BAG_CODE = (0, 0.3, 0)
+STRAP_CODE = (0, 0.12, 0)
+q = Part()
+q.box((0.064, -0.002, 0.140), (0.016, 0.036, 0.034), BAG_CODE, raw=True, taper=0.85)
+q.box((0.064, -0.002, 0.160), (0.017, 0.038, 0.008), STRAP_CODE, raw=True)  # the flap
+for a_, b_ in (((0.060, -0.020, 0.158), (-0.030, -0.052, 0.276)), ((0.060, 0.016, 0.158), (-0.030, 0.050, 0.276)),
+               ((-0.030, -0.052, 0.276), (-0.034, 0.0, 0.292)), ((-0.034, 0.0, 0.292), (-0.030, 0.050, 0.276))):
+    q.cyl(4, 0.0032, 0.0032, a_, b_, STRAP_CODE, raw=True)
+q.finish("villager__bag")
 
 
 HIDE_DK = (140, 106, 74)

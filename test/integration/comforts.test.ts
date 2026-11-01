@@ -77,16 +77,16 @@ describe('hide cloaks', () => {
     s.camp.knows.push('preserving', 'cloaks');
     s.camp.stock.hides = 8;
     s.camp.stock.cordage += 6;
-    for (let d = 0; d < 24 && s.living().filter((p) => p.cloak !== undefined).length < 4; d++) runTo(s, s.tick + TICKS_PER_DAY);
-    const worn = s.living().filter((p) => p.cloak !== undefined);
+    for (let d = 0; d < 24 && s.living().filter((p) => p.worn?.body !== undefined).length < 4; d++) runTo(s, s.tick + TICKS_PER_DAY);
+    const worn = s.living().filter((p) => p.worn?.body !== undefined);
     expect(worn.length).toBeGreaterThanOrEqual(3);
     // each wearer's cloak is theirs alone, and the item knows who wears it
-    expect(new Set(worn.map((p) => p.cloak)).size).toBe(worn.length);
-    for (const p of worn) expect(s.items.find((i) => i.id === p.cloak)?.wearer).toBe(p.id);
+    expect(new Set(worn.map((p) => p.worn!.body)).size).toBe(worn.length);
+    for (const p of worn) expect(s.items.find((i) => i.id === p.worn!.body)?.wearer).toBe(p.id);
     // nobody under a year old got one; if any small child or elder went without, nobody else got one first
     for (const p of worn) expect(s.age(p)).toBeGreaterThanOrEqual(1);
     const frail = (a: number) => a < 3 || a > 60;
-    if (s.living().some((p) => p.cloak === undefined && frail(s.age(p)) && s.age(p) >= 1)) for (const p of worn) expect(frail(s.age(p))).toBe(true);
+    if (s.living().some((p) => p.worn?.body === undefined && frail(s.age(p)) && s.age(p) >= 1)) for (const p of worn) expect(frail(s.age(p))).toBe(true);
     expect(s.camp.ledger?.total?.['made.cloak'] ?? 0).toBeGreaterThanOrEqual(worn.length);
   });
 
@@ -103,7 +103,7 @@ describe('hide cloaks', () => {
     const loss = () => { p.warmth = 80; p.indoors = false; needs(p); return 80 - p.warmth; };
     const bare = loss();
     s.items.push({ id: s.newId(), kind: 'cloak', band: p.band, holder: -1, wear: 0, made: s.tick, maker: -1, wearer: p.id });
-    p.cloak = s.items[s.items.length - 1].id;
+    p.worn = { ...p.worn, body: s.items[s.items.length - 1].id };
     const cloaked = loss();
     expect(bare).toBeGreaterThan(0);
     expect(cloaked).toBeCloseTo(bare * (1 - CLOAK_WARM), 5);
@@ -112,7 +112,7 @@ describe('hide cloaks', () => {
     runTo(s, s.tick + TICKS_PER_DAY);
     // back on the pile, and someone else may have it now
     expect(it.wearer === undefined || it.wearer !== p.id).toBe(true);
-    expect(p.cloak).toBeUndefined();
+    expect(p.worn?.body).toBeUndefined();
   });
 });
 

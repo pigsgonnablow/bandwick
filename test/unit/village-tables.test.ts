@@ -11,6 +11,7 @@ import {
 } from '../../src/sim/band';
 import { DAYS_PER_YEAR, DAYS_PER_SEASON } from '../../src/sim/time';
 import { PHRASE, INTEREST } from '../../src/render/director';
+import { PROP_TASKS } from '../../src/sim/sim';
 
 const empty = (): Stock => ({ berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0 });
 
@@ -120,6 +121,14 @@ describe('the camera director', () => {
       expect(PHRASE[k], `phrase for ${k}`).toBeTruthy();
       expect(INTEREST[k], `interest in ${k}`).toBeGreaterThanOrEqual(0);
     }
+  });
+});
+
+describe('tasks at a plant or tree', () => {
+  it('are all known as such, so a save keeps the plant they were going to', () => {
+    // (a save once lost track of the bush a herb gatherer was walking to)
+    for (const k of ['forage', 'eatwild', 'reap', 'fell', 'deadwood', 'roots', 'nuts', 'herbs', 'eggs', 'honey', 'mushrooms'] as const) expect(PROP_TASKS, k).toContain(k);
+    for (const k of PROP_TASKS) expect(TASK_KINDS).toContain(k);
   });
 });
 

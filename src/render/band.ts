@@ -117,10 +117,15 @@ interface Shown {
   band: number;
   /** the tool in hand: 0 none, 1 chopper, 2 axe, 3 digging stick, 4 snare, 5 fish trap, 6 basket */
   tool: number;
-  /** wears a hide cloak */
-  cloak: boolean;
+  /** what they wear (the sim's dress flags: 1 cloak, 2 hat, 4 shoes, 8 reed cape, 16 bag, 32 mittens) */
+  dress: number;
   /** where the axe swing had got to last frame; whether this stab has hit the water yet */
   swing: number; splashed: boolean;
+}
+
+/** The villager shader's style bits for what someone wears: cloak 32, hat 64, reed cape 128, bag 256. */
+export function dressStyle(dress: number) {
+  return (dress & 1 ? 32 : 0) + (dress & 2 ? 64 : 0) + (dress & 8 ? 128 : 0) + (dress & 16 ? 256 : 0);
 }
 
 export class BandLayer {
@@ -358,6 +363,8 @@ export class BandLayer {
       ['hairB', 12, JT.neck, none], ['hairU', 13, JT.neck, none], ['beard', 14, JT.neck, none],
       // the hide cloak hangs from the shoulders and goes with the upper body
       ['cloak', 15, JT.hip, none],
+      // a fur hat goes with the head; a reed cape hangs like the cloak; a hide bag hangs at the hip from its strap
+      ['hat', 16, JT.neck, none], ['cape', 17, JT.hip, none], ['bag', 18, JT.hip, none],
     ];
     const list: THREE.BufferGeometry[] = [];
     for (const [name, id, p1, p2] of parts) {
@@ -658,7 +665,7 @@ export class BandLayer {
       if (!s) {
         s = { x: P[o + 1], z: P[o + 2], px: P[o + 1], pz: P[o + 2], y: this.groundAt(P[o + 1], P[o + 2]), angle: 0, act: 0, indoors: false, age: 0, sex: 0, look: 0, seen, task: 0,
           dx: P[o + 1], dz: P[o + 2], want: 0, phase: (id * 0.37) % 1, run: 0, shownAct: P[o + 5], prevAct: P[o + 5], actAt: -1e9, still: 0,
-          flash: P[o + 13], gesture: null, gestAt: 0, gestCarry: 0, carry: P[o + 6], fx: P[o + 3], fz: P[o + 4], swing: 0, splashed: false, band: P[o + 14], tool: P[o + 15], cloak: P[o + 16] > 0.5 };
+          flash: P[o + 13], gesture: null, gestAt: 0, gestCarry: 0, carry: P[o + 6], fx: P[o + 3], fz: P[o + 4], swing: 0, splashed: false, band: P[o + 14], tool: P[o + 15], dress: P[o + 16] };
         s.angle = s.want = Math.atan2(P[o + 3] - P[o + 1], P[o + 4] - P[o + 2]) || 0;
         this.people.set(id, s);
       } else {
@@ -675,7 +682,7 @@ export class BandLayer {
       s.fz = P[o + 4];
       s.band = P[o + 14];
       s.tool = P[o + 15];
-      s.cloak = P[o + 16] > 0.5;
+      s.dress = P[o + 16];
       const fx = P[o + 3] - P[o + 1], fz = P[o + 4] - P[o + 2];
       if (fx * fx + fz * fz > 1e-4) s.want = Math.atan2(fx, fz);
       s.act = P[o + 5];
@@ -870,7 +877,7 @@ export class BandLayer {
       const beard = s.sex === 1 && s.age >= 18 && (look >>> 24) % 10 < 5 ? 1 : 0;
       const dead = s.act === ACT.Dead ? 1 : 0;
       const blend = Math.min(1, Math.max(0, (now - s.actAt) / 220));
-      anim.setXYZW(n, s.shownAct, s.prevAct, blend, hairStyle + elder * 4 + dead * 8 + beard * 16 + (s.cloak ? 32 : 0));
+      anim.setXYZW(n, s.shownAct, s.prevAct, blend, hairStyle + elder * 4 + dead * 8 + beard * 16 + dressStyle(s.dress));
       // a one-off move under way
       let gpr = -1;
       const held = this.debugHold.get(id);
@@ -1638,11 +1645,11 @@ void poseVertex(vec3 pos, out vec3 v, out mat3 R) {
   bool left = part > 1.5 && part < 2.5 || part > 3.5 && part < 4.5 || part > 7.5 && part < 8.5 || part > 9.5 && part < 10.5;
   bool leg = part > 3.5 && part < 5.5 || part > 9.5 && part < 11.5;
   bool arm = part > 1.5 && part < 3.5 || part > 7.5 && part < 9.5;
-  bool headish = part > 0.5 && part < 1.5 || part > 5.5 && part < 7.5 || part > 11.5 && part < 14.5;
+  bool headish = part > 0.5 && part < 1.5 || part > 5.5 && part < 7.5 || part > 11.5 && part < 14.5 || part > 15.5 && part < 16.5;
   // only one hair style is shown (parts 6, 7, 12, 13 are styles 0-3), the beard only on the bearded,
-  // and the cloak (part 15) only on those who have one
+  // and the cloak (part 15), hat (16), reed cape (17) and bag (18) only on those who have them (style bits 32, 64, 128, 256)
   float hairPart = part > 5.5 && part < 7.5 ? part - 6.0 : part > 11.5 && part < 13.5 ? part - 10.0 : -1.0;
-  if ((hairPart > -0.5 && abs(hairPart - hairStyle) > 0.5) || (part > 13.5 && part < 14.5 && mod(style, 32.0) < 15.5) || (part > 14.5 && style < 31.5)) { v = vec3(0.0, -1.0, 0.0); R = mat3(0.0); return; }
+  if ((hairPart > -0.5 && abs(hairPart - hairStyle) > 0.5) || (part > 13.5 && part < 14.5 && mod(style, 32.0) < 15.5) || (part > 14.5 && part < 15.5 && mod(style, 64.0) < 31.5) || (part > 15.5 && part < 16.5 && mod(style, 128.0) < 63.5) || (part > 16.5 && part < 17.5 && mod(style, 256.0) < 127.5) || (part > 17.5 && style < 255.5)) { v = vec3(0.0, -1.0, 0.0); R = mat3(0.0); return; }
   // lower joint first (knee, elbow), then the limb it hangs from
   if (part > 9.5 && part < 11.5) turn(v, R, rx(left ? p.knL : p.knR), aPivot2);
   else if (part > 7.5 && part < 9.5) turn(v, R, rx(left ? p.elL : p.elR), aPivot2);

@@ -217,6 +217,34 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'gather acorns and leach them for the winter', memory: 'Gathered the first acorns for the winter store.',
   },
   {
+    // (someone sewing a cloak, the offcuts in their lap, thinks of the cold on their head and hands)
+    key: 'hats', label: 'Fur hats and mittens', needs: ['cloaks'], requires: [skill(SK.hide, 8)],
+    practice: { sew: 1, night_out: 0.05 }, odds: 10,
+    found: 'sewed the offcuts of a hide into a cap and a pair of mittens, fur turned in',
+    taught: 'sew fur hats and mittens', memory: 'Sewed the first fur hat and mittens.',
+  },
+  {
+    // (someone skinning a deer, feet sore from the hunt, thinks to wrap them in the hide)
+    key: 'shoes', label: 'Hide shoes', needs: ['cloaks'], requires: [skill(SK.hide, 9), skill(SK.hunt, 8)],
+    practice: { sew: 1, carcass: 0.5, hunt: 0.05 }, odds: 16,
+    found: 'cut soles from a hide and gathered them at the ankle with a thong: shoes, and the long walks were easier',
+    taught: 'sew hide shoes', memory: 'Sewed the first pair of hide shoes.',
+  },
+  {
+    // (someone thatching a roof sees how the reeds shed the wind, and thinks to wear them)
+    key: 'capes', label: 'Reed capes', needs: [], requires: [skill(SK.weave, ABLE)],
+    practice: { thatch: 0.3, night_out: 0.05 }, odds: 60,
+    found: 'knotted reeds and grass into a cape that shed the wind like a thatched roof',
+    taught: 'knot reed capes', memory: 'Knotted the first reed cape.',
+  },
+  {
+    // (someone sewing, who has carried home armfuls of acorns and roots, thinks of a hide bag)
+    key: 'bags', label: 'Hide bags', needs: ['cloaks'], requires: [skill(SK.hide, 8), skill(SK.forage, 9)],
+    practice: { sew: 1, store_food: 0.02 }, odds: 14,
+    found: 'sewed a hide into a bag with a strap for the shoulder, and brought home more from every trip',
+    taught: 'sew hide bags for gathering', memory: 'Sewed the first gathering bag.',
+  },
+  {
     // (someone gathering fallen branches in spring hears a bird scold them from its nest overhead)
     key: 'eggs', label: 'Bird eggs', needs: [], requires: [skill(SK.forage, 8)],
     practice: { deadwood: 1, forage: 0.1 }, odds: 35,
