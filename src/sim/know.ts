@@ -23,6 +23,12 @@ export type Practice =
   | 'hunt' // a hunt, kill or no kill
   | 'forage' // a bush's berries picked
   | 'fish_fiber' // a fishing trip, with fiber in the stores to think of weaving with (more when the catch is thin)
+  | 'carcass' // a deer carried home and skinned
+  | 'rack' // a batch of meat or fish hung on the drying rack
+  | 'deadwood' // an armful of fallen branches gathered under a tree
+  | 'sickbed' // a day sitting with someone sick with fever (each adult at camp)
+  | 'sew' // a cloak sewn by the fire
+  | 'dig_stick' // a trip's digging done with a digging stick
 
 /**
  * What someone has to be before they can have an idea. Only skill levels for now; a new kind of
@@ -89,6 +95,8 @@ export interface Discovery {
   odds: number;
   /** only where there is mud or stone near camp */
   near?: 'mud' | 'stone';
+  /** what else the band comes to know with it (the tool it is found with), if it doesn't already */
+  brings?: string[];
   /** "Ada worked out how to ..." */
   found: string;
   /** "Ada taught the people of Holt to ..." */
@@ -154,6 +162,59 @@ export const DISCOVERIES: Discovery[] = [
     practice: { store_berries: 1 }, odds: 40,
     found: 'lined a basket with clay, left it in the embers, and found a hard pot where the basket had burned away',
     taught: 'make pots of fired clay', memory: 'Fired the first clay pot.',
+  },
+  {
+    // (someone who cuts grass for thatch, sleeping on the hard ground, thinks to bring an armful in to lie on)
+    key: 'bedding', label: 'Grass bedding', needs: [], requires: [skill(SK.forage, 8), skill(SK.weave, 8)],
+    practice: { night_out: 0.15, thatch: 0.5 }, odds: 40,
+    found: 'spread an armful of dry grass under the lean-to and slept soft and deep on it',
+    taught: 'lay grass bedding in their shelters', memory: 'Thought to sleep on a bed of dry grass.',
+  },
+  {
+    // (a toolmaker who sews hides, pushing a thorn through them, thinks of a sliver of bone from the kill)
+    key: 'needles', label: 'Bone needles', needs: ['cloaks'], requires: [skill(SK.tool, 8), skill(SK.hide, 8)],
+    practice: { sew: 1, carcass: 0.5 }, odds: 12,
+    found: 'ground a sliver of deer bone to a point, burned an eye through it, and sewed a seam in half the time',
+    taught: 'make needles and awls of bone', memory: 'Made the first bone needle.',
+  },
+  {
+    // (the hideworker who skins the kills, and can sew a seam, thinks of wearing the hide against the cold)
+    key: 'cloaks', label: 'Hide cloaks', needs: ['preserving'], requires: [skill(SK.hide, 8), skill(SK.weave, 8)],
+    practice: { carcass: 3, rack: 1 }, odds: 30,
+    found: 'scraped two deer hides soft, sewed them together, and wore the first cloak against the cold',
+    taught: 'sew cloaks of deer hide', memory: 'Sewed the first hide cloak.',
+  },
+  {
+    // (a picker who knows the plants of the meadow sees what lies under them; someone already digging with
+    // a stick turns them up. Whoever finds roots without a digging stick sharpens one to get at them.)
+    key: 'roots', label: 'Digging roots', needs: [], requires: [skill(SK.forage, ABLE), skill(SK.tool, 6)], brings: ['digstick'],
+    practice: { forage: 1, dig_stick: 3 }, odds: 25,
+    found: 'dug up the fat roots under the reeds and the meadow grass with a sharpened stick, and found they kept all winter',
+    taught: 'dig roots in the autumn and keep them for winter', memory: 'Dug the first roots for the winter store.',
+  },
+  {
+    // (someone who knows every plant of the land, sitting with the sick, remembers the bitter bark and
+    // leaves that ease a fever)
+    key: 'herbs', label: 'Healing herbs', needs: [], requires: [skill(SK.forage, 11)],
+    practice: { sickbed: 1, forage: 0.05 }, odds: 40,
+    found: 'brewed willow bark and bitter leaves for a fever, and the fever broke: the band had its first healer',
+    taught: 'nurse fevers with healing herbs', memory: 'Nursed the first fever with healing herbs.',
+  },
+  {
+    // (a hunter or fisher who knows the plants, sitting by the fire of an evening, drops a piece of meat
+    // or a root in the embers and finds it tender, and that it goes further)
+    key: 'cooking', label: 'Cooking', needs: [], requires: [skill(SK.forage, 8), any(skill(SK.hunt, ABLE), skill(SK.fish, ABLE))],
+    practice: { evening_fire: 1 }, odds: 200,
+    found: 'dropped meat in the embers by mistake, and found it tender and filling: from then on the band roasted its food',
+    taught: 'roast their food in the embers', memory: 'Roasted the first meal in the embers.',
+  },
+  {
+    // (someone gathering fallen branches under the oaks, who knows which plants are bitter and how to
+    // draw the bitterness out, thinks of the acorns lying in the leaves)
+    key: 'nuts', label: 'Acorns', needs: [], requires: [skill(SK.forage, ABLE), skill(SK.wood, 8)],
+    practice: { deadwood: 1, forage: 0.2 }, odds: 60,
+    found: 'gathered the acorns under the oaks, soaked the bitterness out of them in the stream, and found they kept the year round',
+    taught: 'gather acorns and leach them for the winter', memory: 'Gathered the first acorns for the winter store.',
   },
   {
     // (hidework is learned at the drying rack, so it can't be what leads to it)

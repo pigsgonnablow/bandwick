@@ -28,7 +28,8 @@ describe('trapping', () => {
   it('thins the hares where snares catch them, and the land fills again', () => {
     const s = sim(2);
     const i = s.gameCap.findIndex((c) => c > 0);
-    s.items.push({ id: s.newId(), kind: 'snare', band: s.camp.id, holder: -1, wear: 0, made: s.tick, maker: -1, tile: i, catch: 0 });
+    // nobody's snare, so no round empties it or takes it up before we look
+    s.items.push({ id: s.newId(), kind: 'snare', band: -1, holder: -1, wear: 0, made: s.tick, maker: -1, tile: i, catch: 0 });
     const trap = s.items[s.items.length - 1];
     let caught = 0;
     for (let d = 0; d < 10; d++) {

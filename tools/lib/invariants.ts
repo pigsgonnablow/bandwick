@@ -5,7 +5,8 @@ import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, yearOf } from '../../src/sim/time';
 import { FAR_GRAVE } from '../../src/sim/ai';
-import { CARRY, MATERIALS, specOf, foodTotal, RECIPES } from '../../src/sim/band';
+import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS } from '../../src/sim/band';
+import { dayOf } from '../../src/sim/time';
 import { knowHowFor } from '../../src/sim/know';
 
 export interface Problem {
@@ -39,6 +40,16 @@ export class InvariantChecker {
     const at = `${this.label} y${yearOf(sim.tick)} t${sim.tick}`;
     for (const c of sim.camps) for (const [k, v] of Object.entries(c.stock)) if (!(v >= -1e-6) || !Number.isFinite(v)) flag(`stock.${k} invalid`, `${at} ${c.name}: ${v}`);
     // (a camp is closed at the next morning's count after its last person dies)
+    for (const c of sim.camps) {
+      // (a job called off puts back what it took, which can go a little over what is kept)
+      if (c.stock.hides > HIDES_KEPT + 4) flag('more hides than are kept', `${at} ${c.name}: ${c.stock.hides}`);
+      if (c.stock.bones > BONES_KEPT + 2) flag('more bones than are kept', `${at} ${c.name}: ${c.stock.bones}`);
+      if (c.stock.trinkets > TRINKETS_KEPT + 2) flag('more teeth and shells than are kept', `${at} ${c.name}: ${c.stock.trinkets}`);
+    }
+    for (const it of sim.items) if (it.wearer !== undefined) {
+      const w = sim.byId.get(it.wearer);
+      if (w?.alive && w.cloak !== it.id) flag('cloak claims a wearer who wears another', `${at} ${it.id} -> ${w.name}`);
+    }
     for (const c of sim.liveCamps()) if (!sim.members(c).length && sim.tick - (c.lastDeath ?? 0) > TICKS_PER_DAY) flag('living camp with nobody in it', `${at} ${c.name}`);
     for (const b of sim.buildings) if (!sim.campById(b.band)) flag('building of an unknown band', `${at} ${b.kind} ${b.id}`);
     for (const it of sim.items) {
@@ -93,6 +104,21 @@ export class InvariantChecker {
       if (sim.age(p) < 2 && sim.carerOf(p)?.alive && sim.carerOf(p)!.band !== p.band) flag('infant carried by someone of another band', `${at} ${p.name} by ${sim.carerOf(p)!.name}`);
       if (p.indoors && p.task?.kind !== 'sleep' && p.task?.kind !== 'warm' && sim.age(p) >= 2) flag('indoors without reason', `${at} ${p.name} ${p.task?.kind}`);
       if (p.carry === CARRY.Body && p.task?.kind !== 'bury') flag('carrying a body outside a burial', `${at} ${p.name} task ${p.task?.kind}`);
+      // village life: a cloak is worn by one person and knows who; a necklace was given by someone real
+      if (p.cloak !== undefined) {
+        const it = sim.items.find((i) => i.id === p.cloak);
+        if (!it || it.kind !== 'cloak') flag('wearing a cloak that is not there', `${at} ${p.name} ${p.cloak}`);
+        else if (it.wearer !== p.id) flag('cloak worn by someone it does not know', `${at} ${p.name} -> ${it.wearer}`);
+      }
+      if (p.necklace !== undefined && !sim.byId.has(p.necklace)) flag('necklace from nobody', `${at} ${p.name} ${p.necklace}`);
+      if ((p.tended ?? 0) > sim.tick + NURSE_DAYS * TICKS_PER_DAY) flag('nursed too far ahead', `${at} ${p.name}`);
+      const t = p.task;
+      if (t && (t.kind === 'gift' || t.kind === 'nurse')) {
+        const q = sim.byId.get(t.ref);
+        if (!q || q === p) flag(`${t.kind} for nobody`, `${at} ${p.name}`);
+        else if (q.alive && q.band !== p.band && t.stage < 3) flag(`${t.kind} for someone of another band`, `${at} ${p.name} -> ${q.name}`);
+      }
+      if (t?.kind === 'feast' && band && band.feastDay !== dayOf(sim.tick) && band.feastDay !== dayOf(sim.tick) - 1) flag('feasting on an ordinary day', `${at} ${p.name}`);
       if (p.task && sim.tick - p.task.started > 700 && p.task.kind !== 'sleep') flag('task stuck', `${at} ${p.name} ${p.task.kind} stage ${p.task.stage}`);
       // an adult with no task at several daily checks in a row is looping on something
       if (sim.age(p) >= 14 && !p.task) {

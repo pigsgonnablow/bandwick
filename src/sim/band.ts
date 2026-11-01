@@ -33,6 +33,14 @@ export const TRAINING = {
   'fish.catch': [{ skill: SK.fish, gain: 0.12 }],
   'fish.miss': [{ skill: SK.fish, gain: 0.03 }],
   preserve: [{ skill: SK.hide, gain: 0.1 }], // a batch hung on the drying rack
+  // a carcass brought home and skinned, the hide scraped and pegged out
+  skin: [{ skill: SK.hide, gain: 0.08 }],
+  // a load of roots dug with a digging stick
+  roots: [{ skill: SK.forage, gain: 0.04 }],
+  // a load of acorns gathered under the oaks
+  nuts: [{ skill: SK.forage, gain: 0.04 }],
+  // a bundle of healing plants found and cut, or a fever nursed with them
+  herbs: [{ skill: SK.forage, gain: 0.05 }],
 } as const satisfies Record<string, Lesson>;
 export type Training = keyof typeof TRAINING;
 
@@ -66,22 +74,22 @@ export const FLASH = { Thrust: 1, Stab: 2 } as const;
 export const ACT_NAMES = Object.keys(ACT);
 
 /** What a person is carrying. */
-export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10 } as const;
+export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10, Roots: 11, Nuts: 12, Herbs: 13 } as const;
 
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
-  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap';
+  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
-  'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap',
+  'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen', 'bed', 'roots', 'nuts', 'herbs', 'nurse', 'gift', 'feast',
 ];
 
-/** Things a band makes and keeps: tools, traps, baskets and pots. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot'] as const;
+/** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -106,7 +114,47 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   // a coiled clay pot fired in the embers, kept in the stores with berries in it under a lid: it lasts
   // a few years of daily use before it cracks (each day it holds food counts as a use)
   pot: { label: 'Clay pot', uses: 150 },
+  // a deer hide scraped, softened and sewn into a cloak with a cord at the throat: worn every cold day, it
+  // lasts two or three winters before it is worn through
+  cloak: { label: 'Hide cloak', uses: 150 },
+  // a sliver of deer bone ground to a point, with an eye, and an awl to punch the holes: they speed the
+  // sewing and weaving at the fire (each thing sewn with them is a use)
+  needle: { label: 'Bone needle', uses: 30 },
 };
+/** How much of the usual time sewing and weaving take with a bone needle and awl in the band. */
+export const NEEDLE_SPEED = 0.65;
+/** Bones kept from each deer, and at most. */
+export const BONES_PER_DEER = 2;
+export const BONES_KEPT = 10;
+/** Teeth kept from each deer for ornaments, and teeth and shells kept at most. */
+export const TEETH_PER_DEER = 2;
+export const TRINKETS_KEPT = 12;
+/** Days between one gift and the next from the same person. */
+export const GIFT_DAYS = 24;
+/** The day of the year of the midwinter feast (the middle of winter), and what each person eats at it. */
+export const MIDWINTER = 42;
+export const FEAST_MEAL = 1.5;
+/** How much of the cold a cloak keeps off, and the deer hides that go into one. */
+export const CLOAK_WARM = 0.3;
+export const HIDES_PER_CLOAK = 2;
+/** Hides kept in the stores at most (the rest are left: there is only so much a band can scrape and carry). */
+export const HIDES_KEPT = 12;
+/** Grass laid in a shelter for bedding: how much it takes, and how many days it stays fresh. */
+export const BED_FIBER = 3;
+export const BED_DAYS = 40;
+/** How much faster someone sleeps off their tiredness on fresh grass, against the bare ground. */
+export const BED_REST = 1.3;
+/** Roots dug in one trip with a digging stick, and how much of the usual going-off still happens to them. */
+export const ROOTS_LOAD = 10;
+/** Acorns brought home in one trip (from an oak or two), leached in the stream and dried: they keep for a year. */
+export const NUTS_LOAD = 8;
+/** Roasted in the embers, a meal of meat, fish, roots or acorns fills this much more; it takes a little longer. */
+export const COOK_GAIN = 1.25;
+export const COOK_TICKS = 6;
+export const COOKED = ['meat', 'fish', 'roots', 'nuts'];
+/** Bundles of dried healing herbs a band likes to keep by, and how long one nursing keeps a fever in check. */
+export const HERBS_WANT = 6;
+export const NURSE_DAYS = 2;
 /** Berries kept in one pot, and how much of the usual going-off still happens to them there. */
 export const POT_HOLDS = 6;
 export const POT_KEEP = 0.4;
@@ -119,13 +167,13 @@ export const BASKET_HOLDS = 8;
  */
 /** Fiber twisted into one length of cordage. */
 export const FIBER_PER_CORD = 3;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage into the stores, or an item onto the pile */
   makes: 'cordage' | ItemKind;
   /** what it uses from the stores */
-  uses: Partial<Record<'wood' | 'fiber' | 'cordage' | 'stone' | 'mud', number>>;
+  uses: Partial<Record<'wood' | 'fiber' | 'cordage' | 'stone' | 'mud' | 'hides' | 'bones', number>>;
   /** ticks of work at the fire, before skill */
   work: number;
   skill: number;
@@ -173,7 +221,18 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
     makes: 'pot', uses: { mud: 2, wood: 1 }, work: 44, skill: SK.pot, grow: 0.08, knows: 'pottery', doing: 'Making a clay pot',
     thought: 'Coiling clay into a pot to fire in the embers.', done: 'Fired a clay pot and set it in the stores.',
   },
+  cloak: {
+    // two hides scraped soft, cut and sewn with cord
+    makes: 'cloak', uses: { hides: HIDES_PER_CLOAK, cordage: 1 }, work: 50, skill: SK.hide, grow: 0.1, knows: 'cloaks', doing: 'Sewing a hide cloak',
+    thought: 'Scraping deer hides soft and sewing them into a cloak.', done: 'Sewed a hide cloak for someone to wear through the winter.',
+  },
+  needle: {
+    makes: 'needle', uses: { bones: 1 }, work: 26, skill: SK.tool, grow: 0.06, knows: 'needles', doing: 'Grinding a bone needle',
+    thought: 'Grinding a sliver of bone to a needle on a stone.', done: 'Ground a bone needle and an awl and laid them on the pile.',
+  },
 };
+/** The recipes that go faster with a bone needle and awl: sewing hides, weaving baskets and traps. */
+export const SEWN: RecipeKey[] = ['cloak', 'basket', 'fishtrap', 'snare'];
 /** One made thing. It lies on its band's stockpile unless someone holds it, or it is set out in the land. */
 export interface Item {
   id: number;
@@ -191,6 +250,8 @@ export interface Item {
   tile?: number;
   /** a trap: what it has caught and is holding, waiting for the round (meat for a snare, fish for a fish trap) */
   catch?: number;
+  /** a cloak: who wears it (absent: it lies on the pile) */
+  wearer?: number;
 }
 
 /** Anything in the world that can be clicked. */
@@ -315,6 +376,13 @@ export interface Person {
   mourned: number;
   /** who raises them when both parents are dead (-1: their parents); kinship stays with the birth parents */
   carer: number;
+  /** the hide cloak they wear (an item id; absent: none) */
+  cloak?: number;
+  /** nursed with herbs through a fever: until when it helps (absent: never) */
+  tended?: number;
+  /** when they last gave someone an ornament, and who gave them the one they wear (absent: never, none) */
+  gave?: number;
+  necklace?: number;
 }
 
 export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed'] as const;
@@ -401,6 +469,8 @@ export interface Building {
   stone: number;
   /** what the walls are made of (absent in older saves: wood) */
   walls?: Walls;
+  /** a home: days the grass bedding laid in it stays fresh (absent or 0: the bare ground) */
+  bedding?: number;
   work: number; // done
   built: boolean;
   owner: number; // person id of the household head
@@ -447,6 +517,15 @@ export interface Stock {
   /** dug mud and quarried stone, for walls (absent in older saves until restored) */
   mud: number;
   stone: number;
+  /** deer hides kept from kills, for cloaks, and roots dug in autumn (absent in older saves until restored) */
+  hides: number;
+  roots: number;
+  /** acorns gathered in autumn, leached and dried; herbs gathered for the sick; bones from kills, for
+   * needles and awls; teeth and shells, for ornaments (absent in older saves until restored) */
+  nuts: number;
+  herbs: number;
+  bones: number;
+  trinkets: number;
 }
 
 export interface SimEvent {
@@ -461,7 +540,7 @@ export interface SimEvent {
   weight: number;
 }
 
-export const foodTotal = (s: Stock) => s.berries + s.meat + s.fish + s.preserved;
+export const foodTotal = (s: Stock) => s.berries + s.meat + s.fish + s.preserved + s.roots + s.nuts;
 
 /** The health levels the sim acts on (the info window's health tooltip reads them too). */
 export const HEALTH = {
