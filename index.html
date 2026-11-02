@@ -122,6 +122,12 @@
   .btn:disabled { opacity: 0.45; cursor: default; }
   .tip { position: absolute; left: 0; top: 0; pointer-events: none; font: 600 12px/1.2 var(--font-ui); color: var(--parch);
     background: rgba(15,20,29,0.82); border: 1px solid var(--line); padding: 5px 8px; border-radius: 6px; white-space: nowrap; z-index: 3; }
+  /* hover tooltips on the stats: anything with data-tip */
+  #ui > .hover-tip { position: fixed; pointer-events: none; z-index: 400; max-width: 280px; font: 400 12px/1.4 var(--font-ui); color: var(--parch);
+    background: var(--ink-solid); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; box-shadow: 0 4px 14px rgba(0,0,0,0.35); text-wrap: pretty; }
+  [data-tip] { cursor: help; }
+  [data-tip]:is(dt, span, .chip):hover { text-decoration: underline dotted rgba(242,233,212,0.35); text-underline-offset: 3px; }
+  button[data-tip], .link[data-tip] { cursor: pointer; }
   .toast { position: absolute; left: 50%; bottom: max(24px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); pointer-events: none;
     background: rgba(15,20,29,0.86); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-size: 13px; color: var(--parch); max-width: min(520px, calc(100vw - 32px)); text-align: center; }
   .director { position: absolute; top: calc(max(16px, env(safe-area-inset-top, 0px)) + 52px); left: 50%; transform: translateX(-50%);

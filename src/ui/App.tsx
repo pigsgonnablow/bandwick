@@ -11,6 +11,8 @@ import type { SaveMeta } from '../saves';
 import { InfoWindows } from './InfoWindows';
 import { ChronicleView } from './Chronicle';
 import { clothesLine } from './words';
+import { Tooltip } from './Tooltip';
+import { BAND_TIPS } from './tips';
 
 const METERS_PER_UNIT = 6;
 
@@ -52,6 +54,7 @@ export function App({ engine }: { engine: Engine }) {
         </>
       )}
       <Loading s={s} engine={engine} />
+      <Tooltip />
     </>
   );
 }
@@ -145,7 +148,7 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
           </div>
           {sum.famine && <div class="alert">Famine: people are going hungry</div>}
           <dl class="rows compact">
-            <dt>Food</dt>
+            <dt data-tip={BAND_TIPS['Food']}>Food</dt>
             <dd>
               {days < 1 ? 'less than a day' : `${Math.floor(days)} days`}
               <Bar v={days} max={30} warn={5} />
@@ -153,29 +156,29 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
                 {Math.round(st.berries)} berries · {Math.round(st.meat)} meat · {Math.round(st.fish)} fish{st.preserved > 0.5 ? ` · ${Math.round(st.preserved)} dried` : ''}
               </span>
             </dd>
-            <dt>Wood</dt>
+            <dt data-tip={BAND_TIPS['Wood']}>Wood</dt>
             <dd>{Math.round(st.wood)} loads</dd>
-            <dt>Fiber</dt>
+            <dt data-tip={BAND_TIPS['Fiber']}>Fiber</dt>
             <dd>{Math.floor(st.fiber ?? 0)} bundles · {Math.floor(st.cordage ?? 0)} cordage</dd>
-            {((st.mud ?? 0) >= 0.5 || (st.stone ?? 0) >= 0.5) && <><dt>Mud, stone</dt><dd>{Math.floor(st.mud ?? 0)} mud · {Math.floor(st.stone ?? 0)} stone</dd></>}
-            <dt>This year</dt>
+            {((st.mud ?? 0) >= 0.5 || (st.stone ?? 0) >= 0.5) && <><dt data-tip={BAND_TIPS['Mud, stone']}>Mud, stone</dt><dd>{Math.floor(st.mud ?? 0)} mud · {Math.floor(st.stone ?? 0)} stone</dd></>}
+            <dt data-tip={BAND_TIPS['This year']}>This year</dt>
             <dd class="small">
-              <span title="Brought in this year">+{sum.stores.now.food} food, +{sum.stores.now.gathered.wood} wood</span>
+              <span data-tip="Brought in to the stores this year">+{sum.stores.now.food} food, +{sum.stores.now.gathered.wood} wood</span>
               <span class="muted"> · {sum.stores.now.eaten} eaten, {sum.stores.now.spoiled} spoiled, {sum.stores.now.burned} burned</span>
               {sum.pile >= 0 && <> · <button class="link" onClick={() => engine.selectRef({ kind: 'building', id: sum.pile })}>stockpile</button></>}
             </dd>
-            <dt>Fire</dt>
+            <dt data-tip={BAND_TIPS['Fire']}>Fire</dt>
             <dd>{sum.fuel > 0 ? (sum.fuel < 2 ? 'Burning low' : 'Burning') : 'Out'}</dd>
-            <dt>Homes</dt>
+            <dt data-tip={BAND_TIPS['Homes']}>Homes</dt>
             <dd>
               {sum.homes}
               {sum.building.length > 0 && <span class="muted"> · building {sum.building.join(', ').toLowerCase()}</span>}
             </dd>
-            <dt>Tools</dt>
+            <dt data-tip={BAND_TIPS['Tools']}>Tools</dt>
             <dd class="small">{sum.tools || 'None'}</dd>
-            {clothesLine(sum.clothes, sum.pop) && <><dt>Clothes</dt><dd class="small">{clothesLine(sum.clothes, sum.pop)}</dd></>}
-            <dt>Knows</dt>
-            <dd class="small" title="What this band has found out for itself or learned from others, beyond the old ways">
+            {clothesLine(sum.clothes, sum.pop) && <><dt data-tip={BAND_TIPS['Clothes']}>Clothes</dt><dd class="small">{clothesLine(sum.clothes, sum.pop)}</dd></>}
+            <dt data-tip={BAND_TIPS['Knows']}>Knows</dt>
+            <dd class="small">
               {sum.knows.length ? sum.knows.join(', ') : 'Only the old ways'}
               {' · '}<button class="link" onClick={() => engine.setChronicleOpen(true, 'discoveries')}>how they came to know it</button>
             </dd>
