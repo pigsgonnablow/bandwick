@@ -268,6 +268,8 @@ export class BandLayer {
       m.frustumCulled = false;
       m.castShadow = true;
       m.receiveShadow = true;
+      // a half-built wall casts the shadow of what is standing so far, not of the finished thing
+      m.customDepthMaterial = this.buildingDepthMaterial(kind, g.boundingBox!.max.y);
       const prog = new THREE.InstancedBufferAttribute(new Float32Array(64).fill(1), 1);
       g.setAttribute('iProgress', prog);
       this.buildingMeshes.set(kind, m);
@@ -620,6 +622,31 @@ export class BandLayer {
             float dark = step(dot(diffuseColor.rgb, vec3(1.0)), 0.06) * step(0.99, vProg);
             totalEmissiveRadiance += dark * uDoorGlow * uNight * vec3(1.0, 0.55, 0.2) * 0.9;
           }`);
+    };
+    return mat;
+  }
+
+  /** The shadow pass for a building, cut off at the same height as the building is drawn. */
+  private buildingDepthMaterial(kind: string, height: number) {
+    const mat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+    mat.customProgramCacheKey = () => `bld-depth-${kind}`;
+    mat.onBeforeCompile = (sh) => {
+      sh.uniforms.uHeight = { value: height + 0.01 };
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', `#include <common>
+          attribute float iProgress;
+          varying float vLocalY;
+          varying float vProg;`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          vLocalY = position.y;
+          vProg = iProgress;`);
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', `#include <common>
+          uniform float uHeight;
+          varying float vLocalY;
+          varying float vProg;`)
+        .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+          if (vLocalY > vProg * uHeight + 0.002) discard;`);
     };
     return mat;
   }
@@ -1267,7 +1294,14 @@ export class BandLayer {
         const pop = this.bandPop.get(b.band) ?? 10;
         this.auraList.unshift({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, r: 7 + Math.sqrt(pop) * 1.8, c: bc.color, k: 0.3, terr: true });
       }
-      if (!b.built) put('site', cx + 0.28, cz + 0.3, rot + 0.6, 1, 0.8);
+      if (!b.built) {
+        // the pile of stakes and rods lies where the work is: a windbreak goes up in an arc behind the fire,
+        // so its pile sits just inside the arc rather than in the fire on the hearth's tile
+        if (b.kind === 'windbreak') {
+          const side = rot + 0.3;
+          put('site', cx - Math.sin(side) * 1.3, cz - Math.cos(side) * 1.3, rot + 0.6, 1, 0.8);
+        } else put('site', cx + 0.28, cz + 0.3, rot + 0.6, 1, 0.8);
+      }
       // fresh grass laid under a lean-to (a hut's is out of sight inside)
       if (b.bedding && b.kind === 'leanto' && b.built) put('bedding', cx, cz, rot, 1, 1, b.band);
       if (b.kind === 'hearth' && b.fuel > 0 && (laid === undefined || laid >= 1)) fires.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, fuel: b.fuel });
