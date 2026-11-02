@@ -54,12 +54,58 @@ function smooth(a: number, b: number, x: number) {
   return t * t * (3 - 2 * t);
 }
 /** The arm a carried thing hangs from, in the pose it is normally carried in: [shoulder, elbow, lean]. */
-function baseArm(carry: number, act: number): [number, number, number] {
-  if (carry === CARRY.Spear) return act === ACT.Hunt ? [-2.35, -0.35, 0.28] : act === ACT.Fish ? [-2.2, -0.35, 0.28] : [-0.45, -0.75, 0.05];
+function baseArm(carry: number): [number, number, number] {
   if (carry === CARRY.Log || carry === CARRY.Meat || carry === CARRY.Stone) return [-1.55, -1.95, 0.05];
   if (carry === CARRY.Body) return [-1.25, -1.35, 0.05];
   if (carry === CARRY.Berries || carry === CARRY.Fiber || carry === CARRY.Mud || carry === CARRY.Roots || carry === CARRY.Nuts || carry === CARRY.Herbs || carry === CARRY.Eggs || carry === CARRY.Honey || carry === CARRY.Mushrooms) return [-0.15, -0.55, 0.05];
   return [-0.1, -0.5, 0.05];
+}
+/** The walk (0) or run (1) cycle's value for one channel at stride phase `ph`, as gaitAt in POSE_GLSL. */
+function loopAt(g: number, ch: string, ph: number) {
+  const row = clipRows(CLIPS[g])[CH[ch]];
+  const x = (ph - Math.floor(ph)) * gait.samples;
+  const i = Math.floor(x) % gait.samples;
+  return row[i] + (row[(i + 1) % gait.samples] - row[i]) * (x - Math.floor(x));
+}
+const gaitCh = (ch: string, ph: number, run: number) => loopAt(0, ch, ph) + (loopAt(1, ch, ph) - loopAt(0, ch, ph)) * run;
+/** The right arm with a spear in hand, as POSE_GLSL bends it for one pose (holdCarry included):
+ *  shoulder, elbow, lean and rise (bob less crouch); and how the spear lies in the hand in that hold,
+ *  its angle (`grip`) when the arm and body are at `arm` (shoulder + elbow) and `tilt` (lean). */
+interface SpearHold { sh: number; el: number; lean: number; y: number; grip: number; arm: number; tilt: number }
+function spearHold(act: number, t: number, ph: number, run: number): SpearHold {
+  // poised over the water, bobbing as they wait for a fish; point down and out
+  if (act === ACT.Fish) return { sh: -2.2 + 0.45 * Math.max(0, Math.sin(t * 3)), el: -0.35, lean: 0.28, y: 0, grip: Math.PI / 2 + 0.55, arm: -2.55, tilt: 0.28 };
+  const walking = act === ACT.Walk || act === ACT.Run || act === ACT.Hunt;
+  const r = act === ACT.Hunt ? Math.max(run, 0.75) : run;
+  const lean = walking ? gaitCh('lean', ph, r) : 0;
+  const y = walking ? gaitCh('bob', ph, r) : act === ACT.Idle ? 0.0015 * Math.sin(t * 2.1) : 0;
+  // raised to throw, nearly level
+  if (act === ACT.Hunt) return { sh: -2.35, el: -0.35, lean: lean + 0.08, y, grip: Math.PI / 2 - 0.25, arm: -2.7, tilt: 0.28 };
+  // held low at the side, point up
+  return { sh: -0.45, el: -0.75, lean, y, grip: 0.22, arm: -1.2, tilt: 0.05 };
+}
+/** How much of a swing of the arm the wrist passes on to the spear (it takes up the rest itself). */
+const WRIST = 0.45;
+/** The grip a thrust or a stab is made with, whatever the spear was held in before (grip, arm, tilt as in SpearHold):
+ *  overhand, so the point drives forward and down at a deer, or straight down into the water. */
+const STRIKE: Partial<Record<Gesture, [number, number, number]>> = { thrust: [Math.PI / 2 - 0.25, -2.7, 0.05], stab: [Math.PI / 2 + 0.55, -2.55, 0.28] };
+/** The spear in the right hand (person space): the holds of the pose being left and the one coming in,
+ *  blended as the shader blends them (`k`), an elder's stoop, and a one-off move playing over it all. */
+function spearInHand(from: SpearHold, to: SpearHold, k: number, stoop: number, g: Gesture | null, gpr: number, gw: number) {
+  const mix = (a: number, b: number, w: number) => a + (b - a) * w;
+  let sh = mix(from.sh, to.sh, k), el = mix(from.el, to.el, k), lean = mix(from.lean, to.lean, k) + stoop, y = mix(from.y, to.y, k);
+  if (g && gw > 0) {
+    sh = mix(sh, onceAt(g, 'shoulderR', gpr), gw);
+    el = mix(el, onceAt(g, 'elbowR', gpr), gw);
+    lean = mix(lean, onceAt(g, 'lean', gpr), gw);
+    y = mix(y, onceAt(g, 'bob', gpr) - onceAt(g, 'lower', gpr), gw);
+  }
+  let grip = mix(from.grip, to.grip, k), arm = mix(from.arm, to.arm, k), tilt = mix(from.tilt, to.tilt, k);
+  const strike = g && gw > 0 ? STRIKE[g] : undefined;
+  if (strike) { grip = mix(grip, strike[0], gw); arm = mix(arm, strike[1], gw); tilt = mix(tilt, strike[2], gw); }
+  // the shaft turns with the body, and part way with the arm: a stab drives the point down, a wind-up lifts it
+  const angle = grip + (lean - tilt) + WRIST * (sh + el - arm);
+  return new THREE.Matrix4().makeRotationX(angle).setPosition(handAt(sh, el, lean, -y));
 }
 /** Where the right hand is (person space) for given arm angles and lean, as the shader bends the body. */
 function handAt(sh: number, el: number, lean: number, lower: number, out = new THREE.Vector3()) {
@@ -920,6 +966,10 @@ export class BandLayer {
       const toolCarry = loose ? (s.tool === 3 ? STICK : s.tool === 4 ? SNARE : s.tool === 5 ? FISHTRAP : s.tool === 6 ? BASKET : 0) : 0;
       // berries picked into a basket come home in it
       const shown = carry === CARRY.Berries && s.tool === 6 ? BASKET_FULL : carry;
+      const spearAt = () => {
+        const t = U.uTime.value + (look % 997) * 0.37, ph = s.phase % 1;
+        return spearInHand(spearHold(s.prevAct, t, ph, s.run), spearHold(s.shownAct, t, ph, s.run), smooth(0, 1, blend), elder * 0.18, s.gesture, gpr, gw);
+      };
       anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, toolCarry === STICK ? CARRY.Spear : toolCarry ? CARRY.Berries : carry);
       col.set(CLOTH[(look >>> 8) % CLOTH.length]).convertSRGBToLinear();
       const bc = this.colorMode ? this.bandColors.get(s.band) : undefined;
@@ -937,10 +987,11 @@ export class BandLayer {
         if (cm) {
           const k = carryCount.get(shown) ?? 0;
           if (k < cm.instanceMatrix.count) {
-            const off = carryOffset(shown, s.act);
+            // a spear is held in the hand, wherever the arm is in the pose and any move playing over it
+            const off = shown === CARRY.Spear ? spearAt() : carryOffset(shown);
             // during a one-off move the item goes where the hand goes
-            if (gw > 0 && s.gesture) {
-              const [bs, be, bl] = baseArm(carry, s.act);
+            if (gw > 0 && s.gesture && shown !== CARRY.Spear) {
+              const [bs, be, bl] = baseArm(carry);
               const g = s.gesture;
               const from = handAt(bs, be, bl, 0);
               const to = handAt(onceAt(g, 'shoulderR', gpr), onceAt(g, 'elbowR', gpr), onceAt(g, 'lean', gpr), onceAt(g, 'lower', gpr));
@@ -976,7 +1027,9 @@ export class BandLayer {
         const tm = this.carryMeshes.get(toolCarry);
         const tk = carryCount.get(toolCarry) ?? 0;
         if (tm && tk < tm.instanceMatrix.count) {
-          tm.setMatrixAt(tk, m4.clone().multiply(carryOffset(toolCarry, s.act)));
+          // a digging stick sits in the hand as a spear held low does (point up: it is modelled point down)
+          const off = toolCarry === STICK ? spearAt().multiply(new THREE.Matrix4().makeRotationX(Math.PI)) : carryOffset(toolCarry);
+          tm.setMatrixAt(tk, m4.clone().multiply(off));
           carryCount.set(toolCarry, tk + 1);
         }
       }
@@ -1388,8 +1441,8 @@ function shortest(cur: number, want: number) {
 }
 
 
-/** Where each carried item sits on the body (person-local space, facing +Z). */
-function carryOffset(kind: number, act: number) {
+/** Where each carried item sits on the body (person-local space, facing +Z); a spear and a digging stick follow the hand instead (spearInHand). */
+function carryOffset(kind: number) {
   const m = new THREE.Matrix4();
   const e = new THREE.Euler();
   const p = new THREE.Vector3();
@@ -1407,15 +1460,8 @@ function carryOffset(kind: number, act: number) {
     case CARRY.Stone: p.set(0.06, 0.315, -0.008); e.set(0, 0.3, 0); break; // on the right shoulder
     case CARRY.Meat: p.set(0, 0.3, -0.03); e.set(0, Math.PI / 2, 0); break;
     case CARRY.Fish: p.set(0.078, 0.15, 0.02); e.set(0, Math.PI / 2, -1.2); break;
-    case CARRY.Spear:
-      // in the right hand, wherever the pose puts it (see the arm angles in POSE_GLSL)
-      if (act === ACT.Hunt) { p.set(0.075, 0.37, 0.07); e.set(Math.PI / 2 - 0.25, 0, 0); } // raised to throw
-      else if (act === ACT.Fish) { p.set(0.075, 0.35, 0.09); e.set(Math.PI / 2 + 0.55, 0, 0); } // poised over the water
-      else { p.set(0.076, 0.16, 0.055); e.set(0.22, 0, 0); } // held low, point up
-      break;
     case CARRY.Body: p.set(0, 0.215, 0.085); e.set(0, 0, 0); break; // held across the arms
     case CARRY.Baby: p.set(0, 0.23, 0.055); break;
-    case STICK: p.set(0.076, 0.16, 0.055); e.set(0.22 + Math.PI, 0, 0); break; // point up, as a spear is carried
     case SNARE: p.set(0.075, 0.16, 0.04); break; // the coil in the fist, its stake hanging
     case FISHTRAP: p.set(0.075, 0.075, 0.04); e.set(Math.PI / 2, 0, 0); break; // by the tail, mouth down
     case BASKET: case BASKET_FULL: p.set(0.08, 0.16, 0.035); break; // hung from the fist by its handle
@@ -1618,22 +1664,31 @@ mat3 rx(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0,
 mat3 rz(float a) { float c = cos(a), s = sin(a); return mat3(c, s, 0.0, -s, c, 0.0, 0.0, 0.0, 1.0); }
 void turn(inout vec3 v, inout mat3 R, mat3 M, vec3 c) { v = M * (v - c) + c; R = M * R; }
 
+// hands that are carrying something hold it (codes as CARRY in sim/band.ts); done to each pose
+// before two are blended, so the arms ease from one hold to the next along with the body
+void holdCarry(inout Pose p, float act, float carry) {
+  if (p.lie > 0.5 || carry < 0.5) return;
+  if (carry < 1.5 || (carry > 2.5 && carry < 3.5) || (carry > 9.5 && carry < 10.5)) { p.shR = -1.55; p.elR = -1.95; } // log, meat, stone: on the right shoulder
+  else if (carry > 4.5 && carry < 5.5) { p.shL = p.shR = -1.25; p.elL = p.elR = -1.35; }         // a body, in both arms
+  else if (carry > 6.5 && carry < 7.5) { p.shL = p.shR = -0.75; p.elL = p.elR = -1.45; }         // a baby, cradled
+  else if (carry > 5.5 && carry < 6.5) {
+    // a spear, held low; hunting (raised to throw) and fishing (poised over the water) hold it in their own poses
+    if (!(act > 7.5 && act < 8.5) && !(act > 12.5 && act < 13.5)) { p.shR = -0.45; p.elR = -0.75; }
+  }
+  else if ((carry > 1.5 && carry < 2.5) || carry > 7.5) { p.shR = -0.15; p.elR = -0.55; }        // a basket of berries, grass, clay
+}
+
 void poseVertex(vec3 pos, out vec3 v, out mat3 R) {
   float t = uTime + iAnim2.z;
   float k = smoothstep(0.0, 1.0, iAnim.z);
-  Pose p = blendPose(poseFor(iAnim.y, t, iAnim2.x, iAnim2.y), poseFor(iAnim.x, t, iAnim2.x, iAnim2.y), k);
+  float carry = iAnim2.w;
+  Pose a = poseFor(iAnim.y, t, iAnim2.x, iAnim2.y), b = poseFor(iAnim.x, t, iAnim2.x, iAnim2.y);
+  holdCarry(a, iAnim.y, carry);
+  holdCarry(b, iAnim.x, carry);
+  Pose p = blendPose(a, b, k);
   float style = iAnim.w;
   float hairStyle = mod(style, 4.0);
   p.lean += step(3.5, mod(style, 8.0)) * 0.18;   // elders stoop
-  // hands that are carrying something hold it (codes as CARRY in sim/band.ts)
-  float carry = iAnim2.w;
-  if (p.lie < 0.5 && carry > 0.5) {
-    if (carry < 1.5 || (carry > 2.5 && carry < 3.5) || (carry > 9.5 && carry < 10.5)) { p.shR = -1.55; p.elR = -1.95; } // log, meat, stone: on the right shoulder
-    else if (carry > 4.5 && carry < 5.5) { p.shL = p.shR = -1.25; p.elL = p.elR = -1.35; }         // a body, in both arms
-    else if (carry > 6.5 && carry < 7.5) { p.shL = p.shR = -0.75; p.elL = p.elR = -1.45; }                         // a baby, cradled
-    else if (carry > 5.5 && iAnim.x < 12.5) { p.shR = -0.45; p.elR = -0.75; }                      // a spear, held low
-    else if ((carry > 1.5 && carry < 2.5) || carry > 7.5) { p.shR = -0.15; p.elR = -0.55; }        // a basket of berries, grass, clay
-  }
   // a one-off move (picking up, setting down, a thrust, a stab) plays over all of that
   if (iAnim3.x > 0.5 && p.lie < 0.5) {
     float pr = iAnim3.y;
