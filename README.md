@@ -239,6 +239,6 @@ If the simulation ever hits a bug it stops and says so, with the seed and tick, 
 - `src/ui/` — Preact interface (`InfoWindows.tsx` is the floating inspector, `Chronicle.tsx` the history browser)
 - `src/saves.ts` — save storage (IndexedDB, gzip, export/import)
 - `blender/build_assets.py` — every tree, bush, reed, grass tuft, rock, outcrop, stump, log pile and grave
-- `blender/build_band.py` — villagers (jointed: thighs/shins, upper arms/forearms), their walk and run cycles and every other animation clip, deer (stags with antlers), carried items, hearth, lean-to, two kinds of hut, storehouse, drying rack
+- `blender/build_band.py` — villagers (jointed: thighs/shins, upper arms/forearms), their walk and run cycles and every other animation clip, deer (stags with antlers), carried items, hearth, lean-to, two kinds of hut, storehouse, drying rack, the dugout the first band lands in
 - `test/` — the test suite: `unit/`, `integration/`, `regression/` (Vitest)
 - `tools/` — headless tests (generation, survival, invariants, traces) and Playwright browser checks
