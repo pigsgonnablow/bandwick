@@ -2,7 +2,7 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, train, trainSkill } from './band';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
@@ -2334,8 +2334,9 @@ export function runTask(s: Sim, p: Person) {
         t.timer = 5;
         if (r.chance(0.006)) {
           p.health -= 40;
-          s.remember(p, 'injured', -18, 1, -1, 'Gored by a stag.');
-          s.event('injury', `${p.name} was gored by a stag.`, [p.id], p.x, p.z, 2);
+          const hurt = isStag(d) ? 'gored by a stag' : d.fawn ? 'kicked by a fawn' : 'kicked by a doe';
+          s.remember(p, 'injured', -18, 1, -1, `${hurt[0].toUpperCase()}${hurt.slice(1)}.`);
+          s.event('injury', `${p.name} was ${hurt}.`, [p.id], p.x, p.z, 2);
           if (p.health <= 0) return s.kill(p, 'hunting');
         }
         const chance = 0.15 + p.skills[SK.hunt] * 0.022 + (s.has(p, 'brave') ? 0.05 : 0);

@@ -572,6 +572,9 @@ export interface Deer {
   fawn: boolean;
 }
 
+/** Grown deer with odd ids are stags (they wear antlers; the renderer uses the same rule), the rest are does. */
+export const isStag = (d: Deer) => !d.fawn && d.id % 2 === 1;
+
 export interface Herd {
   id: number;
   hx: number;
