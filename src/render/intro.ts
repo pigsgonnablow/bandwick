@@ -9,6 +9,7 @@ import { Grid } from '../sim/path';
 import { WorldData, WATER, SEA_SURFACE } from '../sim/types';
 import type { BandLayer, IntroPose } from './band';
 import type { IsoCamera } from './camera';
+import { addCommon } from './shaderlib';
 
 const SAIL_MS = 8000;
 /** how far out to sea the boat is first seen, in tiles */
@@ -18,6 +19,9 @@ const MAX_WALK_MS = 11000;
 const STAGGER_MS = 380;
 const HEARTH_MS = 2600;
 const STOCKPILE_MS = 2200;
+
+/** how high the boat floats: the floor of its hollow (at the model's origin) stays clear of the water as it bobs */
+const BOAT_RIDE = 0.045;
 
 const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 
@@ -181,29 +185,16 @@ export class Intro {
   }
 
   private makeBoat() {
-    // a long dugout: the lower half of a stretched sphere, open at the top, with a few thwarts across
-    const wood = new THREE.MeshStandardMaterial({ color: 0x7a5232, roughness: 0.9, side: THREE.DoubleSide });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 0.95 });
-    const hull = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), wood);
-    hull.scale.set(0.36, 0.2, 1.2);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 6, 40), dark);
-    rim.rotation.x = Math.PI / 2;
-    rim.scale.set(0.36, 1.2, 1);
-    this.boat.add(hull, rim);
-    for (const z of [-0.75, 0.05, 0.85]) {
-      const t = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.03, 0.06), dark);
-      t.position.set(0, -0.02, z);
-      this.boat.add(t);
-    }
-    // the bundles they brought: firewood and food
-    const bundle = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.4, 8), dark);
-    bundle.rotation.z = Math.PI / 2;
-    bundle.position.set(0, -0.02, -0.98);
-    this.boat.add(bundle);
-    this.boat.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
-    });
+    // the dugout from band.glb (blender/build_band.py): origin at the waterline, bow along +Z
+    const g = this.band.geom('boat__dugout');
+    if (!g) return;
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    mat.onBeforeCompile = (sh) => addCommon(sh);
+    mat.customProgramCacheKey = () => 'boat';
+    const hull = new THREE.Mesh(g, mat);
+    hull.castShadow = true;
+    hull.receiveShadow = true;
+    this.boat.add(hull);
   }
 
   /** The boat's place and heading at time t (ms into the intro). */
@@ -213,7 +204,7 @@ export class Intro {
     const d = this.boatCurve.getTangentAt(Math.min(1, Math.max(0.001, u)));
     const moving = t < SAIL_MS;
     const bob = Math.sin(now * 0.0021) * (moving ? 0.025 : 0.01);
-    return { x: p.x, z: p.z, y: SEA_SURFACE + 0.07 + bob, dir: d, roll: Math.sin(now * 0.0016) * (moving ? 0.05 : 0.015) };
+    return { x: p.x, z: p.z, y: SEA_SURFACE + BOAT_RIDE + bob, dir: d, roll: Math.sin(now * 0.0016) * (moving ? 0.05 : 0.015) };
   }
 
   private seatPos(seat: [number, number], b: ReturnType<Intro['boatAt']>) {
@@ -233,7 +224,7 @@ export class Intro {
     if (t < w.start) {
       const s = this.seatPos(w.seat, b);
       // sitting in the boat, facing the way it goes (until it lands and they stand to get out)
-      return { x: s.x, z: s.z, y: b.y - 0.12, act: t < SAIL_MS + 200 ? ACT.Sit : ACT.Idle, angle: heading, afloat: true };
+      return { x: s.x, z: s.z, y: b.y, act: t < SAIL_MS + 200 ? ACT.Sit : ACT.Idle, angle: heading, afloat: true };
     }
     const k = Math.min(1, (t - w.start) / w.dur);
     if (k >= 1) {
@@ -243,7 +234,7 @@ export class Intro {
     const p = w.path.getPointAt(k);
     // still stepping over the side, in the shallows
     const wet = this.band.waterAt(p.x, p.z);
-    return { x: p.x, z: p.z, y: wet ? Math.max(b.y - 0.12, wet.surface - 0.08) : undefined, act: ACT.Walk, afloat: !!wet };
+    return { x: p.x, z: p.z, y: wet ? Math.max(b.y, wet.surface - 0.08) : undefined, act: ACT.Walk, afloat: !!wet };
   }
 
   /** Per render frame (dt in seconds). */
@@ -294,7 +285,7 @@ export class Intro {
     this.parent.remove(this.boat);
     this.boat.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
+      if (m.isMesh) (m.material as THREE.Material).dispose(); // the geometry belongs to the band layer
     });
   }
 }

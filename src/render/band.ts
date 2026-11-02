@@ -193,6 +193,10 @@ export class BandLayer {
   introPose: ((id: number, now: number) => IntroPose | null) | null = null;
   /** the opening scene: how far along the hearth and stockpile are (building id -> 0..1; 0 is not there yet) */
   introBuild = new Map<number, number>();
+  /** a model from band.glb by name (e.g. the landing's boat) */
+  geom(name: string) {
+    return this.geoms.get(name);
+  }
   private people = new Map<number, Shown>();
   private deer = new Map<number, { x: number; z: number; px: number; pz: number; y: number; angle: number; want: number; seen: number; state: number; fawn: boolean }>();
   private villagers: THREE.InstancedMesh;
@@ -226,7 +230,7 @@ export class BandLayer {
   marker: THREE.Mesh;
   markerAt: { x: number; y: number; z: number; r: number } | null = null;
 
-  constructor(private world: WorldData, geoms: Map<string, THREE.BufferGeometry>) {
+  constructor(private world: WorldData, private geoms: Map<string, THREE.BufferGeometry>) {
     this.group.name = 'band';
     this.villagers = this.makeVillagers(geoms);
     this.deerMesh = this.makeDeer(geoms);

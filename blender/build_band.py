@@ -10,6 +10,7 @@ Conventions (read by src/render/band.ts):
   carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,basket,basketFull} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
+  boat__dugout                                                    the dugout the first band lands in (origin at the waterline, bow to -Y).
   bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
@@ -1116,6 +1117,100 @@ def pot(q, rr):
 q = Part()
 pot(q, random.Random(52))
 q.finish("pile__pot")
+
+# ---------------------------------------------------------------- the boat the first band lands in
+HULL = (112, 80, 52)        # the outside of the log, adzed smooth and weathered
+HULL_WET = (74, 56, 40)     # darkened along and below the waterline
+HULL_IN = (150, 112, 72)    # fresh-cut wood inside
+HULL_CHAR = (98, 74, 54)    # where it was hollowed out with fire, scraped but still dark
+GUNWALE = (132, 98, 62)
+
+
+def dugout(q, rr):
+    """A dugout canoe hollowed from one long trunk: a rounded hull a little flat on the bottom, the
+    sheer rising to a blunt, upturned bow and stern left solid, two ribs of the log left standing across
+    the hollow, the inside paler and smudged dark where it was burnt out. Ten sit in it in pairs.
+    Origin at the waterline, midships; the bow points -Y (= +Z in the game, the way it goes).
+    The floor of the hollow is at the waterline; the game floats it a little higher, so the sides show
+    well above the water and none of the sea shows inside it."""
+    L2 = 1.25            # half its length
+    B = 0.31             # half its beam
+    WALL = 0.032
+    NS, N = 24, 10       # stations along, points round each half-ring
+    bm = q.bm
+
+    def shape(u):
+        a = abs(u)
+        half = B * max(0.0, 1 - a ** 2.4) ** 0.55 + 0.012
+        bot = -0.07 + 0.11 * a ** 3.2
+        top = 0.13 + 0.07 * a ** 4
+        return half, bot, top
+
+    def ring(y, half, bot, top):
+        pts = []
+        for k in range(N + 1):
+            ph = math.pi * k / N
+            x = -half * math.cos(ph)
+            z = top - (top - bot) * math.sin(ph) ** 0.55
+            pts.append(bm.verts.new((x, y, z)))
+        return pts
+
+    us = [-1 + 2 * i / NS for i in range(NS + 1)]
+    O = [ring(u * L2, *shape(u)) for u in us]
+    for i in range(NS):
+        for k in range(N):
+            f = bm.faces.new((O[i][k], O[i][k + 1], O[i + 1][k + 1], O[i + 1][k]))
+            zc = f.calc_center_median().z
+            q.paint([f], HULL_WET if zc < 0.012 else HULL, rr, 0.05)
+    for e in (0, NS):  # the blunt end grain, bow and stern
+        q.paint([bm.faces.new(O[e] if e else list(reversed(O[e])))], HULL_WET, rr, 0.04)
+    # the hollow: from i0 to i1, the ends left solid
+    i0, i1 = 3, NS - 3
+    I = {}
+    for i in range(i0, i1 + 1):
+        half, bot, top = shape(us[i])
+        I[i] = ring(us[i] * L2, half - WALL, max(bot + 0.05, 0.0), top)
+    for i in range(i0, i1):
+        for k in range(N):
+            f = bm.faces.new((I[i][k], I[i + 1][k], I[i + 1][k + 1], I[i][k + 1]))
+            c = f.calc_center_median()
+            burnt = rr.random() < 0.12 and c.z < 0.06
+            q.paint([f], HULL_CHAR if burnt else HULL_IN, rr, 0.07)
+        for k in (0, N):  # the gunwale tops
+            f = bm.faces.new((O[i][k], O[i + 1][k], I[i + 1][k], I[i][k]))
+            q.paint([f], GUNWALE, rr, 0.04)
+    for e, n in ((i0, -1), (i1, 1)):  # the end walls of the hollow, and the solid decks beyond them
+        q.paint([bm.faces.new(I[e])], HULL_IN, rr, 0.05)
+        for i in (range(0, i0 - 1) if n < 0 else range(i1 + 1, NS)):
+            q.paint([bm.faces.new((O[i][0], O[i][N], O[i + 1][N], O[i + 1][0]))], GUNWALE, rr, 0.04)
+        j = e + n  # the station just outside the hollow
+        q.paint([bm.faces.new((O[j][0], O[j][N], I[e][N], I[e][0]))], GUNWALE, rr, 0.04)
+        q.paint([bm.faces.new((O[j][0], O[e][0], I[e][0]))], GUNWALE, rr, 0.04)
+        q.paint([bm.faces.new((O[j][N], I[e][N], O[e][N]))], GUNWALE, rr, 0.04)
+    # two ribs of the log left standing across the hollow, between the pairs who sit
+    for y in (-0.17, 0.43):
+        half, bot, top = shape(y / L2)
+        q.box((0, y, (max(bot + 0.05, 0.0) + top - 0.04) / 2), (2 * (half - WALL) - 0.01, 0.035, top - 0.04 - max(bot + 0.05, 0.0)), HULL_IN, rr, 0.05)
+    # what they brought: firewood bundled at the stern, a hide-wrapped bundle and a pot at the bow
+    for k in range(5):
+        x = -0.11 + k * 0.055
+        z = 0.025 + (k % 2) * 0.03
+        q.cyl(6, 0.022, 0.02, (x, 0.74, z), (x + rr.uniform(-0.01, 0.01), 0.9, z + 0.01), BARK, rr, 0.06)
+    q.cyl(6, 0.004, 0.004, (-0.15, 0.82, 0.06), (0.15, 0.82, 0.06), CORD, rr, 0.0)
+    q.blob((-0.05, -0.85, 0.045), (0.09, 0.065, 0.05), HIDE_CARRY, rr, 0.06, noise=0.12)
+    q.cyl(6, 0.004, 0.004, (-0.14, -0.85, 0.08), (0.04, -0.85, 0.08), CORD, rr, 0.0)
+    for v in q.blob((0, 0, 0), (0.04, 0.04, 0.045), POT, rr, 0.06):
+        v.co += Vector((0.12, -0.84, 0.035))
+    # paddles laid along inside each side, blades to the stern
+    for s_ in (-1, 1):
+        x = s_ * 0.21
+        q.cyl(5, 0.008, 0.008, (x, -0.5, 0.105), (x, 0.24, 0.1), WOOD, rr, 0.03)
+        q.box((x, 0.32, 0.098), (0.05, 0.16, 0.008), WOOD, rr, 0.04, rot=Matrix.Rotation(s_ * 0.25, 3, "Y"))
+
+
+q = Part()
+dugout(q, random.Random(60))
+q.finish("boat__dugout")
 
 # ---------------------------------------------------------------- buildings
 STONE = (128, 122, 114)
