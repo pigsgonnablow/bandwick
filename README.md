@@ -28,6 +28,12 @@ their band's colour, buildings take it on, and a wash around each camp, wider th
 there, shows each band's range; a legend lists the bands. The band panel shows the colour, and how
 the band came to be.
 
+**Landing.** A new world opens with the first band coming in from the sea in a boat. They land
+on the nearest shore, walk inland to their camp, lay the hearth and mark out the stockpile, and
+then life begins. Time stands still until they are settled. Press Skip (or Esc, or pick a speed)
+to start at once. The landing is only for show, so a world's history is the same either way.
+Loaded saves don't replay it.
+
 **Stores.** Every camp marks out a stockpile beside the hearth the day it is founded, and
 everything gathered is carried there: wood stacked between stakes at the back, berries, meat and
 fish laid on a bark mat in front, the pile growing and shrinking with the stores. Once there is a

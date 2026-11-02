@@ -174,8 +174,25 @@ export function dressStyle(dress: number) {
   return (dress & 1 ? 32 : 0) + (dress & 2 ? 64 : 0) + (dress & 8 ? 128 : 0) + (dress & 16 ? 256 : 0);
 }
 
+/** Where the opening scene has someone, in place of where the simulation has them. */
+export interface IntroPose {
+  x: number;
+  z: number;
+  act: number;
+  /** height to draw them at (default: the ground) */
+  y?: number;
+  /** heading (default: the way they move) */
+  angle?: number;
+  /** in the boat or stepping out of it: never swimming */
+  afloat?: boolean;
+}
+
 export class BandLayer {
   group = new THREE.Group();
+  /** the opening scene: draws people where it has them instead (null: as the simulation has them) */
+  introPose: ((id: number, now: number) => IntroPose | null) | null = null;
+  /** the opening scene: how far along the hearth and stockpile are (building id -> 0..1; 0 is not there yet) */
+  introBuild = new Map<number, number>();
   private people = new Map<number, Shown>();
   private deer = new Map<number, { x: number; z: number; px: number; pz: number; y: number; angle: number; want: number; seen: number; state: number; fawn: boolean }>();
   private villagers: THREE.InstancedMesh;
@@ -861,6 +878,8 @@ export class BandLayer {
       const ox = s.dx, oz = s.dz;
       if (Math.abs(tx - s.dx) + Math.abs(tz - s.dz) > 1.5) { s.dx = tx; s.dz = tz; }
       else { s.dx += (tx - s.dx) * follow; s.dz += (tz - s.dz) * follow; }
+      const ov = this.introPose?.(id, now) ?? null;
+      if (ov) { s.dx = ov.x; s.dz = ov.z; s.act = ov.act; if (ov.angle !== undefined) s.want = ov.angle; }
       if (s.indoors) continue;
       if (s.age < 2 && (s.act === ACT.Walk || s.act === ACT.Run)) continue;
       if (n >= anim.count) break;
@@ -883,10 +902,11 @@ export class BandLayer {
       s.still = walking && speed < 0.15 ? s.still + dt : 0;
       // in water too deep to stand in (for their height): swim if going somewhere, else tread water
       const wt = this.waterAt(x, z);
-      const swimming = wt !== null && wt.depth > SWIM_DEPTH * 0.4 * scale && s.act !== ACT.Dead;
+      const swimming = wt !== null && wt.depth > SWIM_DEPTH * 0.4 * scale && s.act !== ACT.Dead && !ov?.afloat;
       const stroke = swimming && walking && s.still < 0.25 && s.carry === CARRY.None;
       const gy = swimming ? wt!.surface - (stroke ? 0.168 : 0.3) * scale : this.groundAt(x, z);
       s.y += (gy - s.y) * Math.min(1, dt * (swimming ? 6 : 14));
+      if (ov?.y !== undefined) s.y = ov.y;
       // the pose to show: someone 'walking' who has stopped (between path steps) stands instead
       const act = this.debugAct.get(id) ?? (swimming ? (stroke ? SWIM : TREAD) : walking && s.still > 0.25 ? ACT.Idle : s.act);
       if (swimming) this.swimmers.push({ x, z, y: wt!.surface, r: scale, moving: stroke, seed: id });
@@ -907,7 +927,7 @@ export class BandLayer {
         s.phase += Math.min(moved / stride, MAX_CADENCE * dt);
       }
       // face where they're going while moving, otherwise what the simulation says; turn smoothly
-      const want = playing ? ringAngle : walking && moved > 0.002 * dt * 60 ? Math.atan2(x - ox, z - oz) : s.want;
+      const want = playing ? ringAngle : walking && moved > 0.002 * dt * 60 && ov?.angle === undefined ? Math.atan2(x - ox, z - oz) : s.want;
       s.angle += shortest(s.angle, want) * (1 - Math.exp(-dt * (walking || playing ? 12 : 8)));
       pos.set(x, s.y, z);
       q.setFromAxisAngle(up, s.angle);
@@ -1189,6 +1209,7 @@ export class BandLayer {
     const counts = new Map<string, number>();
     const need = new Map<string, number>();
     for (const b of this.buildings) {
+      if (this.introBuild.get(b.id) === 0) continue;
       const kind = this.modelOf(b);
       need.set(kind, (need.get(kind) ?? 0) + 1);
       if (!b.built) need.set('site', (need.get('site') ?? 0) + 1);
@@ -1228,10 +1249,13 @@ export class BandLayer {
     this.drawPiles();
     this.drawTraps();
     for (const b of this.buildings) {
+      // (in the opening scene the hearth and stockpile are laid out as the band arrives)
+      const laid = this.introBuild.get(b.id);
+      if (laid === 0) continue;
       const cx = b.x + 0.5, cz = b.z + 0.5;
       const rot = (b.rot * Math.PI) / 2;
       const kind = this.modelOf(b);
-      put(kind, cx, cz, rot, b.built ? 1 : Math.max(0.02, b.progress), 1, b.band, b.walls);
+      put(kind, cx, cz, rot, laid !== undefined ? Math.max(0.02, laid) : b.built ? 1 : Math.max(0.02, b.progress), 1, b.band, b.walls);
       const bc = this.colorMode ? this.bandColors.get(b.band) : undefined;
       if (bc) this.auraList.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, r: b.kind === 'hearth' ? 3 : 2.2, c: bc.color, k: bc.gone ? 0.12 : 0.42 });
       // the band's range: a wide wash around a lived-in camp's hearth, wider the more people there are
@@ -1242,7 +1266,7 @@ export class BandLayer {
       if (!b.built) put('site', cx + 0.28, cz + 0.3, rot + 0.6, 1, 0.8);
       // fresh grass laid under a lean-to (a hut's is out of sight inside)
       if (b.bedding && b.kind === 'leanto' && b.built) put('bedding', cx, cz, rot, 1, 1, b.band);
-      if (b.kind === 'hearth' && b.fuel > 0) fires.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, fuel: b.fuel });
+      if (b.kind === 'hearth' && b.fuel > 0 && (laid === undefined || laid >= 1)) fires.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, fuel: b.fuel });
     }
     for (const [kind, m] of this.buildingMeshes) {
       m.count = counts.get(kind) ?? 0;
@@ -1377,6 +1401,8 @@ export class BandLayer {
     };
     for (const b of this.buildings) {
       if (b.kind !== 'stockpile') continue;
+      const laid = this.introBuild.get(b.id);
+      if (laid !== undefined && laid < 1) continue;
       const p = this.piles.get(b.id);
       if (!p) continue;
       const gy = this.world.groundY[b.z * this.world.size + b.x];
