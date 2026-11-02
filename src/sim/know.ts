@@ -217,6 +217,55 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'gather acorns and leach them for the winter', memory: 'Gathered the first acorns for the winter store.',
   },
   {
+    // (someone sewing a cloak, the offcuts in their lap, thinks of the cold on their head and hands)
+    key: 'hats', label: 'Fur hats and mittens', needs: ['cloaks'], requires: [skill(SK.hide, 8)],
+    practice: { sew: 1, night_out: 0.05 }, odds: 10,
+    found: 'sewed the offcuts of a hide into a cap and a pair of mittens, fur turned in',
+    taught: 'sew fur hats and mittens', memory: 'Sewed the first fur hat and mittens.',
+  },
+  {
+    // (someone skinning a deer, feet sore from the hunt, thinks to wrap them in the hide)
+    key: 'shoes', label: 'Hide shoes', needs: ['cloaks'], requires: [skill(SK.hide, 9), skill(SK.hunt, 8)],
+    practice: { sew: 1, carcass: 0.5, hunt: 0.05 }, odds: 16,
+    found: 'cut soles from a hide and gathered them at the ankle with a thong: shoes, and the long walks were easier',
+    taught: 'sew hide shoes', memory: 'Sewed the first pair of hide shoes.',
+  },
+  {
+    // (someone thatching a roof sees how the reeds shed the wind, and thinks to wear them)
+    key: 'capes', label: 'Reed capes', needs: [], requires: [skill(SK.weave, ABLE)],
+    practice: { thatch: 0.3, night_out: 0.05 }, odds: 60,
+    found: 'knotted reeds and grass into a cape that shed the wind like a thatched roof',
+    taught: 'knot reed capes', memory: 'Knotted the first reed cape.',
+  },
+  {
+    // (someone sewing, who has carried home armfuls of acorns and roots, thinks of a hide bag)
+    key: 'bags', label: 'Hide bags', needs: ['cloaks'], requires: [skill(SK.hide, 8), skill(SK.forage, 9)],
+    practice: { sew: 1, store_food: 0.02 }, odds: 14,
+    found: 'sewed a hide into a bag with a strap for the shoulder, and brought home more from every trip',
+    taught: 'sew hide bags for gathering', memory: 'Sewed the first gathering bag.',
+  },
+  {
+    // (someone gathering fallen branches in spring hears a bird scold them from its nest overhead)
+    key: 'eggs', label: 'Bird eggs', needs: [], requires: [skill(SK.forage, 8)],
+    practice: { deadwood: 1, forage: 0.1 }, odds: 35,
+    found: 'climbed to a nest and brought down the eggs, and the band ate well in the lean days of spring',
+    taught: 'look for eggs in the nests in spring', memory: 'Found the first eggs in a nest.',
+  },
+  {
+    // (someone who keeps the fire and knows what smoke does to a swarm, sitting by it, thinks of the bees in the old trees)
+    key: 'honey', label: 'Wild honey', needs: ['cooking'], requires: [skill(SK.forage, 10)],
+    practice: { evening_fire: 0.3, deadwood: 0.6 }, odds: 160,
+    found: 'took an ember to a hive in a hollow tree, smoked the bees drowsy and came away with the comb',
+    taught: 'smoke out wild hives for honey', memory: 'Smoked out the first wild hive and brought back honey.',
+  },
+  {
+    // (someone gathering wood in the autumn woods, who knows the plants well, learns which mushrooms are good)
+    key: 'mushrooms', label: 'Mushrooms', needs: [], requires: [skill(SK.forage, 11)],
+    practice: { deadwood: 1, forage: 0.1 }, odds: 90,
+    found: 'learned which of the mushrooms in the autumn woods are good to eat, and which make you sick',
+    taught: 'pick the good mushrooms in autumn', memory: 'Picked the first good mushrooms.',
+  },
+  {
     // (hidework is learned at the drying rack, so it can't be what leads to it)
     key: 'preserving', label: 'Drying and smoking', needs: [], requires: [any(skill(SK.hunt, ELITE), skill(SK.fish, ELITE)), skill(SK.forage, 8)],
     practice: { store_meat: 1 }, odds: 120,

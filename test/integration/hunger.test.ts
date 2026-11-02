@@ -14,7 +14,7 @@ describe('hunger', () => {
     while (hourOf(s.tick) < 11 || hourOf(s.tick) > 13) runTo(s, s.tick + 5);
     const c = s.camp;
     const kid = s.members().find((p) => s.age(p) >= 11 && s.age(p) < 14) ?? s.members().find((p) => s.age(p) >= 14)!;
-    for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts'] as const) c.stock[k] = 0;
+    for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts', 'eggs', 'honey', 'mushrooms'] as const) c.stock[k] = 0;
     let food = 0, play = 0;
     for (let i = 0; i < 40; i++) {
       Object.assign(kid, { food: 12, health: 60, rest: 90, warmth: 90, belonging: 90, task: null, carry: 0 });
@@ -29,7 +29,7 @@ describe('hunger', () => {
     const s = sim(1);
     while (seasonOf(s.tick) !== 3) runTo(s, s.tick + 200);
     const c = s.camp;
-    for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts'] as const) c.stock[k] = 0;
+    for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts', 'eggs', 'honey', 'mushrooms'] as const) c.stock[k] = 0;
     c.stock.preserved = 40;
     // the plan is made each morning
     runTo(s, s.tick + TICKS_PER_DAY);
@@ -57,7 +57,7 @@ describe('hunger', () => {
     while (seasonOf(s.tick) !== 3) runTo(s, s.tick + 200);
     const c = s.camp;
     runTo(s, s.tick + TICKS_PER_DAY);
-    for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts'] as const) c.stock[k] = 0;
+    for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts', 'eggs', 'honey', 'mushrooms'] as const) c.stock[k] = 0;
     c.stock.wood = 20;
     const h = s.hearth();
     h.fuel = 0;

@@ -10,7 +10,7 @@ import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, seasonOf } from '../../
 import { InvariantChecker } from '../../tools/lib/invariants';
 import { sim, runTo } from '../helpers';
 
-const empty = (): Stock => ({ berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0 });
+const empty = (): Stock => ({ berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0 });
 
 /** Add grown-ups, none of them kin to anyone, to the band the simulation is looking at. */
 function grow(s: Sim, n: number): Person[] {
@@ -355,13 +355,15 @@ describe('a famine', () => {
     while (seasonOf(s.tick) !== 3) runTo(s, s.tick + 200);
     const c = s.camp;
     const winters = c.hungryWinters;
-    for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts'] as const) c.stock[k] = 0;
+    for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts', 'eggs', 'honey', 'mushrooms'] as const) c.stock[k] = 0;
     for (const p of s.members()) p.food = 10;
+    const told = s.events.length;
     (s as any).life();
     expect(c.famine).toBe(true);
     expect(c.lastFamine).toBe(s.tick);
     expect(c.hungryWinters).toBe(winters + 1);
-    expect(s.events.at(-1)!.text).toBe(`Hunger grips ${c.name}.`);
+    // (other news of the morning, a discovery say, may be told alongside it)
+    expect(s.events.slice(told).map((e) => e.text)).toContain(`Hunger grips ${c.name}.`);
     // it is the one famine, not a new one each morning
     (s as any).life();
     expect(c.hungryWinters).toBe(winters + 1);
@@ -375,7 +377,7 @@ describe('a famine', () => {
     const s = sim(1);
     while (seasonOf(s.tick) !== 1) runTo(s, s.tick + 200);
     const c = s.camp;
-    for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts'] as const) c.stock[k] = 0;
+    for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts', 'eggs', 'honey', 'mushrooms'] as const) c.stock[k] = 0;
     for (const p of s.members()) p.food = 10;
     (s as any).life();
     expect(c.famine).toBe(true);

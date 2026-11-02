@@ -1,6 +1,6 @@
 // A band that knows all of village life from the start, run for years and checked every day: the
 // rules of life hold (tools/lib/invariants.ts), every new custom and craft actually happens, and a
-// save made in the middle of it (a feast, a nursing, a necklace, an acorn walk) carries on identically.
+// save made in the middle of it (a feast, a nursing, a necklace, an acorn walk, some mending) carries on identically.
 import { describe, it, expect } from 'vitest';
 import { InvariantChecker } from '../../tools/lib/invariants';
 import { Sim, SaveData } from '../../src/sim/sim';
@@ -8,7 +8,7 @@ import { generateWorld } from '../../src/sim/worldgen';
 import { TICKS_PER_DAY, TICKS_PER_YEAR } from '../../src/sim/time';
 import { sim } from '../helpers';
 
-const KNOWN = ['preserving', 'bedding', 'cloaks', 'roots', 'digstick', 'nuts', 'cooking', 'herbs', 'needles'];
+const KNOWN = ['preserving', 'bedding', 'cloaks', 'roots', 'digstick', 'nuts', 'cooking', 'herbs', 'needles', 'eggs', 'honey', 'mushrooms', 'hats', 'shoes', 'capes', 'bags'];
 const YEARS = 4;
 
 function villageSim(seed: number) {
@@ -33,15 +33,18 @@ describe('village life over the years', () => {
       }
       expect(checker.report()).toEqual([]);
       expect(s.living().length).toBeGreaterThan(0);
-      for (const k of ['nuts', 'herbs', 'gift', 'feast', 'roots', 'bed']) expect(seen, `someone at ${k}`).toContain(k);
+      for (const k of ['nuts', 'herbs', 'gift', 'feast', 'roots', 'bed', 'eggs', 'honey', 'mushrooms', 'mend']) expect(seen, `someone at ${k}`).toContain(k);
       // food comes in and is eaten; the new stores are used, not just piled up
-      for (const k of ['nuts', 'roots']) {
+      for (const k of ['nuts', 'roots', 'eggs', 'honey', 'mushrooms']) {
         expect(total(s, `gathered.${k}`), `gathered ${k}`).toBeGreaterThan(0);
         expect(total(s, `eaten.${k}`), `eaten ${k}`).toBeGreaterThan(0);
       }
       expect(total(s, 'gathered.herbs')).toBeGreaterThan(0);
       expect(total(s, 'made.needle')).toBeGreaterThan(0);
       expect(total(s, 'made.cloak')).toBeGreaterThan(0);
+      // clothes besides cloaks are sewn, and worn things mended
+      for (const k of ['hat', 'shoes', 'cape']) expect(total(s, `made.${k}`), `made ${k}`).toBeGreaterThan(0);
+      expect(total(s, 'mended')).toBeGreaterThan(0);
       expect(total(s, 'gifts.given')).toBeGreaterThan(0);
       // a feast or a thin year told of, every midwinter of the run
       const winters = s.events.filter((e) => e.kind === 'feast' || e.kind === 'feast_none').length;
@@ -64,8 +67,8 @@ function canonical(save: SaveData) {
 }
 
 describe('a save in the middle of village life', () => {
-  for (const kind of ['feast', 'nuts', 'gift', 'nurse'] as const) {
-    it(`made while someone is at ${kind === 'nuts' ? 'the acorns' : `a ${kind}`} carries on identically`, () => {
+  for (const kind of ['feast', 'nuts', 'herbs', 'gift', 'nurse', 'eggs', 'honey', 'mushrooms', 'mend'] as const) {
+    it(`made while someone is at ${kind === 'nuts' ? 'the acorns' : ['eggs', 'honey', 'mushrooms', 'herbs'].includes(kind) ? `the ${kind}` : kind === 'mend' ? 'some mending' : `a ${kind}`} carries on identically`, () => {
       const a = villageSim(1);
       const limit = a.tick + 3 * TICKS_PER_YEAR;
       const busy = () => a.living().some((p) => p.task?.kind === kind && p.task.stage >= 1);

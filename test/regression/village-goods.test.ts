@@ -2,9 +2,9 @@
 // nursing called off gives back what it took, once; acorns and roots dropped beside the stores go in
 // and far out are lost; a band's feast or cooked meal never takes more than its stores hold.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Sim } from '../../src/sim/sim';
+import { Sim, isTreeType } from '../../src/sim/sim';
 import type { Person, Task } from '../../src/sim/band';
-import { CARRY, foodTotal } from '../../src/sim/band';
+import { CARRY, FOODS, foodTotal } from '../../src/sim/band';
 import { abandon, delivering, runTask } from '../../src/sim/ai';
 import { sim, runTo } from '../helpers';
 import { TICKS_PER_DAY, START_TICK, dayOf } from '../../src/sim/time';
@@ -84,8 +84,8 @@ describe('nursing called off', () => {
   });
 });
 
-describe('acorns, roots and herbs in hand', () => {
-  for (const [carry, k] of [[CARRY.Nuts, 'nuts'], [CARRY.Roots, 'roots'], [CARRY.Herbs, 'herbs']] as const) {
+describe('acorns, roots, herbs, eggs, honey and mushrooms in hand', () => {
+  for (const [carry, k] of [[CARRY.Nuts, 'nuts'], [CARRY.Roots, 'roots'], [CARRY.Herbs, 'herbs'], [CARRY.Eggs, 'eggs'], [CARRY.Honey, 'honey'], [CARRY.Mushrooms, 'mushrooms']] as const) {
     it(`(${k}) go into the stores when put down beside them`, () => {
       const st = s.storeSpot();
       p.x = st.x;
@@ -114,6 +114,29 @@ describe('acorns, roots and herbs in hand', () => {
     });
   }
 
+  for (const [carry, k] of [[CARRY.Eggs, 'eggs'], [CARRY.Honey, 'honey'], [CARRY.Mushrooms, 'mushrooms'], [CARRY.Roots, 'roots']] as const) {
+    it(`(${k}) feed a starving carrier on the way home, rather than being dropped`, () => {
+      placeAway(8);
+      p.carry = carry;
+      p.carryAmt = 3;
+      p.food = 10;
+      p.task = task(k as Task['kind'], { stage: 2, homeAt: s.tick, goal: s.storeSpot().tile, gx: s.storeSpot().x, gz: s.storeSpot().z });
+      runTask(s, p);
+      expect(p.carryAmt).toBe(2);
+      expect(p.food).toBeGreaterThan(50);
+    });
+  }
+
+  it('(herbs) are not eaten by a hungry carrier: they are medicine', () => {
+    placeAway(8);
+    p.carry = CARRY.Herbs;
+    p.carryAmt = 3;
+    p.food = 10;
+    p.task = task('herbs', { stage: 2, homeAt: s.tick, goal: s.storeSpot().tile, gx: s.storeSpot().x, gz: s.storeSpot().z });
+    runTask(s, p);
+    expect(p.carryAmt).toBe(3);
+  });
+
   it('feed a starving carrier on the way home (acorns), rather than being dropped', () => {
     placeAway(8);
     p.carry = CARRY.Nuts;
@@ -131,7 +154,7 @@ describe('a meal', () => {
     const c = s.camp;
     c.knows.push('cooking');
     s.hearth().fuel = 30;
-    for (const k of ['berries', 'fish', 'meat', 'roots', 'nuts', 'preserved'] as const) c.stock[k] = 0;
+    for (const k of FOODS) c.stock[k] = 0;
     c.stock.nuts = 0.3;
     c.stock.roots = 0.2;
     p.food = 5;
@@ -147,11 +170,28 @@ describe('a meal', () => {
   });
 });
 
+describe('a picked-over tree', () => {
+  it('is let go by whoever had it, if the tree is cut down while they walk to it', () => {
+    const k = s.nearestProp(p.x, p.z, 30, (k) => isTreeType(s.propType[k]));
+    for (const kind of ['eggs', 'mushrooms'] as const) {
+      s.reserved.set(k, p.id);
+      p.carry = CARRY.None;
+      p.task = task(kind, { ref: k, goal: s.propTile[k], gx: s.propX[k], gz: s.propZ[k] });
+      const was = s.propAlive[k];
+      s.propAlive[k] = 0;
+      runTask(s, p);
+      s.propAlive[k] = was;
+      expect(p.task).toBeNull();
+      expect(s.reserved.get(k)).not.toBe(p.id);
+    }
+  });
+});
+
 describe('the feast', () => {
   it('eats only what is in the stores, however many come', () => {
     const c = s.camp;
     c.feastDay = dayOf(s.tick);
-    for (const k of ['berries', 'fish', 'meat', 'roots', 'nuts', 'preserved'] as const) c.stock[k] = 0;
+    for (const k of FOODS) c.stock[k] = 0;
     c.stock.meat = 2;
     const guests = s.members(c).filter((q) => s.age(q) >= 12).slice(0, 4);
     for (const q of guests) {
@@ -163,6 +203,28 @@ describe('the feast', () => {
     expect(c.stock.meat).toBeGreaterThanOrEqual(0);
     expect(c.stock.meat).toBeCloseTo(0, 6);
     expect(c.ledger?.now['eaten.meat'] ?? 0).toBeCloseTo(2, 6);
+  });
+
+  it('keeps the fire built up while everyone sits round it, from the woodpile', () => {
+    // (a long run once found the fire out on the longest night, with wood stacked, everyone at the feast)
+    const c = s.camp;
+    c.feastDay = dayOf(s.tick);
+    c.stock.meat = 40;
+    c.stock.wood = 10;
+    const h = s.hearth();
+    h.fuel = 0.5;
+    const q = s.members(c).find((o) => s.age(o) >= 12)!;
+    q.x = c.x + 1.2;
+    q.z = c.z;
+    q.task = { kind: 'feast', stage: 1, goal: s.tileOf(q), gx: q.x, gz: q.z, ref: -1, timer: 30, started: s.tick, amount: 0, near: false };
+    runTask(s, q);
+    expect(h.fuel).toBeGreaterThan(2);
+    expect(c.stock.wood).toBe(8);
+    // and with no wood to spare, nothing is burned that isn't there
+    c.stock.wood = 1;
+    h.fuel = 0.5;
+    runTask(s, q);
+    expect(c.stock.wood).toBe(1);
   });
 
   it('is not held, nor called to, by a band that is not feasting today', () => {

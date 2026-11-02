@@ -10,6 +10,7 @@ import { yearSeason } from '../saves';
 import type { SaveMeta } from '../saves';
 import { InfoWindows } from './InfoWindows';
 import { ChronicleView } from './Chronicle';
+import { clothesLine } from './words';
 
 const METERS_PER_UNIT = 6;
 
@@ -167,6 +168,7 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
             </dd>
             <dt>Tools</dt>
             <dd class="small">{sum.tools || 'None'}</dd>
+            {clothesLine(sum.clothes, sum.pop) && <><dt>Clothes</dt><dd class="small">{clothesLine(sum.clothes, sum.pop)}</dd></>}
             <dt>Knows</dt>
             <dd class="small" title="What this band has found out for itself or learned from others, beyond the old ways">
               {sum.knows.length ? sum.knows.join(', ') : 'Only the old ways'}

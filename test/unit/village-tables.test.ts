@@ -7,12 +7,13 @@ import { DISCOVERIES, DISCOVERY } from '../../src/sim/know';
 import {
   CARRY, COOKED, COOK_GAIN, COOK_TICKS, SEWN, NEEDLE_SPEED, RECIPES, RECIPE_KEYS, ITEMS, TASK_KINDS, foodTotal,
   BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, HERBS_WANT, NURSE_DAYS, GIFT_DAYS, MIDWINTER, FEAST_MEAL,
-  NUTS_LOAD, ROOTS_LOAD, Stock,
+  NUTS_LOAD, ROOTS_LOAD, Stock, FOODS, EGGS_LOAD, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, HONEY_STING, HONEY_TREAT,
 } from '../../src/sim/band';
 import { DAYS_PER_YEAR, DAYS_PER_SEASON } from '../../src/sim/time';
 import { PHRASE, INTEREST } from '../../src/render/director';
+import { PROP_TASKS } from '../../src/sim/sim';
 
-const empty = (): Stock => ({ berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0 });
+const empty = (): Stock => ({ berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0 });
 
 describe('food', () => {
   it('counts acorns and roots in the stores, but not herbs, bones, teeth or hides', () => {
@@ -29,9 +30,36 @@ describe('food', () => {
     expect(COOK_TICKS).toBeGreaterThan(0);
   });
 
+  it('is every food in the stores, each counted once, and nothing else', () => {
+    expect(new Set(FOODS).size).toBe(FOODS.length);
+    for (const k of FOODS) expect(foodTotal({ ...empty(), [k]: 2 }), k).toBe(2);
+    const all = { ...empty() };
+    for (const k of Object.keys(all) as (keyof Stock)[]) all[k] = 1;
+    expect(foodTotal(all)).toBe(FOODS.length);
+  });
+
+  it('includes the wild foods of the seasons, eggs and mushrooms roasted, honey eaten as it is', () => {
+    for (const k of ['eggs', 'honey', 'mushrooms'] as const) expect(FOODS).toContain(k);
+    expect(COOKED).toContain('eggs');
+    expect(COOKED).toContain('mushrooms');
+    expect(COOKED).not.toContain('honey');
+    expect(HONEY_TREAT).toBeGreaterThan(0);
+    expect(HONEY_TREAT).toBeLessThan(1);
+    expect(HONEY_STING).toBeGreaterThan(0);
+    expect(HONEY_STING).toBeLessThan(20);
+    // a beginner's bad mushroom is a real risk, but not most of the time
+    expect(BAD_MUSHROOM).toBeGreaterThan(0.05);
+    expect(BAD_MUSHROOM).toBeLessThan(0.5);
+    expect(BAD_MUSHROOM_DAYS).toBeGreaterThan(0);
+  });
+
   it('comes home in sensible loads', () => {
     expect(NUTS_LOAD).toBeGreaterThan(2);
     expect(ROOTS_LOAD).toBeGreaterThan(2);
+    expect(EGGS_LOAD).toBeGreaterThan(1);
+    expect(MUSHROOMS_LOAD).toBeGreaterThan(2);
+    // eggs are a spring morsel, not a staple
+    expect(EGGS_LOAD).toBeLessThan(NUTS_LOAD);
   });
 });
 
@@ -70,8 +98,10 @@ describe('customs', () => {
 
 describe('the new discoveries', () => {
   it('are each in the table, in the order they can be found', () => {
-    for (const k of ['nuts', 'cooking', 'herbs', 'needles', 'bedding', 'cloaks', 'roots', 'digstick']) expect(DISCOVERY.get(k), k).toBeDefined();
+    for (const k of ['nuts', 'cooking', 'herbs', 'needles', 'bedding', 'cloaks', 'roots', 'digstick', 'eggs', 'honey', 'mushrooms']) expect(DISCOVERY.get(k), k).toBeDefined();
     expect(DISCOVERY.get('needles')!.needs).toContain('cloaks');
+    // smoking out a hive takes knowing what fire and smoke can do
+    expect(DISCOVERY.get('honey')!.needs).toContain('cooking');
   });
 
   it('only bring along other discoveries, never themselves', () => {
@@ -91,6 +121,14 @@ describe('the camera director', () => {
       expect(PHRASE[k], `phrase for ${k}`).toBeTruthy();
       expect(INTEREST[k], `interest in ${k}`).toBeGreaterThanOrEqual(0);
     }
+  });
+});
+
+describe('tasks at a plant or tree', () => {
+  it('are all known as such, so a save keeps the plant they were going to', () => {
+    // (a save once lost track of the bush a herb gatherer was walking to)
+    for (const k of ['forage', 'eatwild', 'reap', 'fell', 'deadwood', 'roots', 'nuts', 'herbs', 'eggs', 'honey', 'mushrooms'] as const) expect(PROP_TASKS, k).toContain(k);
+    for (const k of PROP_TASKS) expect(TASK_KINDS).toContain(k);
   });
 });
 

@@ -2,12 +2,12 @@
 
 Run headless:  python3 blender/build_band.py [out.glb]
 Conventions (read by src/render/band.ts):
-  villager__{torso,head,arm*,fore*,thigh*,shin*,hairS,hairL,hairB,hairU,beard,cloak}  one body in parts, animated in the shader;
+  villager__{torso,head,arm*,fore*,thigh*,shin*,hairS,hairL,hairB,hairU,beard,cloak,hat,cape,bag}  one body in parts, animated in the shader;
       the game shows one of the four hair pieces (short, long, braids, bun), on some men the beard, and the cloak on those who have one.
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
   deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
-  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,basket,basketFull} attached to a person's hands or shoulder.
+  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,basket,basketFull} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
   bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
@@ -852,6 +852,52 @@ for k in range(9):
 q.cyl(8, 0.0072, 0.0072, (0, 0, -0.03), (0, 0, -0.021), GRASS_DK, rr, 0.03, cap=False)  # the tie
 q.finish("carry__herbs")
 
+q = Part()  # a clutch of eggs in a cupped nest of twigs and grass, held in the hand
+rr = random.Random(53)
+NEST = (128, 104, 68)
+EGG = (214, 206, 180)
+EGG_SPOT = (176, 190, 196)
+for k in range(10):  # the rim, twigs woven round
+    a0, a1 = k / 10 * math.tau, (k + 1.4) / 10 * math.tau
+    q.cyl(3, 0.003, 0.003, (math.cos(a0) * 0.026, math.sin(a0) * 0.026, -0.006 + rr.uniform(-0.002, 0.002)),
+          (math.cos(a1) * 0.026, math.sin(a1) * 0.026, -0.006 + rr.uniform(-0.002, 0.002)), NEST if k % 2 else GRASS_DK, rr, 0.08, cap=False)
+for v in q.blob((0, 0, -0.016), (0.026, 0.026, 0.012), NEST, rr, 0.08, noise=0.15):
+    v.co.z = min(v.co.z, -0.008)  # the cup
+for k, (x, y) in enumerate(((-0.007, -0.004), (0.008, -0.002), (0.0, 0.009))):
+    q.blob((x, y, -0.004), (0.0075, 0.006, 0.006), EGG if k != 1 else EGG_SPOT, rr, 0.04)
+q.finish("carry__eggs")
+
+q = Part()  # honeycomb, dripping, on a slab of bark
+rr = random.Random(54)
+COMB = (222, 168, 54)
+COMB_DK = (186, 128, 34)
+q.box((0, 0, -0.012), (0.06, 0.036, 0.006), BARK, rr, 0.06)
+for k in range(3):  # slabs of comb laid side by side
+    v = q.box((-0.018 + k * 0.018, 0, 0.002), (0.015, 0.03, 0.02), COMB if k % 2 == 0 else COMB_DK, rr, 0.08, taper=0.85)
+q.blob((0.022, -0.016, -0.006), (0.006, 0.004, 0.004), COMB, rr, 0.04)  # a drip
+q.finish("carry__honey")
+
+q = Part()  # a small grass basket of mushrooms, held by its handle
+rr = random.Random(55)
+BASK = (168, 136, 84)
+BASK_DK = (118, 92, 56)
+CAP = (164, 120, 80)
+CAP_PALE = (212, 196, 164)
+STEM = (226, 216, 194)
+for v in q.blob((0, 0, -0.04), (0.03, 0.026, 0.024), BASK, rr, 0.06):
+    v.co.z = min(v.co.z, -0.028)
+q.cyl(10, 0.03, 0.03, (0, 0, -0.03), (0, 0, -0.026), BASK_DK, rr, 0.04, cap=False)  # the rim
+pts = [Vector((math.cos(a) * 0.028, 0, -0.026 + math.sin(a) * 0.03)) for a in [k / 8 * math.pi for k in range(9)]]
+for a_, b_ in zip(pts, pts[1:]):  # the handle, arching over
+    q.cyl(3, 0.0022, 0.0022, a_, b_, BASK_DK, rr, 0.04, cap=False)
+for k in range(5):  # caps peeping over the rim
+    a = k / 5 * math.tau + 0.3
+    x, y = math.cos(a) * 0.014, math.sin(a) * 0.012
+    q.cyl(4, 0.003, 0.003, (x, y, -0.03), (x, y, -0.02), STEM, rr, 0.04, cap=False)
+    for v in q.blob((x, y, -0.018), (0.009, 0.009, 0.005), CAP if k % 2 else CAP_PALE, rr, 0.06):
+        v.co.z = max(v.co.z, -0.02)
+q.finish("carry__mushrooms")
+
 # ---------------------------------------------------------------- tools and traps
 WOOD = (138, 104, 66)
 WOOD_DARK = (96, 70, 44)
@@ -1152,6 +1198,60 @@ shell(q, top, bot, lambda i, k: CLOAK_CODE, lambda i, k: CLOAK_CODE, CLOAK_CODE,
 # the cord at the throat
 q.box((0, -0.026, 0.284), (0.012, 0.004, 0.004), DARK, raw=True)
 q.finish("villager__cloak")
+
+# a fur hat: a cap of hide over the hair with a rolled fur brim. Shown only on those who wear one.
+HAT_CODE = (0, 0.42, 0.22)   # hide with the fur showing: part skin, part hair colour
+FUR_CODE = (0, 0.22, 0.55)
+q = Part()
+hn = 14
+hts = [-math.pi / 2 + (k + 0.5) / hn * math.tau for k in range(hn)]
+hzs = [0.337, 0.346, 0.356, 0.364, 0.370]
+hrows = []
+for j, z in enumerate(hzs):
+    g = 0.0105 - j * 0.0008
+    row = []
+    for t in hts:
+        p_ = on_skull(z, t, g)
+        p_.z += j * 0.0012
+        row.append(p_)
+    hrows.append(row)
+tuck = [on_skull(0.339, t, -0.002) for t in hts]
+vs, _ = grid(q, [tuck] + hrows, lambda i, k: HAT_CODE if i else FUR_CODE)
+fan(q, vs[-1], (0, HEAD_Y + 0.002, HEAD_TOP + 0.014), HAT_CODE)
+brim = [[on_skull(0.335, t, 0.0125) for t in hts], [on_skull(0.341, t, 0.0145) for t in hts], [on_skull(0.347, t, 0.0118) for t in hts]]
+grid(q, brim, lambda i, k: FUR_CODE)
+q.finish("villager__hat")
+
+# a reed cape: shorter than the cloak and stiffer, the reeds knotted in rows, a ragged hem. Pale straw.
+STRAW_CODE = (0, 0.86, 0)
+STRAW_DK = (0, 0.68, 0.08)
+q = Part()
+CZ2 = [0.178, 0.198, 0.220, 0.242, 0.262, 0.276, 0.286, 0.292]
+
+
+def reed_row(i, z, out):
+    row = cape_row(i, z, out + 0.004)
+    if i == 0:  # the hem: reed ends of every length
+        row = [(x, y, z_ - 0.008 * ((k * 7) % 3) / 2) for k, (x, y, z_) in enumerate(row)]
+    return row
+
+
+top = [reed_row(i, z, 0.0) for i, z in enumerate(CZ2)]
+bot = [reed_row(i, z, -0.004) for i, z in enumerate(CZ2)]
+shell(q, top, bot, lambda i, k: STRAW_CODE if i % 2 else STRAW_DK, lambda i, k: STRAW_DK, STRAW_DK, None)
+q.box((0, -0.028, 0.286), (0.012, 0.004, 0.004), DARK, raw=True)
+q.finish("villager__cape")
+
+# a hide bag at the right hip, its strap over the left shoulder
+BAG_CODE = (0, 0.3, 0)
+STRAP_CODE = (0, 0.12, 0)
+q = Part()
+q.box((0.064, -0.002, 0.140), (0.016, 0.036, 0.034), BAG_CODE, raw=True, taper=0.85)
+q.box((0.064, -0.002, 0.160), (0.017, 0.038, 0.008), STRAP_CODE, raw=True)  # the flap
+for a_, b_ in (((0.060, -0.020, 0.158), (-0.030, -0.052, 0.276)), ((0.060, 0.016, 0.158), (-0.030, 0.050, 0.276)),
+               ((-0.030, -0.052, 0.276), (-0.034, 0.0, 0.292)), ((-0.034, 0.0, 0.292), (-0.030, 0.050, 0.276))):
+    q.cyl(4, 0.0032, 0.0032, a_, b_, STRAP_CODE, raw=True)
+q.finish("villager__bag")
 
 
 HIDE_DK = (140, 106, 74)

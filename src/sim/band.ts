@@ -41,6 +41,12 @@ export const TRAINING = {
   nuts: [{ skill: SK.forage, gain: 0.04 }],
   // a bundle of healing plants found and cut, or a fever nursed with them
   herbs: [{ skill: SK.forage, gain: 0.05 }],
+  // something worn mended by the fire
+  mend: [{ skill: SK.hide, gain: 0.04 }],
+  // a clutch of eggs found in the spring, a wild hive smoked out, a basket of mushrooms picked
+  eggs: [{ skill: SK.forage, gain: 0.03 }],
+  honey: [{ skill: SK.forage, gain: 0.06 }],
+  mushrooms: [{ skill: SK.forage, gain: 0.05 }],
 } as const satisfies Record<string, Lesson>;
 export type Training = keyof typeof TRAINING;
 
@@ -74,22 +80,22 @@ export const FLASH = { Thrust: 1, Stab: 2 } as const;
 export const ACT_NAMES = Object.keys(ACT);
 
 /** What a person is carrying. */
-export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10, Roots: 11, Nuts: 12, Herbs: 13 } as const;
+export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10, Roots: 11, Nuts: 12, Herbs: 13, Eggs: 14, Honey: 15, Mushrooms: 16 } as const;
 
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
-  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast';
+  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast' | 'eggs' | 'honey' | 'mushrooms' | 'mend';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
-  'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen', 'bed', 'roots', 'nuts', 'herbs', 'nurse', 'gift', 'feast',
+  'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen', 'bed', 'roots', 'nuts', 'herbs', 'nurse', 'gift', 'feast', 'eggs', 'honey', 'mushrooms', 'mend',
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -120,6 +126,15 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   // a sliver of deer bone ground to a point, with an eye, and an awl to punch the holes: they speed the
   // sewing and weaving at the fire (each thing sewn with them is a use)
   needle: { label: 'Bone needle', uses: 30 },
+  // a cap of hide with the fur turned in, and a pair of hide mittens: a few winters each
+  hat: { label: 'Fur hat', uses: 200 },
+  mittens: { label: 'Hide mittens', uses: 140 },
+  // soft hide shoes, gathered at the ankle with a thong: they wear through with walking, a season or so
+  shoes: { label: 'Hide shoes', uses: 100 },
+  // reeds and grass knotted into a cape, shed the wind like thatch: a poor cousin of a cloak, a winter or two
+  cape: { label: 'Reed cape', uses: 110 },
+  // a hide bag on a strap over the shoulder, for whatever is gathered: a year or two of loads
+  bag: { label: 'Hide bag', uses: 80 },
 };
 /** How much of the usual time sewing and weaving take with a bone needle and awl in the band. */
 export const NEEDLE_SPEED = 0.65;
@@ -136,6 +151,35 @@ export const MIDWINTER = 42;
 export const FEAST_MEAL = 1.5;
 /** How much of the cold a cloak keeps off, and the deer hides that go into one. */
 export const CLOAK_WARM = 0.3;
+/** Where on the body a thing is worn: one thing to each place. */
+export const SLOTS = ['body', 'head', 'hands', 'feet', 'shoulder'] as const;
+export type Slot = (typeof SLOTS)[number];
+export type GarmentKind = 'cloak' | 'hat' | 'mittens' | 'shoes' | 'cape' | 'bag';
+/**
+ * What can be worn: where, how much of the cold it keeps off, and who gets one first from the pile
+ * (those who feel the cold most, the ones who walk furthest, or the band's best gatherers).
+ */
+export const GARMENTS: Record<GarmentKind, { slot: Slot; warm: number; first: 'cold' | 'walkers' | 'gatherers' }> = {
+  cloak: { slot: 'body', warm: CLOAK_WARM, first: 'cold' },
+  cape: { slot: 'body', warm: 0.12, first: 'cold' },
+  hat: { slot: 'head', warm: 0.1, first: 'cold' },
+  mittens: { slot: 'hands', warm: 0.06, first: 'cold' },
+  shoes: { slot: 'feet', warm: 0.04, first: 'walkers' },
+  bag: { slot: 'shoulder', warm: 0, first: 'gatherers' },
+};
+export const isGarment = (k: string): k is GarmentKind => k in GARMENTS;
+/** With a hide bag over the shoulder, a gatherer brings home this much more in a trip. */
+export const BAG_LOAD = 1.3;
+/** In hide shoes, a long walk tires someone this much less. */
+export const SHOES_REST = 0.8;
+/** Shoes take one use of wear for every so many ticks walked in them (about two years of walking). */
+export const SHOES_WEAR_EVERY = 80;
+/** A worn thing is mended by the fire once it is this worn; mending takes back this much of the wear, and a little cord. */
+export const MEND_AT = 0.45;
+export const MEND_BY = 0.35;
+export const MEND_CORD = 0.5;
+/** A thing patched this many times is all patches: it is worn until it wears through, and then a new one is made. */
+export const MEND_MAX = 4;
 export const HIDES_PER_CLOAK = 2;
 /** Hides kept in the stores at most (the rest are left: there is only so much a band can scrape and carry). */
 export const HIDES_KEPT = 12;
@@ -151,7 +195,17 @@ export const NUTS_LOAD = 8;
 /** Roasted in the embers, a meal of meat, fish, roots or acorns fills this much more; it takes a little longer. */
 export const COOK_GAIN = 1.25;
 export const COOK_TICKS = 6;
-export const COOKED = ['meat', 'fish', 'roots', 'nuts'];
+export const COOKED = ['meat', 'fish', 'roots', 'nuts', 'eggs', 'mushrooms'];
+/** Eggs brought home from the nests of a spring morning (they go off almost as fast as berries). */
+export const EGGS_LOAD = 3;
+/** Honey from one wild hive smoked out in summer; the harm a bad stinging does. */
+export const HONEY_STING = 6;
+/** A spoonful of honey with a meal, while there is some: a treat more than a meal. */
+export const HONEY_TREAT = 0.2;
+/** Mushrooms picked in one autumn trip; the chance a beginner tastes a bad one (less with skill) and the fever it brings. */
+export const MUSHROOMS_LOAD = 6;
+export const BAD_MUSHROOM = 0.22;
+export const BAD_MUSHROOM_DAYS = 3;
 /** Bundles of dried healing herbs a band likes to keep by, and how long one nursing keeps a fever in check. */
 export const HERBS_WANT = 6;
 export const NURSE_DAYS = 2;
@@ -167,7 +221,7 @@ export const BASKET_HOLDS = 8;
  */
 /** Fiber twisted into one length of cordage. */
 export const FIBER_PER_CORD = 3;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage into the stores, or an item onto the pile */
@@ -230,9 +284,29 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
     makes: 'needle', uses: { bones: 1 }, work: 26, skill: SK.tool, grow: 0.06, knows: 'needles', doing: 'Grinding a bone needle',
     thought: 'Grinding a sliver of bone to a needle on a stone.', done: 'Ground a bone needle and an awl and laid them on the pile.',
   },
+  hat: {
+    makes: 'hat', uses: { hides: 1 }, work: 30, skill: SK.hide, grow: 0.07, knows: 'hats', doing: 'Sewing a fur hat',
+    thought: 'Cutting a hide with the fur on and sewing it into a cap.', done: 'Sewed a fur hat for someone who feels the cold.',
+  },
+  mittens: {
+    makes: 'mittens', uses: { hides: 1 }, work: 26, skill: SK.hide, grow: 0.06, knows: 'hats', doing: 'Sewing hide mittens',
+    thought: 'Sewing a pair of hide mittens, fur turned in.', done: 'Sewed a pair of mittens.',
+  },
+  shoes: {
+    makes: 'shoes', uses: { hides: 1, cordage: 1 }, work: 34, skill: SK.hide, grow: 0.07, knows: 'shoes', doing: 'Sewing hide shoes',
+    thought: 'Cutting soles from a hide and gathering them into shoes.', done: 'Sewed a pair of hide shoes for someone who walks far.',
+  },
+  cape: {
+    makes: 'cape', uses: { fiber: 5, cordage: 1 }, work: 36, skill: SK.weave, grow: 0.06, knows: 'capes', doing: 'Knotting a reed cape',
+    thought: 'Knotting reeds and grass into a cape to keep off the wind.', done: 'Knotted a reed cape for someone without a cloak.',
+  },
+  bag: {
+    makes: 'bag', uses: { hides: 1, cordage: 1 }, work: 32, skill: SK.hide, grow: 0.06, knows: 'bags', doing: 'Sewing a hide bag',
+    thought: 'Sewing a hide bag with a strap for the shoulder.', done: 'Sewed a gathering bag and laid it on the pile.',
+  },
 };
 /** The recipes that go faster with a bone needle and awl: sewing hides, weaving baskets and traps. */
-export const SEWN: RecipeKey[] = ['cloak', 'basket', 'fishtrap', 'snare'];
+export const SEWN: RecipeKey[] = ['cloak', 'basket', 'fishtrap', 'snare', 'hat', 'mittens', 'shoes', 'cape', 'bag'];
 /** One made thing. It lies on its band's stockpile unless someone holds it, or it is set out in the land. */
 export interface Item {
   id: number;
@@ -250,8 +324,11 @@ export interface Item {
   tile?: number;
   /** a trap: what it has caught and is holding, waiting for the round (meat for a snare, fish for a fish trap) */
   catch?: number;
-  /** a cloak: who wears it (absent: it lies on the pile) */
+  /** a thing worn: who wears it (absent: it lies on the pile) */
   wearer?: number;
+  /** a thing worn: how many times it has been mended by the fire, and by whom last */
+  mended?: number;
+  mender?: number;
 }
 
 /** Anything in the world that can be clicked. */
@@ -376,8 +453,8 @@ export interface Person {
   mourned: number;
   /** who raises them when both parents are dead (-1: their parents); kinship stays with the birth parents */
   carer: number;
-  /** the hide cloak they wear (an item id; absent: none) */
-  cloak?: number;
+  /** what they wear, by where on the body (item ids; absent: nothing there) */
+  worn?: Partial<Record<Slot, number>>;
   /** nursed with herbs through a fever: until when it helps (absent: never) */
   tended?: number;
   /** when they last gave someone an ornament, and who gave them the one they wear (absent: never, none) */
@@ -526,6 +603,10 @@ export interface Stock {
   herbs: number;
   bones: number;
   trinkets: number;
+  /** eggs from spring nests, honey from wild hives, mushrooms from the autumn woods (absent in older saves until restored) */
+  eggs: number;
+  honey: number;
+  mushrooms: number;
 }
 
 export interface SimEvent {
@@ -540,7 +621,10 @@ export interface SimEvent {
   weight: number;
 }
 
-export const foodTotal = (s: Stock) => s.berries + s.meat + s.fish + s.preserved + s.roots + s.nuts;
+/** Everything in the stores that can be eaten. */
+export const FOODS = ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts', 'eggs', 'honey', 'mushrooms'] as const;
+export type Food = (typeof FOODS)[number];
+export const foodTotal = (s: Stock) => s.berries + s.meat + s.fish + s.preserved + s.roots + s.nuts + s.eggs + s.honey + s.mushrooms;
 
 /** The health levels the sim acts on (the info window's health tooltip reads them too). */
 export const HEALTH = {

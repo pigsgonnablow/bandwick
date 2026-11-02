@@ -5,7 +5,7 @@ import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, yearOf } from '../../src/sim/time';
 import { FAR_GRAVE } from '../../src/sim/ai';
-import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS } from '../../src/sim/band';
+import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS, GARMENTS, isGarment, MEND_MAX } from '../../src/sim/band';
 import { dayOf } from '../../src/sim/time';
 import { knowHowFor } from '../../src/sim/know';
 
@@ -46,9 +46,12 @@ export class InvariantChecker {
       if (c.stock.bones > BONES_KEPT + 2) flag('more bones than are kept', `${at} ${c.name}: ${c.stock.bones}`);
       if (c.stock.trinkets > TRINKETS_KEPT + 2) flag('more teeth and shells than are kept', `${at} ${c.name}: ${c.stock.trinkets}`);
     }
+    // a wild hive is a one-person job: two at once is a band falling over itself
+    for (const c of sim.liveCamps()) if (sim.members(c).filter((p) => p.task?.kind === 'honey').length > 1) flag('two smoking out hives at once', `${at} ${c.name}`);
     for (const it of sim.items) if (it.wearer !== undefined) {
       const w = sim.byId.get(it.wearer);
-      if (w?.alive && w.cloak !== it.id) flag('cloak claims a wearer who wears another', `${at} ${it.id} -> ${w.name}`);
+      if (w?.alive && isGarment(it.kind) && w.worn?.[GARMENTS[it.kind].slot] !== it.id) flag('worn thing claims a wearer who wears another', `${at} ${it.kind} ${it.id} -> ${w.name}`);
+      if (it.holder >= 0) flag('worn and held at once', `${at} ${it.kind} ${it.id}`);
     }
     for (const c of sim.liveCamps()) if (!sim.members(c).length && sim.tick - (c.lastDeath ?? 0) > TICKS_PER_DAY) flag('living camp with nobody in it', `${at} ${c.name}`);
     for (const b of sim.buildings) if (!sim.campById(b.band)) flag('building of an unknown band', `${at} ${b.kind} ${b.id}`);
@@ -56,6 +59,10 @@ export class InvariantChecker {
       const c = sim.campById(it.band);
       if (!c) { flag('tool of an unknown band', `${at} ${it.kind} ${it.id}`); continue; }
       if (!(it.wear >= 0 && it.wear < 1)) flag('tool worn past breaking', `${at} ${it.kind} ${it.id} ${it.wear}`);
+      // only clothes are mended, and only so often
+      if ((it.mended ?? 0) > 0 && !isGarment(it.kind)) flag('a tool mended like clothes', `${at} ${it.kind} ${it.id}`);
+      if ((it.mended ?? 0) > MEND_MAX) flag('mended past all patching', `${at} ${it.kind} ${it.id} ${it.mended}`);
+      if (it.mender !== undefined && !sim.byId.get(it.mender)) flag('mended by nobody known', `${at} ${it.kind} ${it.id}`);
       const need = RECIPES[it.kind].knows;
       if (need && !c.knows.includes(need)) flag("tool the band doesn't know how to make", `${at} ${c.name}: ${it.kind}`);
       if (it.tile === -2 && !sim.people.some((p) => p.alive && p.task?.kind === 'trap' && p.task.route?.includes(it.id)))
@@ -105,10 +112,12 @@ export class InvariantChecker {
       if (p.indoors && p.task?.kind !== 'sleep' && p.task?.kind !== 'warm' && sim.age(p) >= 2) flag('indoors without reason', `${at} ${p.name} ${p.task?.kind}`);
       if (p.carry === CARRY.Body && p.task?.kind !== 'bury') flag('carrying a body outside a burial', `${at} ${p.name} task ${p.task?.kind}`);
       // village life: a cloak is worn by one person and knows who; a necklace was given by someone real
-      if (p.cloak !== undefined) {
-        const it = sim.items.find((i) => i.id === p.cloak);
-        if (!it || it.kind !== 'cloak') flag('wearing a cloak that is not there', `${at} ${p.name} ${p.cloak}`);
-        else if (it.wearer !== p.id) flag('cloak worn by someone it does not know', `${at} ${p.name} -> ${it.wearer}`);
+      for (const [slot, id] of Object.entries(p.worn ?? {})) {
+        if (id === undefined) continue;
+        const it = sim.items.find((i) => i.id === id);
+        if (!it || !isGarment(it.kind)) flag('wearing something that is not there', `${at} ${p.name} ${slot} ${id}`);
+        else if (GARMENTS[it.kind].slot !== slot) flag('worn in the wrong place', `${at} ${p.name} ${it.kind} on ${slot}`);
+        else if (it.wearer !== p.id) flag('worn thing that does not know its wearer', `${at} ${p.name} -> ${it.wearer}`);
       }
       if (p.necklace !== undefined && !sim.byId.has(p.necklace)) flag('necklace from nobody', `${at} ${p.name} ${p.necklace}`);
       if ((p.tended ?? 0) > sim.tick + NURSE_DAYS * TICKS_PER_DAY) flag('nursed too far ahead', `${at} ${p.name}`);
