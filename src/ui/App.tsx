@@ -37,7 +37,12 @@ export function App({ engine }: { engine: Engine }) {
             <EventFeed s={s} engine={engine} />
           </div>
           {s.wins.length ? <InfoWindows s={s} engine={engine} /> : <Hint />}
-          <DirectorBar s={s} engine={engine} />
+          {s.intro ? (
+            <div class="director intro">
+              <span class="caption">{s.intro}</span>
+              <button class="btn small" onClick={() => engine.endIntro()} title="Skip the landing and start (Esc)">Skip</button>
+            </div>
+          ) : <DirectorBar s={s} engine={engine} />}
           {s.tip && !s.director && <div class="tip" style={{ transform: `translate(${s.tip.x + 14}px, ${s.tip.y + 16}px)` }}>{s.tip.text}</div>}
           {s.toast && <div class="toast" role="status">{s.toast}</div>}
           <WorldPanel s={s} engine={engine} />

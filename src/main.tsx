@@ -7,6 +7,7 @@ import { DEFAULT_PARAMS, WorldData, WorldParams } from './sim/types';
 import type { SimEvent, Ref, Card } from './sim/band';
 import { TASK_KINDS, BUILD } from './sim/band';
 import { Director } from './render/director';
+import { Intro } from './render/intro';
 import { PROP_NAMES, SPECIES, STAGES, TREE_VARIANTS, TERRAIN_NAMES, WATER } from './sim/types';
 import { worldName } from './sim/names';
 import { WorldView } from './render/view';
@@ -93,6 +94,8 @@ export interface Snapshot {
   chronicleOpen: boolean;
   chronicleTab: string;
   chronicle: Chronicle | null;
+  /** the opening scene's caption while it plays ('' when it is not playing) */
+  intro: string;
 }
 
 const STAGE_WORDS = ['Sapling', 'Young', 'Mature', 'Old'];
@@ -116,7 +119,7 @@ export class Engine {
     summary: null, events: [], selected: -1, person: null, follow: false, labels: [],
     sel: null, card: null, tip: null, director: false, caption: '', toast: '',
     saves: null, savesOpen: false, lastSave: null, saving: false, wins: [],
-    chronicleOpen: false, chronicleTab: 'annals', chronicle: null, focusBand: -1, colorMode: false,
+    chronicleOpen: false, chronicleTab: 'annals', chronicle: null, focusBand: -1, colorMode: false, intro: '',
   };
   private winZ = 1;
   /** the params of the world now running */
@@ -136,6 +139,10 @@ export class Engine {
   propStart: Int32Array = new Int32Array(0);
   propState: PropState | null = null;
   private pointer: { x: number; y: number } | null = null;
+  /** the opening scene of a new world, while it plays (the simulation waits for it) */
+  private intro: Intro | null = null;
+  /** a new world is coming whose opening scene should play once its first frame arrives */
+  private introWanted = false;
 
   subscribe(fn: () => void) {
     this.listeners.add(fn);
@@ -177,6 +184,7 @@ export class Engine {
       this.selectRef(hit.ref, { x, y });
     };
     this.view.cam.onUserMove = () => {
+      if (this.intro) this.intro.camFree = true;
       if (this.director.active) this.setDirector(false, 'You took the camera. Press C to hand it back to the director.');
     };
     window.addEventListener('keydown', (e) => {
@@ -199,8 +207,10 @@ export class Engine {
         e.preventDefault();
         this.snap.debug = !this.snap.debug;
         this.emit();
-      } else if (c === 'Escape') {
-        if (this.snap.savesOpen) this.setSavesOpen(false);
+      } else if (c === 'Escape' || c === 'Enter') {
+        if (this.intro) this.endIntro();
+        else if (c === 'Enter') return;
+        else if (this.snap.savesOpen) this.setSavesOpen(false);
         else if (this.snap.chronicleOpen) this.setChronicleOpen(false);
         else {
           // the loose window first, then pinned ones, front to back
@@ -251,13 +261,18 @@ export class Engine {
       wins: [], chronicle: null, chronicleOpen: false, focusBand: -1,
     };
     this.names.clear();
+    this.intro?.dispose();
+    this.intro = null;
+    this.snap.intro = '';
+    // a new world opens with the band coming ashore (not a saved one, and not under test automation unless asked for)
+    this.introWanted = !save && (!navigator.webdriver || /[?&]intro\b/.test(location.search));
     this.emit();
     const onMsg = (m: FromSim) => this.onSim(m, params);
     const start = (link: SimLink, mode: string) => {
       this.link = link;
       this.snap.genMode = mode;
       link.send(save ? { type: 'load', save } : { type: 'init', params });
-      link.send({ type: 'speed', speed: this.snap.speed, paused: this.snap.paused });
+      this.syncSpeed();
     };
     let settled = false;
     const fallback = () => {
@@ -344,6 +359,17 @@ export class Engine {
     this.snap.tps = f.speed;
     this.snap.skipping = f.skipping;
     this.view.onFrame(f, f.skipping ? 1000 : tps(this.snap.speed));
+    if (this.introWanted && f.buildings && this.view.band) {
+      this.introWanted = false;
+      try {
+        this.intro = Intro.plan(this.snap.world!, this.view.band, this.view.band.group, f.summary?.camp ?? 'their camp');
+      } catch (err) {
+        // the opening is only a picture: if it can't be worked out, life just begins
+        console.error('No opening scene:', err);
+        this.intro = null;
+      }
+      if (!this.intro) this.syncSpeed();
+    }
     if (f.props) this.indexProps(f.props);
     if (f.summary) {
       this.snap.summary = f.summary;
@@ -377,7 +403,7 @@ export class Engine {
       // only a world's very first founding moves the camera; later bands are news, not a jump cut
       const first = this.snap.events.length === 0;
       this.snap.events = [...this.snap.events, ...f.events];
-      if (first) for (const e of f.events) if (e.kind === 'founding' && this.snap.selected < 0) { this.focusCamp(e.x, e.z); break; }
+      if (first && !this.intro) for (const e of f.events) if (e.kind === 'founding' && this.snap.selected < 0) { this.focusCamp(e.x, e.z); break; }
     }
   }
 
@@ -815,18 +841,34 @@ export class Engine {
     this.view.cam.frame(x, z, zoom, false);
   }
   setSpeed(s: number) {
+    // choosing a speed means getting on with it: the opening scene ends there
+    if (this.intro) this.endIntro();
     this.snap.speed = s;
     this.snap.paused = false;
-    this.link?.send({ type: 'speed', speed: s, paused: false });
+    this.syncSpeed();
     this.emit();
   }
   setPaused(p: boolean) {
     this.snap.paused = p;
-    this.link?.send({ type: 'speed', speed: this.snap.speed, paused: p });
+    this.syncSpeed();
+    this.emit();
+  }
+  /** Tell the simulation how fast to go (it holds still while the opening scene plays). */
+  private syncSpeed() {
+    this.link?.send({ type: 'speed', speed: this.snap.speed, paused: this.snap.paused || !!this.intro || this.introWanted });
+  }
+  /** The band has come ashore (or the player skipped it): life begins. */
+  endIntro() {
+    if (!this.intro) return;
+    this.intro.dispose();
+    this.intro = null;
+    this.snap.intro = '';
+    this.syncSpeed();
     this.emit();
   }
   /** Fast-forward to the next dawn or the start of the next season. */
   skip(what: 'morning' | 'season') {
+    this.endIntro();
     const t = this.snap.tick;
     let target: number;
     if (what === 'morning') {
@@ -873,6 +915,11 @@ export class Engine {
           s.tip = hit ? { text: hit.label, x: this.pointer.x, y: this.pointer.y } : null;
           this.view.renderer.domElement.style.cursor = hit && hit.ref.kind !== 'tile' ? 'pointer' : '';
         } else if (!this.pointer) s.tip = null;
+        if (this.intro) {
+          this.intro.update(rawDt, now, this.view.cam, !this.director.active);
+          if (this.intro.done) this.endIntro();
+          else s.intro = this.intro.caption;
+        }
         if (this.director.active) {
           const sum = s.summary;
           this.director.update(now, this.view.band!, s.events, this.names, {
