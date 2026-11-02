@@ -9,7 +9,7 @@ import {
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
   Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
-  TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
+  TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
 } from './band';
 import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
@@ -3320,8 +3320,8 @@ export class Sim {
       ];
       if (hunter) lines.push(L('Hunted by', hunter.name, pref(hunter.id)));
       return {
-        ref, title: d.fawn ? 'Fawn' : d.id % 2 ? 'Red deer stag' : 'Red deer hind', subtitle: d.alive ? 'Wild deer' : 'Killed',
-        lines, notes: [`The band has brought down ${this.stats.kills} deer so far. Herds breed each spring and drift away from danger.`],
+        ref, title: d.fawn ? 'Red deer fawn' : isStag(d) ? 'Red deer stag' : 'Red deer doe', subtitle: d.alive ? 'Wild deer' : 'Killed',
+        lines, notes: [`Hunters have brought down ${this.stats.kills} deer so far. Herds breed each spring and drift away from danger.`],
         x: d.x, z: d.z, gone: !d.alive,
       };
     }

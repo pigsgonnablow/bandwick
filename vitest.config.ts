@@ -10,5 +10,7 @@ export default defineConfig({
     // whole-world simulations take a few seconds each
     testTimeout: 60_000,
     hookTimeout: 60_000,
+    // yields to the event loop between tests, so long synchronous files don't time out the worker's RPC
+    setupFiles: ['test/setup.ts'],
   },
 });
