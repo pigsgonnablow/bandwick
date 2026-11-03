@@ -12,6 +12,7 @@ import { PROP_NAMES, SPECIES, STAGES, TREE_VARIANTS, TERRAIN_NAMES, WATER } from
 import { worldName } from './sim/names';
 import { WorldView } from './render/view';
 import { loadAssetGeometries, PropState } from './render/props';
+import { ItemPictures } from './render/itempic';
 import { TICKS_PER_DAY, TICKS_PER_SEASON, seasonPos } from './sim/time';
 import { App } from './ui/App';
 import { SPEEDS, randomSeed, tps } from './ui/shared';
@@ -113,6 +114,11 @@ interface SimLink {
 
 export class Engine {
   view!: WorldView;
+  private pictures: ItemPictures | null = null;
+  /** A picture of a kind of made thing, for its window (null until the models are in). */
+  itemPicture(kind: string) {
+    return this.pictures?.get(kind) ?? null;
+  }
   snap: Snapshot = {
     loading: 'Shaping the land', error: null, world: null, name: '', tick: 0, speed: 1, paused: false, tps: 0, skipping: false,
     hover: -1, pinned: -1, quality: 2, qualityAuto: true, debug: false, genMode: '', stats: {} as WorldView['stats'],
@@ -161,6 +167,7 @@ export class Engine {
     const decode = (u: string) => Uint8Array.from(atob(u.slice(u.indexOf(',') + 1)), (c) => c.charCodeAt(0)).buffer;
     const [nature, band] = await Promise.all([loadAssetGeometries(decode(natureUrl)), loadAssetGeometries(decode(bandUrl))]);
     this.view = new WorldView(viewEl, skyEl, nature, band);
+    this.pictures = new ItemPictures(band);
     viewEl.addEventListener('pointermove', (e) => (this.pointer = { x: e.clientX, y: e.clientY }));
     viewEl.addEventListener('pointerleave', () => (this.pointer = null));
     this.director = new Director(this.view.cam);
@@ -460,6 +467,24 @@ export class Engine {
     this.snap.wins = wins;
     this.focusRef(ref);
   }
+  /**
+   * Open a window about something named in another window (a coat someone wears, say) beside that window,
+   * leaving it open too.
+   */
+  openFrom(ref: Ref, fromKey: string) {
+    const from = this.snap.wins.find((w) => w.key === fromKey);
+    if (!from) return this.selectRef(ref);
+    const key = refKey(ref);
+    const open = this.snap.wins.find((w) => w.key === key);
+    if (open) open.z = ++this.winZ;
+    else {
+      const keep = this.snap.wins.filter((w) => w.pinned || w.key === fromKey);
+      const pos = this.placeWin(ref, { x: from.x + WIN_W / 2, y: from.y + 110 }, keep);
+      keep.push({ key, ref, pinned: false, x: pos.x, y: pos.y, z: ++this.winZ, tab: 'now', person: null, card: null, loaded: false, anchor: null });
+      this.snap.wins = keep;
+    }
+    this.focusRef(ref);
+  }
   setColorMode(on: boolean) {
     this.snap.colorMode = on;
     if (this.view.band) this.view.band.colorMode = on;
@@ -595,7 +620,7 @@ export class Engine {
       band.markerAt = null;
       if (ref) {
         const pos = this.positionOfRef(ref);
-        if (pos && ref.kind !== 'person' && ref.kind !== 'tile') band.markerAt = { ...pos, r: ref.kind === 'deer' ? -ref.id : pos.r };
+        if (pos && ref.kind !== 'person' && ref.kind !== 'tile' && ref.kind !== 'item') band.markerAt = { ...pos, r: ref.kind === 'deer' ? -ref.id : pos.r };
       }
     }
     this.emit();
@@ -616,6 +641,13 @@ export class Engine {
     if (ref.kind === 'building') {
       const b = this.view.band?.getBuildings().find((q) => q.id === ref.id);
       return b ? { x: b.x + 0.5, y: gy(b.x, b.z), z: b.z + 0.5, r: b.kind === 'hearth' ? 0.4 : 0.55 } : null;
+    }
+    if (ref.kind === 'item') {
+      // with whoever wears or holds it, or where its window last said it was
+      const c = this.snap.wins.find((q) => q.key === refKey(ref))?.card;
+      if (!c) return null;
+      const p = c.follow !== undefined ? this.view.band?.positionOf(c.follow) : null;
+      return p ? { x: p.x, y: p.y + 0.12, z: p.z, r: 0.2 } : { x: c.x, y: gy(c.x, c.z), z: c.z, r: 0.3 };
     }
     if (ref.kind === 'prop') {
       const st = this.propState;

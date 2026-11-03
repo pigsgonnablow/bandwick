@@ -333,7 +333,7 @@ export interface Item {
 
 /** Anything in the world that can be clicked. */
 export interface Ref {
-  kind: 'person' | 'deer' | 'building' | 'prop' | 'tile';
+  kind: 'person' | 'deer' | 'building' | 'prop' | 'tile' | 'item';
   id: number;
 }
 export interface CardLine {
@@ -351,6 +351,10 @@ export interface Card {
   x: number;
   z: number;
   gone?: boolean;
+  /** a thing someone wears or holds: who, so its window's line can follow them about */
+  follow?: number;
+  /** a made thing: its kind, for the picture of it in its window */
+  item?: ItemKind;
 }
 
 export interface Task {

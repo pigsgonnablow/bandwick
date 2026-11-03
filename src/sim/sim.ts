@@ -10,6 +10,7 @@ const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
   Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
+  BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS,
 } from './band';
 import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
@@ -80,6 +81,38 @@ const MORTALITY: number[][] = [[0, 0.03], [2, 0.012], [5, 0.004], [15, 0.003], [
 export function condition(wear: number) {
   return wear < 0.1 ? 'new' : wear < 0.35 ? 'good' : wear < 0.6 ? 'worn' : wear < 0.85 ? 'well worn' : 'nearly through';
 }
+
+/** What a thing's life is counted in. */
+const ITEM_USE: Record<ItemKind, string> = {
+  chopper: 'trees felled', axe: 'trees felled', stick: 'trips with it', snare: 'days set', fishtrap: 'days set',
+  basket: 'trips with it', pot: 'days of holding food', cloak: 'cold days', needle: 'things sewn', hat: 'cold days',
+  mittens: 'cold days', shoes: 'stretches of walking', cape: 'cold days', bag: 'loads carried',
+};
+/** What kind of thing it is, in a few words. */
+const ITEM_ABOUT: Record<ItemKind, string> = {
+  chopper: 'a tool', axe: 'a tool', stick: 'a tool', snare: 'a trap', fishtrap: 'a trap', basket: 'for gathering',
+  pot: 'for the stores', cloak: 'clothing', needle: 'a tool', hat: 'clothing', mittens: 'clothing', shoes: 'clothing',
+  cape: 'clothing', bag: 'for gathering',
+};
+/** How it is made and how long it lasts. */
+const ITEM_NOTE: Record<ItemKind, string> = {
+  chopper: 'A stone knapped to an edge and held in the fist. It manages saplings and young trees only, and slowly.',
+  axe: 'A stone head lashed to a wooden haft with cord. It brings down any tree.',
+  stick: 'A stout stick sharpened to a point and hardened in the fire.',
+  snare: 'A running loop of cord set at the foot of a bush on a hare run. The cord rots or is chewed through in about a season.',
+  fishtrap: 'A funnel of woven reeds set in the shallows: fish swim in and cannot find the way out. It lasts about a year.',
+  basket: 'Grass woven round a ring of willow withies, carried out empty and brought home full. It lasts a season or two of picking.',
+  pot: 'Clay coiled into a pot and fired in the embers of the hearth, kept in the stores with a lid on. It lasts a few years before it cracks.',
+  cloak: 'Two deer hides scraped soft and sewn with cord, tied at the throat. Worn every cold day, it lasts two or three winters.',
+  needle: 'A sliver of deer bone ground to a point with an eye, and an awl to punch the holes.',
+  hat: 'A cap of hide with the fur turned in and a rolled fur brim. It lasts a few winters.',
+  mittens: 'A pair of hide mittens, fur turned in. They last a few winters.',
+  shoes: 'Soft hide shoes gathered at the ankle with a thong. They wear through with walking, in a season or so.',
+  cape: 'Reeds and grass knotted into a cape that sheds the wind like thatch: a poor cousin of a cloak, good for a winter or two.',
+  bag: 'A hide bag with a strap over the shoulder, for whatever is gathered. It lasts a year or two of loads.',
+};
+const SLOT_PLACE: Record<Slot, string> = { body: 'The shoulders and back', head: 'The head', hands: 'The hands', feet: 'The feet', shoulder: 'Over the shoulder' };
+const MATERIAL_ONE: Record<string, string> = { hides: 'hide', bones: 'bone', cordage: 'cordage', stone: 'stone', wood: 'wood', fiber: 'fiber', mud: 'mud' };
 
 function annualMortality(age: number) {
   for (let i = 0; i < MORTALITY.length - 1; i++) {
@@ -3332,7 +3365,77 @@ export class Sim {
       this.camp = this.campById(b.band) ?? this.camp;
       try { return this.buildingCard(ref, b); } finally { this.camp = prevCamp; }
     }
+    if (ref.kind === 'item') return this.itemCard(ref);
     return this.otherCard(ref);
+  }
+
+  /** A made thing: what it is and does, who made and mended it, how worn it is and where it is now. */
+  private itemCard(ref: Ref): Card | null {
+    const it = this.items.find((i) => i.id === ref.id);
+    if (!it) return null;
+    const pref = (id: number): Ref => ({ kind: 'person', id });
+    const L = (label: string, value: string, ref?: Ref): CardLine => ({ label, value, ref });
+    const spec = ITEMS[it.kind];
+    const camp = this.campById(it.band) ?? this.camp;
+    const lines: CardLine[] = [];
+    const wearer = it.wearer !== undefined ? this.byId.get(it.wearer) : undefined;
+    const holder = it.holder >= 0 ? this.byId.get(it.holder) : undefined;
+    const tile = it.tile ?? -1;
+    let x = camp.x, z = camp.z, follow: number | undefined;
+    if (wearer) {
+      lines.push(L('Worn by', wearer.name, pref(wearer.id)));
+      ({ x, z } = wearer); follow = wearer.id;
+    } else if (holder) {
+      lines.push(L('In the hands of', holder.name, pref(holder.id)));
+      ({ x, z } = holder); follow = holder.id;
+    } else if (tile >= 0) {
+      lines.push(L('Set', `Out in the land, ${it.catch ? 'with something caught in it' : 'waiting for a catch'}`, { kind: 'tile', id: tile }));
+      x = (tile % this.N) + 0.5; z = Math.floor(tile / this.N) + 0.5;
+    } else {
+      const pile = this.buildings.find((b) => b.band === camp.id && b.kind === 'stockpile');
+      lines.push(L('Lies', `On the stockpile at ${camp.name}`, pile ? { kind: 'building', id: pile.id } : undefined));
+      if (pile) { x = pile.x + 0.5; z = pile.z + 0.5; }
+    }
+    const pct = Math.round(it.wear * 100);
+    lines.push(L('Condition', `${condition(it.wear)[0].toUpperCase()}${condition(it.wear).slice(1)}: ${pct}% worn`));
+    lines.push(L('Life left', `About ${Math.max(1, Math.round((1 - it.wear) * spec.uses))} of ${spec.uses} ${ITEM_USE[it.kind]}`));
+    if (isGarment(it.kind)) {
+      const g = GARMENTS[it.kind];
+      lines.push(L('Worn on', SLOT_PLACE[g.slot]));
+      if (g.warm > 0) lines.push(L('Warmth', `Keeps off ${Math.round(g.warm * 100)}% of the cold`));
+    }
+    const does = this.itemDoes(it.kind);
+    if (does) lines.push(L('Good for', does));
+    const rc = RECIPES[it.kind as RecipeKey];
+    if (rc) lines.push(L('Made from', Object.entries(rc.uses).map(([m, n]) => `${n} ${n === 1 ? MATERIAL_ONE[m] ?? m : m}`).join(', ')));
+    const maker = this.byId.get(it.maker);
+    lines.push(maker ? L('Made by', maker.name, pref(maker.id)) : L('Made by', 'Someone beyond the hills: it came with the band'));
+    lines.push(L('Made', this.when(it.made)));
+    const n = it.mended ?? 0;
+    if (n > 0) {
+      const mender = it.mender !== undefined ? this.byId.get(it.mender) : undefined;
+      lines.push(L('Mended', `${n === 1 ? 'Once' : n === 2 ? 'Twice' : `${n} times`}${mender ? `, last by ${mender.name}` : ''}${n >= MEND_MAX ? '; too patched to mend again' : ''}`, mender ? pref(mender.id) : undefined));
+    } else if (isGarment(it.kind) || it.kind === 'basket') lines.push(L('Mended', it.wear >= MEND_AT ? 'Not yet, though it wants mending' : 'Never'));
+    return {
+      ref, title: spec.label, subtitle: `${camp.name} · ${ITEM_ABOUT[it.kind]}`, lines, notes: [ITEM_NOTE[it.kind]],
+      x, z, follow, item: it.kind,
+    };
+  }
+  /** What a thing does for whoever has it, in the sim's own numbers. */
+  private itemDoes(kind: ItemKind) {
+    switch (kind) {
+      case 'chopper': return 'Felling saplings and young trees, slowly';
+      case 'axe': return 'Felling any tree, much faster than a chopper';
+      case 'stick': return 'Digging mud, clay, roots and graves';
+      case 'snare': return 'Catching hares while no one is there';
+      case 'fishtrap': return 'Catching fish in the shallows while no one is there';
+      case 'basket': return `Picking: ${BASKET_HOLDS} handfuls of berries in one trip, where bare hands carry one bush's worth`;
+      case 'pot': return `Keeping ${POT_HOLDS} berries in the stores, going off ${Math.round((1 - POT_KEEP) * 100)}% slower`;
+      case 'needle': return `Sewing and weaving at the fire take ${Math.round((1 - NEEDLE_SPEED) * 100)}% less time for the whole band`;
+      case 'shoes': return `Walking: long walks tire them ${Math.round((1 - SHOES_REST) * 100)}% less`;
+      case 'bag': return `Gathering: brings home ${Math.round((BAG_LOAD - 1) * 100)}% more in one trip`;
+      default: return '';
+    }
   }
 
   private buildingCard(ref: Ref, b: Building): Card {
@@ -3707,7 +3810,7 @@ export class Sim {
         const it = this.heldBy(p);
         if (!it) return null;
         const maker = this.byId.get(it.maker);
-        return { kind: it.kind, label: ITEMS[it.kind].label, wear: it.wear, condition: condition(it.wear), maker: maker ? { id: maker.id, name: maker.name } : null };
+        return { id: it.id, kind: it.kind, label: ITEMS[it.kind].label, wear: it.wear, condition: condition(it.wear), maker: maker ? { id: maker.id, name: maker.name } : null };
       })(),
       indoors: p.indoors,
       campDist: hyp(p.x - this.campOf(p).x, p.z - this.campOf(p).z),

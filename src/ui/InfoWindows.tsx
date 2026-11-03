@@ -56,7 +56,7 @@ const SKILL_WORDS: Record<string, string> = {
   foraging: 'Foraging', woodcutting: 'Woodcutting', building: 'Building', hunting: 'Hunting', fishing: 'Fishing',
   toolmaking: 'Toolmaking', weaving: 'Weaving', pottery: 'Pottery', hidework: 'Hidework',
 };
-const KIND_WORD: Record<string, string> = { person: 'Person', deer: 'Animal', building: 'Building', prop: 'Thing', tile: 'Land' };
+const KIND_WORD: Record<string, string> = { person: 'Person', deer: 'Animal', building: 'Building', prop: 'Thing', tile: 'Land', item: 'Item' };
 
 export function InfoWindows({ s, engine }: { s: Snapshot; engine: Engine }) {
   if (!s.wins.length) return null;
@@ -145,9 +145,11 @@ function Win({ w, s, engine, focus }: { w: InfoWin; s: Snapshot; engine: Engine;
 }
 
 function ThingBody({ c, engine }: { c: NonNullable<InfoWin['card']>; engine: Engine }) {
+  const pic = c.item ? engine.itemPicture(c.item) : null;
   return (
     <div class="win-body scroll">
       {c.subtitle && <div class="sub">{c.subtitle}{c.gone ? ' · gone now' : ''}</div>}
+      {pic && <div class="item-pic"><img src={pic} alt={c.title} width={136} height={136} /></div>}
       {c.lines.length > 0 && (
         <dl class="rows compact family">
           {c.lines.map((l, i) => (
@@ -160,6 +162,17 @@ function ThingBody({ c, engine }: { c: NonNullable<InfoWin['card']>; engine: Eng
       )}
       {c.notes.map((n) => <p key={n} class="note">{n}</p>)}
     </div>
+  );
+}
+
+/** A made thing named in a window: its name opens a window about it, the rest of the line follows. */
+function ItemLine({ it, w, engine }: { it: Parameters<typeof gearLine>[0] & { id: number }; w: InfoWin; engine: Engine }) {
+  const line = gearLine(it);
+  return (
+    <>
+      <button class="link" onClick={() => engine.openFrom({ kind: 'item', id: it.id }, w.key)} title="Open a window about it">{it.label}</button>
+      {line.slice(it.label.length)}
+    </>
   );
 }
 
@@ -248,13 +261,13 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
                 {p.gear.map((g) => (
                   <>
                     <dt data-tip={SLOT_TIPS[g.slot]}>{SLOT_WORDS[g.slot]}</dt>
-                    <dd class={g.item ? '' : 'muted'}>{g.item ? gearLine(g.item) : 'Nothing'}</dd>
+                    <dd class={g.item ? '' : 'muted'}>{g.item ? <ItemLine it={g.item} w={w} engine={engine} /> : 'Nothing'}</dd>
                   </>
                 ))}
                 <dt data-tip={GEAR_ROW_TIPS.Neck}>Neck</dt>
                 <dd class={p.necklace ? '' : 'muted'}>{p.necklace ? p.necklace[0].toUpperCase() + p.necklace.slice(1) + '.' : 'Nothing'}</dd>
                 <dt data-tip={GEAR_ROW_TIPS['In hand']}>In hand</dt>
-                <dd class={p.toolDetail ? '' : 'muted'}>{p.toolDetail ? gearLine(p.toolDetail) : 'Nothing'}</dd>
+                <dd class={p.toolDetail ? '' : 'muted'}>{p.toolDetail ? <ItemLine it={p.toolDetail} w={w} engine={engine} /> : 'Nothing'}</dd>
                 <dt data-tip={GEAR_ROW_TIPS.Carrying}>Carrying</dt>
                 <dd class={p.carry > 0 && CARRYING[p.carry] ? '' : 'muted'}>{p.carry > 0 && CARRYING[p.carry] ? `${CARRYING[p.carry][0].toUpperCase()}${CARRYING[p.carry].slice(1)}${p.carryAmt > 1 ? ` (${Math.round(p.carryAmt)})` : ''}` : 'Nothing'}</dd>
               </dl>
