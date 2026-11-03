@@ -13,6 +13,7 @@ import { ChronicleView } from './Chronicle';
 import { clothesLine } from './words';
 import { Tooltip } from './Tooltip';
 import { BAND_TIPS } from './tips';
+import { useCollapsed, CollapseBtn } from './Collapse';
 
 const METERS_PER_UNIT = 6;
 
@@ -103,6 +104,7 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
   const st = sum.stock;
   const live = sum.bands.filter((b) => !b.gone);
   const i = live.findIndex((b) => b.id === sum.band);
+  const [folded, setFolded] = useCollapsed('band');
   const step = (d: number) => {
     if (!live.length) return;
     const next = live[(Math.max(0, i) + d + live.length) % live.length];
@@ -110,13 +112,16 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
     engine.flyTo(next.x, next.z, 22);
   };
   return (
-    <section class="panel band" aria-label="The band">
+    <section class={`panel band${folded ? ' collapsed' : ''}`} aria-label="The band">
       <div class="row between">
         <span class="label">
           <i class="swatch" style={{ background: bandCss(sum.bands.find((b) => b.id === sum.band)?.color ?? { h: 30, s: 0.5, l: 0.5 }) }} />
           {sum.gone ? 'Once the people of' : 'The people of'} {sum.camp}
         </span>
-        <span class="temp">{Math.round(sum.temp)}°C</span>
+        <span class="row">
+          <span class="temp">{Math.round(sum.temp)}°C</span>
+          <CollapseBtn collapsed={folded} onToggle={setFolded} what="the band panel" />
+        </span>
       </div>
       {live.length > 1 && (
         <div class="bandnav row">
@@ -126,6 +131,14 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
           <button class="btn small" onClick={() => engine.flyTo(sum.x, sum.z, 20)} title="Bring the camera to this camp">Look</button>
         </div>
       )}
+      {folded ? (
+        !sum.gone && (
+          <div class="small muted">
+            {sum.pop} {sum.pop === 1 ? 'person' : 'people'} · food for {days < 1 ? 'less than a day' : `${Math.floor(days)} days`}
+            {sum.famine && <span class="warn-text"> · famine</span>}
+          </div>
+        )
+      ) : <>
       {(sum.parent || sum.leader) && !sum.gone && (
         <div class="small muted origin">
           {(() => {
@@ -196,6 +209,7 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
           {sum.dead} buried here since {sum.camp} was founded
         </div>
       )}
+      </>}
     </section>
   );
 }
@@ -351,11 +365,15 @@ const KIND_MARK: Record<string, string> = {
 
 function EventFeed({ s, engine }: { s: Snapshot; engine: Engine }) {
   const list = s.events.filter((e) => e.weight >= 2).slice(-7).reverse();
+  const [folded, setFolded] = useCollapsed('feed');
   if (!list.length) return null;
   return (
-    <section class="panel feed" aria-label="Recent events">
-      <div class="label">Lately</div>
-      <ol>
+    <section class={`panel feed${folded ? ' collapsed' : ''}`} aria-label="Recent events">
+      <div class="row between panel-head">
+        <span class="label">Lately</span>
+        <CollapseBtn collapsed={folded} onToggle={setFolded} what="recent events" />
+      </div>
+      {!folded && <ol>
         {list.map((e) => (
           <li key={e.id}>
             <button
@@ -374,7 +392,7 @@ function EventFeed({ s, engine }: { s: Snapshot; engine: Engine }) {
             </button>
           </li>
         ))}
-      </ol>
+      </ol>}
     </section>
   );
 }
@@ -403,8 +421,9 @@ function WorldPanel({ s, engine }: { s: Snapshot; engine: Engine }) {
   useEffect(() => setSeed(String(w.params.seed)), [w]);
   const go = (sd: number) => engine.newWorld({ ...DEFAULT_PARAMS, seed: sd, size: Number(size) });
   const cam = engine.view.cam;
+  const [folded, setFolded] = useCollapsed('world');
   return (
-    <section class="panel br" aria-label="World controls">
+    <section class={`panel br${folded ? ' collapsed' : ''}`} aria-label="World controls">
       <div class="row">
         <button class="btn icon" onClick={() => cam.rotate(-1)} title="Rotate left (Q)" aria-label="Rotate left">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3.5 6.5A5 5 0 1 1 3 9.5" /><path d="M3.5 2.8v3.7h3.7" /></svg>
@@ -428,7 +447,9 @@ function WorldPanel({ s, engine }: { s: Snapshot; engine: Engine }) {
           <option value="auto">Auto ({QUALITY_NAMES[s.quality]})</option>
           {QUALITY_NAMES.map((n, i) => <option key={n} value={String(i)}>{n}</option>)}
         </select>
+        <CollapseBtn collapsed={folded} onToggle={setFolded} what="world controls" />
       </div>
+      {!folded && <>
       <SaveRow s={s} engine={engine} />
       <div>
         <div class="label" style={{ marginBottom: 5 }}>Skip ahead</div>
@@ -453,6 +474,7 @@ function WorldPanel({ s, engine }: { s: Snapshot; engine: Engine }) {
       <div class="keys">
         Click anything to look closer (double-click the ground) · drag to pan · scroll to zoom · <kbd>Q</kbd> <kbd>E</kbd> rotate · <kbd>Space</kbd> pause · <kbd>1</kbd>–<kbd>6</kbd> speed · <kbd>F</kbd> follow · <kbd>H</kbd> chronicle · <kbd>B</kbd> band colours · <kbd>`</kbd> stats
       </div>
+      </>}
     </section>
   );
 }
