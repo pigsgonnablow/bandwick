@@ -128,6 +128,8 @@ export class Engine {
   private saveSeq = 1;
   private lastAutosave = 0;
   private lastAutosaveSeason = -1;
+  /** a note to show once the world on its way has appeared */
+  private toastWhenReady = '';
   director!: Director;
   private toastTimer = 0;
   private listeners = new Set<() => void>();
@@ -231,15 +233,19 @@ export class Engine {
         this.emit();
       }
     });
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden && this.snap.world && performance.now() - this.lastAutosave > 20000) {
+    // when the page is hidden or closed, save at once so the next visit picks up right here
+    // (closing gives only a moment, so the seasonal autosaves below are the safety net)
+    const saveOnLeave = () => {
+      if (this.snap.world && performance.now() - this.lastAutosave > 5000) {
         this.lastAutosave = performance.now();
         void this.saveNow(true);
       }
-    });
-    void this.refreshSaves();
+    };
+    document.addEventListener('visibilitychange', () => document.hidden && saveOnLeave());
+    window.addEventListener('pagehide', saveOnLeave);
     const fromHash = parseHash(location.hash);
-    this.newWorld(fromHash ?? { ...DEFAULT_PARAMS, seed: randomSeed() });
+    if (!(await this.resumeLast(fromHash))) this.newWorld(fromHash ?? { ...DEFAULT_PARAMS, seed: randomSeed() });
+    void this.refreshSaves();
     this.loop();
     setInterval(() => this.emit(), 250);
     // an open chronicle keeps up with the world
@@ -253,6 +259,7 @@ export class Engine {
     this.params = params;
     this.lastAutosave = performance.now();
     this.lastAutosaveSeason = -1;
+    this.toastWhenReady = '';
     for (const [, reply] of this.saveRequests) reply(null, 'The world changed before it could be saved.');
     this.saveRequests.clear();
     this.snap = {
@@ -344,6 +351,8 @@ export class Engine {
       this.snap.name = worldName(params.seed);
       this.snap.tick = m.tick;
       this.snap.loading = null;
+      if (this.toastWhenReady) this.showToast(this.toastWhenReady);
+      this.toastWhenReady = '';
       try {
         history.replaceState(null, '', `#w${params.seed}-${params.size}`);
       } catch {
@@ -760,14 +769,37 @@ export class Engine {
       this.emit();
     }
   }
-  /** An autosave at each new season, at most every two minutes of real time. */
+  /** An autosave at each new season, at most once a minute of real time. */
   private maybeAutosave(tick: number) {
     const season = Math.floor(tick / (TICKS_PER_YEAR / 4));
     if (this.lastAutosaveSeason < 0) { this.lastAutosaveSeason = season; return; }
-    if (season === this.lastAutosaveSeason || performance.now() - this.lastAutosave < 120000 || this.snap.skipping) return;
+    if (season === this.lastAutosaveSeason || performance.now() - this.lastAutosave < 60000 || this.snap.skipping) return;
     this.lastAutosaveSeason = season;
     this.lastAutosave = performance.now();
     void this.saveNow(true);
+  }
+  /**
+   * On opening the game, carry on with the world from last time: the newest save, or the newest
+   * save of the world named in the address (a reload keeps it there), if there is one.
+   */
+  private async resumeLast(want: WorldParams | null): Promise<boolean> {
+    const q = location.search;
+    // ?new always starts fresh; test automation starts fresh unless it asks with ?resume
+    if (/[?&]new\b/.test(q) || (navigator.webdriver && !/[?&]resume\b/.test(q))) return false;
+    let latest: SaveMeta | undefined;
+    try {
+      const all = await listSaves();
+      latest = want ? all.find((m) => m.seed === want.seed && m.size === want.size) : all[0];
+      if (!latest) return false;
+      const save = await readSave(latest.id);
+      if (save.v !== SAVE_VERSION) throw new Error('it was made by an older version of the game');
+      this.newWorld(save.params, save);
+      this.toastWhenReady = `Welcome back to ${latest.camp || latest.world}, ${yearSeason(save.tick)}. Start a fresh world from the World panel any time.`;
+      return true;
+    } catch (e) {
+      if (latest) this.showToast(`Started a new world: couldn't reopen ${latest.name} (${(e as Error).message}).`);
+      return false;
+    }
   }
   async loadSave(id: string) {
     try {
