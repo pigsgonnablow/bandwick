@@ -5,7 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { ACT, CARRY, FLASH, TASK_KINDS, POT_HOLDS } from '../sim/band';
 import { SHAKE } from './props';
 import type { Frame } from '../sim/runner';
-import { WorldData, WATER } from '../sim/types';
+import { WorldData, WATER, STEP } from '../sim/types';
 import { addCommon } from './shaderlib';
 import { U } from './env';
 import gait from '../assets/gait.json';
@@ -27,6 +27,20 @@ interface Bit { x: number; y: number; z: number; vx: number; vy: number; vz: num
 /** Water deeper than this share of someone's height means swimming rather than wading. */
 const SWIM_DEPTH = 0.72;
 const D_STRIDE = 6;
+/** deer gait: stride lengths (tiles, for a grown deer), the pace (tiles a second) it breaks into
+ *  a gallop over, the fastest its legs can cycle, and half the distance from fore to hind hooves */
+const DEER_STRIDE_WALK = 0.34, DEER_STRIDE_RUN = 0.95, DEER_GALLOP_FROM = 2.2, DEER_GALLOP_FULL = 3.8, DEER_MAX_CADENCE = 6, DEER_HALF = 0.09;
+interface DeerShown {
+  /** where the simulation has it, and where the glide there started (and when, and how long it takes) */
+  x: number; z: number; sx: number; sz: number; t0: number; dur: number; movedAt: number;
+  /** drawn position (follows the glide with a little lag to round off corners) */
+  dx: number; dz: number;
+  /** ground under the fore and hind hooves, the body's height and its tilt (nose up is positive) */
+  yf: number; yb: number; y: number; pitch: number;
+  angle: number; want: number;
+  phase: number; gait: number; moving: number;
+  seen: number; state: number; fawn: boolean;
+}
 const JT = gait.joints as unknown as Record<string, [number, number, number]>;
 const HIP_Y = JT.hip[1];
 /** Ground speed (body heights a second) where a walk turns into a run, and the fastest leg cadence shown. */
@@ -198,7 +212,7 @@ export class BandLayer {
     return this.geoms.get(name);
   }
   private people = new Map<number, Shown>();
-  private deer = new Map<number, { x: number; z: number; px: number; pz: number; y: number; angle: number; want: number; seen: number; state: number; fawn: boolean }>();
+  private deer = new Map<number, DeerShown>();
   private villagers: THREE.InstancedMesh;
   private deerMesh: THREE.InstancedMesh;
   private carryMeshes = new Map<number, THREE.InstancedMesh>();
@@ -536,6 +550,7 @@ export class BandLayer {
     const geo = mergeGeometries(list)!;
     const cap = 512;
     geo.setAttribute('iAnim', new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4));
+    geo.setAttribute('iAnim2', new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4));
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
     mat.customProgramCacheKey = () => 'deer';
     mat.onBeforeCompile = (sh) => {
@@ -545,32 +560,45 @@ export class BandLayer {
           attribute float aPart;
           attribute vec3 aPivot;
           attribute vec4 iAnim;
+          // stride phase (0..1), walk-to-gallop, how much it is moving, mid-leap
+          attribute vec4 iAnim2;
           mat3 rx(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }
           void deerPose(out mat3 R, out vec3 T) {
             float st = iAnim.x;
-            float ph = uTime + iAnim.y;
+            float ph = iAnim2.x * 6.2831853;
+            float gait = iAnim2.y, mv = iAnim2.z, leap = iAnim2.w;
             float a = 0.0;
-            float speed = st > 1.5 ? 16.0 : 7.0;
-            float amp = st > 1.5 ? 0.75 : (st > 0.5 ? 0.45 : 0.0);
-            float s = sin(ph * speed);
+            float bob = 0.0;
             if (aPart > 1.5 && aPart < 5.5) {
-              float sgn = (aPart < 2.5 || aPart > 4.5) ? 1.0 : -1.0;
-              a = s * amp * sgn;
+              bool front = aPart < 3.5;
+              bool left = aPart < 2.5 || (aPart > 3.5 && aPart < 4.5);
+              // a walk sets the feet down one at a time (hind left, fore left, hind right, fore right);
+              // a gallop bounds, hind pair then fore pair, each pair a touch apart
+              float offW = front ? (left ? 0.25 : 0.75) : (left ? 0.0 : 0.5);
+              float offG = front ? (left ? 0.5 : 0.58) : (left ? 0.0 : 0.08);
+              float off = mix(offW, offG, gait) * 6.2831853;
+              float sw = sin(ph + off);
+              // the leg swings forward quickly and pushes back slowly along the ground
+              sw = sw + 0.25 * sin(2.0 * (ph + off));
+              a = sw * mix(0.4, 0.8, gait) * mv;
+              // springing up or down a ledge: forelegs tuck forward, hind legs push out behind
+              a += leap * (front ? -0.7 : 0.55);
             } else if (aPart > 0.5 && aPart < 6.5) {
               // grazing: head down most of the time, up now and then to look around
-              float graze = st < 0.5 ? smoothstep(-0.3, 0.3, sin(ph * 0.6)) : 0.0;
-              a = graze * 1.0 + (st > 1.5 ? -0.25 : 0.0);
+              float graze = st < 0.5 ? smoothstep(-0.3, 0.3, sin((uTime + iAnim.y) * 0.6)) * (1.0 - mv) : 0.0;
+              // a nod in time with the walk, stretched out at the gallop
+              float nod = sin(ph * 2.0) * 0.06 * mv * (1.0 - gait);
+              a = graze + nod - 0.25 * gait * mv;
             }
+            // the body rises over each stride: a slight sway at the walk, a bound at the gallop
+            bob = (abs(sin(ph)) * mix(0.006, 0.035, gait)) * mv;
             mat3 Rp = rx(a);
             // antlers are worn by stags only (iAnim.z), a dappled coat by fawns only (iAnim.w)
             if (aPart > 5.5 && aPart < 6.5 && iAnim.z < 0.5) Rp = mat3(0.0);
             if (aPart > 6.5 && iAnim.w < 0.5) Rp = mat3(0.0);
             R = Rp;
             T = aPivot - Rp * aPivot;
-            if (st > 1.5) {
-              float bob = abs(sin(ph * speed * 0.5)) * 0.04;
-              T.y += bob;
-            }
+            T.y += bob;
           }`)
         .replace('#include <beginnormal_vertex>', `
           mat3 poseR; vec3 poseT;
@@ -804,17 +832,27 @@ export class BandLayer {
     const D = f.deer;
     for (let o = 0; o < D.length; o += D_STRIDE) {
       const id = D[o];
+      const nx = D[o + 1], nz = D[o + 2];
       let d = this.deer.get(id);
       if (!d) {
-        d = { x: D[o + 1], z: D[o + 2], px: D[o + 1], pz: D[o + 2], y: this.groundAt(D[o + 1], D[o + 2]), angle: 0, want: 0, seen, state: 0, fawn: false };
+        const gy = this.groundAt(nx, nz);
+        d = { x: nx, z: nz, sx: nx, sz: nz, t0: now, dur: this.tickMs * 2, movedAt: 0, dx: nx, dz: nz, yf: gy, yb: gy, y: gy, pitch: 0,
+          angle: 0, want: 0, phase: (id % 17) / 17, gait: 0, moving: 0, seen, state: 0, fawn: false };
         this.deer.set(id, d);
-      } else {
-        d.px = d.px + (d.x - d.px) * a;
-        d.pz = d.pz + (d.z - d.pz) * a;
-        d.x = D[o + 1];
-        d.z = D[o + 2];
+      } else if (Math.abs(nx - d.x) + Math.abs(nz - d.z) > 1e-5) {
+        // the herd only moves every other tick: glide from wherever it is drawn to the new spot
+        // over the time the last step took, so it keeps a steady pace instead of lurching
+        const t = Math.min(1, (now - d.t0) / d.dur);
+        d.sx += (d.x - d.sx) * t;
+        d.sz += (d.z - d.sz) * t;
+        const gap = now - d.movedAt;
+        d.dur = gap < 1200 ? Math.min(900, Math.max(16, d.dur * 0.5 + gap * 0.5)) : this.tickMs * 2;
+        d.t0 = now;
+        d.movedAt = now;
+        d.x = nx;
+        d.z = nz;
       }
-      const fx = D[o + 3] - D[o + 1], fz = D[o + 4] - D[o + 2];
+      const fx = D[o + 3] - nx, fz = D[o + 4] - nz;
       if (fx * fx + fz * fz > 1e-4) d.want = Math.atan2(fx, fz);
       d.state = D[o + 5] % 10;
       d.fawn = D[o + 5] >= 10;
@@ -1187,20 +1225,49 @@ export class BandLayer {
 
     // deer
     const dAnim = this.deerMesh.geometry.attributes.iAnim as THREE.InstancedBufferAttribute;
+    const dAnim2 = this.deerMesh.geometry.attributes.iAnim2 as THREE.InstancedBufferAttribute;
+    const pitchQ = new THREE.Quaternion(), xAxis = new THREE.Vector3(1, 0, 0);
     let dn = 0;
     this.visibleDeer.length = 0;
     for (const [id, d] of this.deer) {
       if (dn >= dAnim.count) break;
-      const x = d.px + (d.x - d.px) * a, z = d.pz + (d.z - d.pz) * a;
-      const gy = this.groundAt(x, z);
-      d.y += (gy - d.y) * Math.min(1, dt * 12);
-      d.angle += shortest(d.angle, d.want) * (1 - Math.exp(-dt * (d.state === 2 ? 10 : 6)));
+      const t = Math.min(1, (now - d.t0) / d.dur);
+      const tx = d.sx + (d.x - d.sx) * t, tz = d.sz + (d.z - d.sz) * t;
+      const ox = d.dx, oz = d.dz;
+      if (Math.abs(tx - d.dx) + Math.abs(tz - d.dz) > 1.5) { d.dx = tx; d.dz = tz; }
+      else { d.dx += (tx - d.dx) * follow; d.dz += (tz - d.dz) * follow; }
+      const x = d.dx, z = d.dz;
+      const size = d.fawn ? 0.62 : 1;
+      // ground speed in tiles a second; the legs step with the distance covered, so hooves
+      // don't skate, and break from a walk into a bounding gallop as the pace picks up
+      const moved = Math.hypot(x - ox, z - oz);
+      const speed = dt > 0 ? moved / dt / size : 0;
+      const k = 1 - Math.exp(-dt * 6);
+      d.moving += (Math.min(1, speed / 0.35) - d.moving) * k;
+      d.gait += (smooth(DEER_GALLOP_FROM, DEER_GALLOP_FULL, speed) - d.gait) * k;
+      const stride = (DEER_STRIDE_WALK + (DEER_STRIDE_RUN - DEER_STRIDE_WALK) * d.gait) * size;
+      if (moved > 0) d.phase = (d.phase + Math.min(moved / stride, DEER_MAX_CADENCE * dt)) % 1;
+      // face the way it is going while on the move, otherwise where the herd wants to be
+      const want = moved > 0.0015 * dt * 60 ? Math.atan2(x - ox, z - oz) : d.want;
+      d.angle += shortest(d.angle, want) * (1 - Math.exp(-dt * (d.state === 2 ? 10 : 6)));
+      // forefeet and hind feet each find their own footing, so the body tips up or down
+      // over a terrace edge and springs from one level to the next instead of floating
+      const hx = Math.sin(d.angle) * DEER_HALF * size, hz = Math.cos(d.angle) * DEER_HALF * size;
+      const kf = Math.min(1, dt * 16);
+      d.yf += (this.groundAt(x + hx, z + hz) - d.yf) * kf;
+      d.yb += (this.groundAt(x - hx, z - hz) - d.yb) * kf;
+      const rise = d.yf - d.yb;
+      const pitchGoal = Math.max(-0.6, Math.min(0.6, Math.atan2(rise, DEER_HALF * 2 * size)));
+      d.pitch += (pitchGoal - d.pitch) * Math.min(1, dt * 14);
+      const leap = Math.min(1, Math.abs(rise) / (STEP * 0.5));
+      d.y = (d.yf + d.yb) / 2 + leap * (1 - leap * 0.5) * 0.08 * size;
       pos.set(x, d.y, z);
-      q.setFromAxisAngle(up, d.angle);
-      scl.setScalar(d.fawn ? 0.62 : 1);
+      q.setFromAxisAngle(up, d.angle).multiply(pitchQ.setFromAxisAngle(xAxis, -d.pitch));
+      scl.setScalar(size);
       m4.compose(pos, q, scl);
       this.deerMesh.setMatrixAt(dn, m4);
       dAnim.setXYZW(dn, d.state, (id % 97) * 0.61, !d.fawn && id % 2 ? 1 : 0, d.fawn ? 1 : 0);
+      dAnim2.setXYZW(dn, d.phase, d.gait, d.moving, leap);
       dn++;
       this.visibleDeer.push({ id, x, y: d.y + 0.2, z, fawn: d.fawn, state: d.state });
       if (this.markerAt && this.markerAt.r < 0 && -this.markerAt.r === id) this.markerAt = { x, y: d.y, z, r: -id };
@@ -1208,6 +1275,7 @@ export class BandLayer {
     this.deerMesh.count = dn;
     this.deerMesh.instanceMatrix.needsUpdate = true;
     dAnim.needsUpdate = true;
+    dAnim2.needsUpdate = true;
 
     this.drawBuildings(night, camTarget);
     this.drawAuras(night);
