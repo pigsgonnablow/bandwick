@@ -8,6 +8,7 @@ import { SKILLS, HEALTH } from '../sim/band';
 import { CARRYING, SLOT_WORDS, gearLine, warmthWords } from './words';
 import { TICKS_PER_YEAR } from '../sim/time';
 import { when, Bar } from './App';
+import { NEED_TIPS, SKILL_TIPS, SKILLS_NOTE, TRAIT_TIPS, SLOT_TIPS, GEAR_ROW_TIPS, WARMTH_TIP, PERSON_ROW_TIPS, CARD_TIPS } from './tips';
 
 const METERS_PER_UNIT = 6;
 
@@ -34,7 +35,7 @@ function healthTip(p: PersonDetail) {
     : h >= 99.5 ? ''
     : food > HEALTH.mend && warmth > HEALTH.mend ? 'Recovering slowly (fed and warm).'
     : 'Not mending: needs to be fed and warm.';
-  if (!effects.length && !trend) return `Health ${Math.round(h)}: healthy.`;
+  if (!effects.length && !trend) return `Health ${Math.round(h)}: healthy. Hunger, cold and fever wear it down; it mends slowly while they are fed and warm.`;
   const now = effects.length ? `${effects.join('; ')}.` : 'no ill effects yet.';
   return `Health ${Math.round(h)}: ${now}${trend ? ` ${trend}` : ''}`;
 }
@@ -147,7 +148,7 @@ function ThingBody({ c, engine }: { c: NonNullable<InfoWin['card']>; engine: Eng
         <dl class="rows compact family">
           {c.lines.map((l, i) => (
             <>
-              <dt key={`t${i}`}>{l.label}</dt>
+              <dt key={`t${i}`} data-tip={CARD_TIPS[l.label] ?? (l.label.startsWith('This year') ? CARD_TIPS['This year'] : undefined)}>{l.label}</dt>
               <dd key={`d${i}`}>{l.ref ? <button class="link" onClick={() => engine.selectRef(l.ref!)}>{l.value}</button> : l.value}</dd>
             </>
           ))}
@@ -214,25 +215,25 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
           <>
             <p class="thought">“{p.thought}”</p>
             <dl class="rows compact">
-              <dt>Doing</dt>
+              <dt data-tip={PERSON_ROW_TIPS.Doing}>Doing</dt>
               <dd>{p.doing ?? (p.task ? DOING[p.task] ?? p.task : 'Nothing much')}{p.indoors ? ', indoors' : ''}</dd>
-              {p.carry > 0 && CARRYING[p.carry] && (<><dt>Carrying</dt><dd>{CARRYING[p.carry]}{p.carryAmt > 1 ? ` (${Math.round(p.carryAmt)})` : ''}</dd></>)}
-              {p.tool && (<><dt>In hand</dt><dd>A {p.tool}</dd></>)}
+              {p.carry > 0 && CARRYING[p.carry] && (<><dt data-tip={GEAR_ROW_TIPS.Carrying}>Carrying</dt><dd>{CARRYING[p.carry]}{p.carryAmt > 1 ? ` (${Math.round(p.carryAmt)})` : ''}</dd></>)}
+              {p.tool && (<><dt data-tip={GEAR_ROW_TIPS['In hand']}>In hand</dt><dd>A {p.tool}</dd></>)}
               {(() => {
                 const worn = [...p.gear.filter((g) => g.item).map((g) => g.item!.label.toLowerCase()), ...(p.necklace ? [p.necklace] : [])];
-                return worn.length > 0 && (<><dt>Wearing</dt><dd>{worn[0][0].toUpperCase() + worn.join(', ').slice(1)}</dd></>);
+                return worn.length > 0 && (<><dt data-tip={PERSON_ROW_TIPS.Wearing}>Wearing</dt><dd>{worn[0][0].toUpperCase() + worn.join(', ').slice(1)}</dd></>);
               })()}
-              <dt>Where</dt>
+              <dt data-tip={PERSON_ROW_TIPS.Where}>Where</dt>
               <dd>{p.campDist < 3 ? `At ${p.bandName}` : `${Math.round((p.campDist * METERS_PER_UNIT) / 10) * 10} m from ${p.bandName}`}</dd>
             </dl>
             <div class="needs">
               {NEEDS.map(([k, label]) => (
-                <div key={k} class="need"><span>{label}</span><Bar v={p.needs[k]} /><b>{Math.round(p.needs[k])}</b></div>
+                <div key={k} class="need" data-tip={NEED_TIPS[k]}><span>{label}</span><Bar v={p.needs[k]} /><b>{Math.round(p.needs[k])}</b></div>
               ))}
-              <div class="need" title={healthTip(p)}><span>Health</span><Bar v={p.health} warn={HEALTH.weak} /><b>{Math.round(p.health)}</b></div>
-              <div class="need" title={moodTip(p)}><span>Mood</span><Bar v={p.mood} warn={MOOD_LOW} /><b>{Math.round(p.mood)}</b></div>
+              <div class="need" data-tip={healthTip(p)}><span>Health</span><Bar v={p.health} warn={HEALTH.weak} /><b>{Math.round(p.health)}</b></div>
+              <div class="need" data-tip={moodTip(p)}><span>Mood</span><Bar v={p.mood} warn={MOOD_LOW} /><b>{Math.round(p.mood)}</b></div>
             </div>
-            <div class="chips">{p.traits.map((t) => <span key={t} class="chip">{t}</span>)}</div>
+            <div class="chips">{p.traits.map((t) => <span key={t} class="chip" data-tip={TRAIT_TIPS[t]}>{t}</span>)}</div>
           </>
         )}
         {tab === 'gear' && p.alive && (
@@ -242,32 +243,32 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
               <dl class="rows compact">
                 {p.gear.map((g) => (
                   <>
-                    <dt>{SLOT_WORDS[g.slot]}</dt>
+                    <dt data-tip={SLOT_TIPS[g.slot]}>{SLOT_WORDS[g.slot]}</dt>
                     <dd class={g.item ? '' : 'muted'}>{g.item ? gearLine(g.item) : 'Nothing'}</dd>
                   </>
                 ))}
-                <dt>Neck</dt>
+                <dt data-tip={GEAR_ROW_TIPS.Neck}>Neck</dt>
                 <dd class={p.necklace ? '' : 'muted'}>{p.necklace ? p.necklace[0].toUpperCase() + p.necklace.slice(1) + '.' : 'Nothing'}</dd>
-                <dt>In hand</dt>
+                <dt data-tip={GEAR_ROW_TIPS['In hand']}>In hand</dt>
                 <dd class={p.toolDetail ? '' : 'muted'}>{p.toolDetail ? gearLine(p.toolDetail) : 'Nothing'}</dd>
-                <dt>Carrying</dt>
+                <dt data-tip={GEAR_ROW_TIPS.Carrying}>Carrying</dt>
                 <dd class={p.carry > 0 && CARRYING[p.carry] ? '' : 'muted'}>{p.carry > 0 && CARRYING[p.carry] ? `${CARRYING[p.carry][0].toUpperCase()}${CARRYING[p.carry].slice(1)}${p.carryAmt > 1 ? ` (${Math.round(p.carryAmt)})` : ''}` : 'Nothing'}</dd>
               </dl>
             </div>
-            <p class="small muted" style={{ margin: '8px 0 0' }}>{warmthWords(p.coldKept)}.</p>
+            <p class="small muted" style={{ margin: '8px 0 0' }}><span data-tip={WARMTH_TIP}>{warmthWords(p.coldKept)}.</span></p>
           </>
         )}
         {tab === 'family' && (
           <dl class="rows compact family">
-            {p.partner && (<><dt>Partner</dt><dd>{who({ ...p.partner, alive: true })}</dd></>)}
+            {p.partner && (<><dt data-tip={PERSON_ROW_TIPS.Partner}>Partner</dt><dd>{who({ ...p.partner, alive: true })}</dd></>)}
             {(p.mother || p.father) && (<><dt>Parents</dt><dd>{who(p.mother)}{p.mother && p.father ? ' & ' : ''}{who(p.father)}</dd></>)}
-            {p.carer && (<><dt>Raised by</dt><dd>{who(p.carer)}</dd></>)}
-            {p.fostering.length > 0 && (<><dt>Fostering</dt><dd>{list(p.fostering)}</dd></>)}
+            {p.carer && (<><dt data-tip={PERSON_ROW_TIPS['Raised by']}>Raised by</dt><dd>{who(p.carer)}</dd></>)}
+            {p.fostering.length > 0 && (<><dt data-tip={PERSON_ROW_TIPS.Fostering}>Fostering</dt><dd>{list(p.fostering)}</dd></>)}
             {p.children.length > 0 && (<><dt>Children</dt><dd>{list(p.children)}</dd></>)}
-            {p.descendants > p.children.length && (<><dt>Line</dt><dd>{p.descendants} descendants in all</dd></>)}
-            {p.friends.length > 0 && (<><dt>Close to</dt><dd>{list(p.friends.slice(0, 4))}</dd></>)}
-            {p.rivals.length > 0 && (<><dt>Dislikes</dt><dd>{list(p.rivals)}</dd></>)}
-            <dt>Knows</dt>
+            {p.descendants > p.children.length && (<><dt data-tip={PERSON_ROW_TIPS.Line}>Line</dt><dd>{p.descendants} descendants in all</dd></>)}
+            {p.friends.length > 0 && (<><dt data-tip={PERSON_ROW_TIPS['Close to']}>Close to</dt><dd>{list(p.friends.slice(0, 4))}</dd></>)}
+            {p.rivals.length > 0 && (<><dt data-tip={PERSON_ROW_TIPS.Dislikes}>Dislikes</dt><dd>{list(p.rivals)}</dd></>)}
+            <dt data-tip={PERSON_ROW_TIPS.Knows}>Knows</dt>
             <dd>{p.knows} {p.knows === 1 ? 'person' : 'people'} among the living</dd>
           </dl>
         )}
@@ -275,11 +276,11 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
           <>
             <div class="needs">
               {SKILLS.map((k, i) => p.shownSkills.includes(i) && (
-                <div key={k} class="need"><span>{SKILL_WORDS[k]}</span><Bar v={p.skills[i]} max={20} warn={-1} /><b>{p.skills[i].toFixed(1)}</b></div>
+                <div key={k} class="need" data-tip={SKILL_TIPS[k]}><span>{SKILL_WORDS[k]}</span><Bar v={p.skills[i]} max={20} warn={-1} /><b>{p.skills[i].toFixed(1)}</b></div>
               ))}
             </div>
             <p class="small muted" style={{ margin: '8px 0 0' }}>
-              Skills grow with practice, up to 20. {p.kills > 0 ? `${p.kills} deer brought down.` : p.age >= 14 ? 'No deer brought down yet.' : ''}
+              <span data-tip={SKILLS_NOTE}>Skills grow with practice, up to 20.</span> {p.kills > 0 ? `${p.kills} deer brought down.` : p.age >= 14 ? 'No deer brought down yet.' : ''}
             </p>
           </>
         )}
