@@ -8,6 +8,7 @@ import { SKILLS, HEALTH } from '../sim/band';
 import { CARRYING, SLOT_WORDS, gearLine, warmthWords } from './words';
 import { TICKS_PER_YEAR } from '../sim/time';
 import { when, Bar } from './App';
+import { useCollapsed, CollapseBtn } from './Collapse';
 import { NEED_TIPS, SKILL_TIPS, SKILLS_NOTE, TRAIT_TIPS, SLOT_TIPS, GEAR_ROW_TIPS, WARMTH_TIP, PERSON_ROW_TIPS, CARD_TIPS } from './tips';
 
 const METERS_PER_UNIT = 6;
@@ -87,6 +88,7 @@ function Leader({ w, focus }: { w: InfoWin; focus: boolean }) {
 
 function Win({ w, s, engine, focus }: { w: InfoWin; s: Snapshot; engine: Engine; focus: boolean }) {
   const drag = useRef<{ dx: number; dy: number } | null>(null);
+  const [folded, setFolded] = useCollapsed();
   const p = w.ref.kind === 'person' ? w.person : null;
   const c = w.ref.kind !== 'person' ? w.card : null;
   const gone = w.loaded && !p && !c;
@@ -105,12 +107,13 @@ function Win({ w, s, engine, focus }: { w: InfoWin; s: Snapshot; engine: Engine;
   const xy = p ? { x: p.x, z: p.z } : c ? { x: c.x, z: c.z } : null;
   return (
     <aside
-      class={`panel info-win${focus ? ' focus' : ''}${w.pinned ? ' pinned' : ''}`}
+      class={`panel info-win${focus ? ' focus' : ''}${w.pinned ? ' pinned' : ''}${folded ? ' collapsed' : ''}`}
       style={{ left: `${w.x}px`, top: `${w.y}px`, zIndex: 20 + w.z, width: `${WIN_W}px` }}
       aria-label={title}
       onPointerDown={() => !focus && engine.focusWin(w.key)}
     >
-      <header class="win-head" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} title="Drag to move">
+      <header class="win-head" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+        onDblClick={(e) => !(e.target as HTMLElement).closest('button') && setFolded(!folded)} title="Drag to move · double-click to fold">
         <div class="win-title">
           <span class="kind">{KIND_WORD[w.ref.kind]}{w.pinned ? ' · pinned' : ''}</span>
           <span class="name">{title}{p && !p.alive ? ' †' : ''}</span>
@@ -130,10 +133,11 @@ function Win({ w, s, engine, focus }: { w: InfoWin; s: Snapshot; engine: Engine;
             title={w.pinned ? 'Unpin: close when you click something else' : 'Pin: keep this open to compare with other things'} aria-label={w.pinned ? 'Unpin' : 'Pin'}>
             <svg viewBox="0 0 16 16" fill={w.pinned ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h4l-.6 4 2.6 2.4v1.1H4V8.4L6.6 6z" /><path d="M8 9.5V14" stroke-linecap="round" /></svg>
           </button>
+          <CollapseBtn collapsed={folded} onToggle={setFolded} what="this window" />
           <button class="btn icon small" onClick={() => engine.closeWin(w.key)} aria-label="Close" title="Close (Esc)">×</button>
         </div>
       </header>
-      {p ? <PersonBody p={p} w={w} s={s} engine={engine} /> : c ? <ThingBody c={c} engine={engine} /> : (
+      {folded ? null : p ? <PersonBody p={p} w={w} s={s} engine={engine} /> : c ? <ThingBody c={c} engine={engine} /> : (
         <p class="hint win-body" style={{ margin: 0 }}>{gone ? 'Nothing is here any more.' : 'Looking closer…'}</p>
       )}
     </aside>
