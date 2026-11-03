@@ -139,7 +139,10 @@ and runs the simulation on the main thread instead, so it still works, just with
 - `Space` pause, `1`–`6` speed (1× is a walking pace, a day in about a minute and a half; 4×, 12×, 40×, 120×, 400×)
 - Click anything to examine it: people, deer, huts, the fire, trees, stumps, log piles, graves. Double-click the ground for the land or water itself.
   An info window opens beside it, joined to it by a line. People's windows have tabs: Now (what they're doing,
-  carrying, needs, health, mood), Family, Skills, and Story (memories). Drag a window by its header. Pin it to keep it open
+  carrying, needs, health, mood), Gear (what they wear and hold), Family, Skills, and Story (memories). On the Gear tab
+  each thing worn or held is a link: it opens a window about it beside theirs, with a picture of it (its model,
+  `item__<kind>` in `blender/build_band.py`), how worn it is and how much use is left in it, how warm it keeps them or
+  what it is good for, what it was made from, who made and mended it, and where it is now. Drag a window by its header. Pin it to keep it open
   while you click other things, so up to four can sit side by side for comparison. `Esc` closes the unpinned
   window first, then pinned ones. `F` follows the person whose window is in front.
 - `H` or the Chronicle button opens the history of the world, four ways:

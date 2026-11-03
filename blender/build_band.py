@@ -11,6 +11,8 @@ Conventions (read by src/render/band.ts):
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
   boat__dugout                                                    the dugout the first band lands in (origin at the waterline, bow to -Y).
+  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag}  each made thing in real colours,
+      for the picture in its window (the game fits it to the picture).
   bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
@@ -2141,6 +2143,123 @@ def mirror(keys):
     """the right side is the left half a cycle later"""
     return [((t + 0.5) % 1.0, v) for t, v in keys]
 
+
+# ---------------------------------------------------------------- items, for the window that shows one
+# item__<kind> for every kind of thing a band makes (src/sim/band.ts ITEM_KINDS), in its real colours, for
+# the picture in an item's window. The game fits each one to its picture, so only the shape and the colours
+# matter here, not the size or where the origin is. Tools and traps are the ones the game already shows in
+# people's hands and in the land; the clothes are the ones people wear, with their region codes painted in
+# real colours; the needle, the mittens and the shoes have no other model.
+
+
+def item_copy(src, name, rot=None):
+    """Another model's mesh under a new name, turned by rot (a Blender-space matrix) if given."""
+    mesh = bpy.data.objects[src].data.copy()
+    mesh.name = name
+    if rot is not None:
+        mesh.transform(rot.to_4x4())
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
+def repaint(obj, pairs, seed):
+    """Paint a region-coded mesh in real colours: each face takes the colour paired with its nearest code
+    (codes as linear rgb, colours as sRGB 0..255), with a little face-to-face variation like a hide's."""
+    rr = random.Random(seed)
+    mesh = obj.data
+    col = mesh.attributes["Col"]
+    for poly in mesh.polygons:
+        c = col.data[poly.loop_start].color
+        code = min(pairs, key=lambda pc: sum((c[i] - pc[0][i]) ** 2 for i in range(3)))
+        real = lin(jit(code[1], rr, 0.05))
+        for li in range(poly.loop_start, poly.loop_start + poly.loop_total):
+            col.data[li].color = real
+
+
+L_ = lambda c: lin(c)[:3]
+HIDE_TAN = (150, 112, 76)
+HIDE_BROWN = (122, 88, 60)
+FUR_PALE = (196, 176, 140)
+THONG = (96, 72, 48)
+REED_PALE = (196, 176, 110)
+REED_SH = (150, 132, 80)
+BONE = (226, 214, 186)
+BONE_DK = (186, 170, 140)
+
+item_copy("carry__chopper", "item__chopper")
+item_copy("carry__axe", "item__axe")
+item_copy("carry__stick", "item__stick")
+item_copy("trap__snare", "item__snare")
+item_copy("trap__fishtrap", "item__fishtrap")
+item_copy("carry__basket", "item__basket")
+item_copy("pile__pot", "item__pot")
+repaint(item_copy("villager__cloak", "item__cloak"), [(L_(CLOAK_CODE), HIDE_TAN), ((0, 0, 0), THONG)], 61)
+repaint(item_copy("villager__hat", "item__hat"), [(HAT_CODE, HIDE_BROWN), (FUR_CODE, FUR_PALE)], 62)
+q = Part()  # the reed cape, as worn, in its real straw colours: the knotted rows lighter and darker
+rr = random.Random(63)
+shell(q, [reed_row(i, z, 0.0) for i, z in enumerate(CZ2)], [reed_row(i, z, -0.004) for i, z in enumerate(CZ2)],
+      lambda i, k: REED_PALE if i % 2 else REED_SH, lambda i, k: REED_SH, REED_SH, rr, 0.06)
+q.box((0, -0.028, 0.286), (0.012, 0.004, 0.004), THONG, rr, 0.0)
+q.finish("item__cape")
+q = Part()  # a hide bag: a deep pouch, a flap folded over the mouth and tied, the strap looped up over it
+rr = random.Random(64)
+q.box((0, 0, 0), (0.044, 0.018, 0.040), HIDE_TAN, rr, 0.05, taper=0.88)
+q.box((0, -0.0005, 0.0165), (0.046, 0.020, 0.010), THONG, rr, 0.04)  # the flap
+q.box((0, -0.0115, 0.006), (0.010, 0.003, 0.016), THONG, rr, 0.04)   # its tongue down the front
+q.blob((0, -0.0135, 0.0), (0.003, 0.002, 0.003), BONE, rr, 0.03)       # a bone toggle
+pts = [Vector((math.cos(a) * 0.024, 0, 0.012 + math.sin(a) * 0.045)) for a in [k / 10 * math.pi for k in range(11)]]
+for a_, b_ in zip(pts, pts[1:]):  # the strap, arching over
+    q.cyl(4, 0.0026, 0.0026, a_, b_, THONG, rr, 0.03, cap=False)
+q.finish("item__bag")
+
+q = Part()  # a bone needle with its eye, and the awl that punches the holes for it, lying side by side
+rr = random.Random(65)
+q.cyl(6, 0.0016, 0.0011, (0, 0, -0.030), (0, 0, 0.022), BONE, rr, 0.04, cap=False)
+tip = q.cone(6, 0.0016, -0.030, 1.0, BONE, rr, 0.03)
+for v in {v for f in tip for v in f.verts if v.co.z > 0.5}:
+    v.co = Vector((0, 0, -0.042))  # the point
+for k in range(8):  # the eye: a flattened loop at the head
+    a0, a1 = k / 8 * math.tau, (k + 1) / 8 * math.tau
+    q.cyl(3, 0.0007, 0.0007, (math.sin(a0) * 0.0018, 0, 0.0245 + math.cos(a0) * 0.0032),
+          (math.sin(a1) * 0.0018, 0, 0.0245 + math.cos(a1) * 0.0032), BONE_DK, rr, 0.03, cap=False)
+# the awl: a thicker splinter of bone, the knuckle end left on to grip
+q.cyl(6, 0.0034, 0.0022, (0.014, 0, -0.016), (0.014, 0, 0.020), BONE, rr, 0.05)
+awl = q.cone(6, 0.0034, -0.016, 1.0, BONE_DK, rr, 0.03, center=(0.014, 0))
+for v in {v for f in awl for v in f.verts if v.co.z > 0.5}:
+    v.co = Vector((0.0142, 0, -0.036))  # the point
+q.blob((0.014, 0, 0.022), (0.0052, 0.0046, 0.0042), BONE_DK, rr, 0.05, noise=0.1)
+q.cyl(6, 0.0036, 0.0036, (0.014, 0, 0.000), (0.014, 0, 0.007), THONG, rr, 0.03, cap=False)  # a binding to grip
+q.finish("item__needle")
+
+q = Part()  # a pair of hide mittens, fur turned in and showing at the cuff, side by side, thumbs in
+rr = random.Random(66)
+# rings cuff to fingertips: (z, half-width, half-depth); the top closed round
+MITT = [(-0.024, 0.0115, 0.0075), (-0.012, 0.0110, 0.0068), (-0.004, 0.0125, 0.0070), (0.010, 0.0135, 0.0072),
+        (0.020, 0.0125, 0.0068), (0.027, 0.0100, 0.0058), (0.031, 0.0065, 0.0042)]
+for sx in (-1, 1):
+    x0 = sx * 0.019
+    bm = q.bm
+    seg = 12
+    rings = [[bm.verts.new((x0 + math.cos(k / seg * math.tau) * rx, math.sin(k / seg * math.tau) * ry, z)) for k in range(seg)] for z, rx, ry in MITT]
+    for a, b in zip(rings, rings[1:]):
+        q.paint([bm.faces.new((a[k], a[(k + 1) % seg], b[(k + 1) % seg], b[k])) for k in range(seg)], HIDE_BROWN, rr, 0.05)
+    top_ = bm.verts.new((x0, 0, 0.0335))
+    q.paint([bm.faces.new((rings[-1][k], rings[-1][(k + 1) % seg], top_)) for k in range(seg)], HIDE_BROWN, rr, 0.05)
+    # the thumb, on the inner side, angled up and out
+    q.cyl(6, 0.0042, 0.0036, (x0 - sx * 0.009, 0, -0.004), (x0 - sx * 0.0165, 0, 0.010), HIDE_BROWN, rr, 0.05, cap=False)
+    q.blob((x0 - sx * 0.0168, 0, 0.0105), (0.0037, 0.0037, 0.0040), HIDE_BROWN, rr, 0.05, subdiv=2)
+    q.cyl(seg, 0.0132, 0.0132, (x0, 0, -0.027), (x0, 0, -0.019), FUR_PALE, rr, 0.06)  # the fur cuff
+    q.cyl(seg, 0.0124, 0.0124, (x0, 0, -0.0105), (x0, 0, -0.0085), THONG, rr, 0.03, cap=False)  # the tie
+q.finish("item__mittens")
+
+q = Part()  # a pair of soft hide shoes, toes forward, a thong round each ankle
+shoe(q, -0.016)
+shoe(q, 0.016)
+for x in (-0.016, 0.016):
+    q.cyl(8, 0.0142, 0.0142, (x, 0.0056, 0.0215), (x, 0.0056, 0.0240), THONG, raw=False)
+obj = q.finish("item__shoes")
+repaint(obj, [((0, 0, 0), HIDE_TAN), (L_(THONG), THONG)], 67)
 
 import json
 
