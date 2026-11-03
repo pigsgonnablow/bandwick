@@ -1689,7 +1689,7 @@ function makeSmoke() {
 // everything else is a held or gently moving pose. Two poses are blended while one turns into
 // the next, so nothing pops.
 const POSE_GLSL = /* glsl */ `
-struct Pose { float thL, thR, knL, knR, shL, shR, elL, elR, lean, bob, roll, head, lower, lie; };
+struct Pose { float thL, thR, knL, knR, shL, shR, elL, elR, lean, bob, roll, head, lower, lie, side; };
 
 float gaitAt(int g, int ch, float ph) {
   float x = fract(ph) * ${gait.samples}.0;
@@ -1708,15 +1708,15 @@ float onceAt(int g, int ch, float pr) {
   return mix(texelFetch(uGait, ivec2(i, row), 0).r, texelFetch(uGait, ivec2(j, row), 0).r, x - float(i));
 }
 
-Pose still() { return Pose(0.0, 0.0, 0.03, 0.03, 0.0, 0.0, -0.12, -0.12, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0); }
+Pose still() { return Pose(0.0, 0.0, 0.03, 0.03, 0.0, 0.0, -0.12, -0.12, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0); }
 
 Pose loopPose(int g, float ph) {
   return Pose(gaitAt(g, 0, ph), gaitAt(g, 1, ph), gaitAt(g, 2, ph), gaitAt(g, 3, ph), gaitAt(g, 4, ph), gaitAt(g, 5, ph),
-    gaitAt(g, 6, ph), gaitAt(g, 7, ph), gaitAt(g, 8, ph), gaitAt(g, 9, ph), gaitAt(g, 10, ph), gaitAt(g, 11, ph), gaitAt(g, 12, ph), 0.0);
+    gaitAt(g, 6, ph), gaitAt(g, 7, ph), gaitAt(g, 8, ph), gaitAt(g, 9, ph), gaitAt(g, 10, ph), gaitAt(g, 11, ph), gaitAt(g, 12, ph), 0.0, 0.0);
 }
 Pose oncePose(int g, float pr) {
   return Pose(onceAt(g, 0, pr), onceAt(g, 1, pr), onceAt(g, 2, pr), onceAt(g, 3, pr), onceAt(g, 4, pr), onceAt(g, 5, pr),
-    onceAt(g, 6, pr), onceAt(g, 7, pr), onceAt(g, 8, pr), onceAt(g, 9, pr), onceAt(g, 10, pr), onceAt(g, 11, pr), onceAt(g, 12, pr), 0.0);
+    onceAt(g, 6, pr), onceAt(g, 7, pr), onceAt(g, 8, pr), onceAt(g, 9, pr), onceAt(g, 10, pr), onceAt(g, 11, pr), onceAt(g, 12, pr), 0.0, 0.0);
 }
 
 Pose sitting() {
@@ -1746,8 +1746,11 @@ Pose poseFor(float act, float t, float ph, float run) {
     p.shL = -1.0 + 0.25 * sin(t * 6.0); p.shR = -1.1 - 0.25 * sin(t * 6.0 + 1.0); p.elL = p.elR = -0.35;
   } else if (act < 4.5) {                // sitting on the ground, knees up
     p = sitting();
-  } else if (act < 5.5) {                // asleep, curled a little
-    p.lie = 1.0; p.thL = p.thR = -0.45; p.knL = p.knR = 0.8; p.shL = p.shR = -0.5; p.elL = p.elR = -1.1;
+  } else if (act < 5.5) {                // asleep: curled up on one side, hands tucked under the chin, breathing slowly
+    p.lie = 1.0; p.side = 1.0;
+    p.thL = -0.95; p.thR = -0.75; p.knL = 1.35; p.knR = 1.15;
+    p.shL = -1.15; p.shR = -0.95; p.elL = p.elR = -1.6;
+    p.head = 0.3; p.lean = 0.18 + 0.025 * sin(t * 1.3);
   } else if (act < 6.5) {                // talking, with a hand
     p.shR = -0.55 - 0.45 * max(0.0, sin(t * 4.0)); p.elR = -0.9; p.head = 0.12 * sin(t * 2.2);
     p.roll = 0.02 * sin(t * 0.8);
@@ -1789,10 +1792,11 @@ Pose blendPose(Pose a, Pose b, float k) {
   return Pose(mix(a.thL, b.thL, k), mix(a.thR, b.thR, k), mix(a.knL, b.knL, k), mix(a.knR, b.knR, k),
     mix(a.shL, b.shL, k), mix(a.shR, b.shR, k), mix(a.elL, b.elL, k), mix(a.elR, b.elR, k),
     mix(a.lean, b.lean, k), mix(a.bob, b.bob, k), mix(a.roll, b.roll, k), mix(a.head, b.head, k),
-    mix(a.lower, b.lower, k), mix(a.lie, b.lie, k));
+    mix(a.lower, b.lower, k), mix(a.lie, b.lie, k), mix(a.side, b.side, k));
 }
 
 mat3 rx(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }
+mat3 ry(float a) { float c = cos(a), s = sin(a); return mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c); }
 mat3 rz(float a) { float c = cos(a), s = sin(a); return mat3(c, s, 0.0, -s, c, 0.0, 0.0, 0.0, 1.0); }
 void turn(inout vec3 v, inout mat3 R, mat3 M, vec3 c) { v = M * (v - c) + c; R = M * R; }
 
@@ -1846,7 +1850,11 @@ void poseVertex(vec3 pos, out vec3 v, out mat3 R) {
   // the upper body leans and sways over the hips
   if (!leg) turn(v, R, rz(p.roll) * rx(p.lean), vec3(0.0, ${HIP_Y.toFixed(3)}, 0.0));
   v.y += p.bob - p.lower;
-  // lying down: on the back, face to the sky, centred where they stood
-  if (p.lie > 0.001) { turn(v, R, rx(-p.lie * 1.5708), vec3(0.0)); v += vec3(0.0, p.lie * 0.036, p.lie * 0.18); }
+  // lying down, centred where they stood: on the back, face to the sky, or (side) turned onto one
+  // side first, so a shoulder rather than the back is on the ground
+  if (p.lie > 0.001) {
+    turn(v, R, rx(-p.lie * 1.5708) * ry(p.side * 1.5708), vec3(0.0));
+    v += vec3(0.0, p.lie * mix(0.036, 0.074, p.side), p.lie * 0.18);
+  }
 }
 `;
