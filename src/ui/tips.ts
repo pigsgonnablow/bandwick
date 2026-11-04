@@ -50,9 +50,9 @@ export const SLOT_TIPS: Record<string, string> = {
   hands: `Hands: mittens keep off about ${pct(GARMENTS.mittens.warm)} of the cold.`,
   feet: `Feet: hide shoes make a long walk ${pct(1 - SHOES_REST)} less tiring, and wear out with walking.`,
   shoulder: `Shoulder: a hide bag lets a gatherer bring home ${pct(BAG_LOAD - 1)} more in a trip.`,
+  neck: 'Neck: a necklace is worn for pride and remembrance; it keeps off no cold.',
 };
 export const GEAR_ROW_TIPS: Record<string, string> = {
-  Neck: 'Neck: a necklace is worn for pride and remembrance; it keeps off no cold.',
   'In hand': 'In hand: the tool they are using. Tools belong to the band and go back to the stockpile when the work is done.',
   Carrying: 'Carrying: what they are bringing home or to a building site.',
 };

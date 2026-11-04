@@ -22,7 +22,8 @@ describe('item windows', () => {
       expect(c.title).toBe(ITEMS[kind].label);
       expect(c.item).toBe(kind);
       expect(c.lines.find((l) => l.label === 'Lies')?.ref?.kind).toBe('building');
-      expect(c.lines.map((l) => l.label)).toEqual(expect.arrayContaining(['Condition', 'Life left', 'Made by', 'Made']));
+      // (a necklace does not wear out, and was given rather than made for the pile)
+      expect(c.lines.map((l) => l.label)).toEqual(expect.arrayContaining(kind === 'necklace' ? ['Worn on', 'Given'] : ['Condition', 'Life left', 'Made by', 'Made']));
       expect(c.notes[0].length).toBeGreaterThan(20);
     }
     const p = s.people.find((q) => q.alive)!;
@@ -34,6 +35,13 @@ describe('item windows', () => {
     expect(c.lines.find((l) => l.label === 'Warmth')?.value).toBe('Keeps off 30% of the cold');
     // the Gear tab names it by id, so its window can be opened from there
     expect(s.inspect(p.id)!.gear.find((g) => g.slot === 'body')?.item?.id).toBe(cloak.id);
+    // and a necklace, worn at the neck, says who gave it
+    const giver = s.people.find((q) => q.alive && q !== p)!;
+    const necklace = s.giveNecklace(p, giver.id);
+    const n = s.inspectThing({ kind: 'item', id: necklace.id })!;
+    expect(n.lines[0]).toMatchObject({ label: 'Worn by', ref: { kind: 'person', id: p.id } });
+    expect(n.lines.find((l) => l.label === 'Given by')).toMatchObject({ value: giver.name, ref: { kind: 'person', id: giver.id } });
+    expect(s.inspect(p.id)!.gear.find((g) => g.slot === 'neck')?.item).toMatchObject({ id: necklace.id, given: true });
   });
 
   it('has no window for a thing that is gone', () => {

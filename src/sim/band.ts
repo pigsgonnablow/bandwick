@@ -95,7 +95,7 @@ export const TASK_KINDS: TaskKind[] = [
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -135,6 +135,8 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   cape: { label: 'Reed cape', uses: 110 },
   // a hide bag on a strap over the shoulder, for whatever is gathered: a year or two of loads
   bag: { label: 'Hide bag', uses: 80 },
+  // teeth and shells strung on a cord and given to someone dear: it does not wear out, and goes into the grave with them
+  necklace: { label: 'Necklace', uses: 1000 },
 };
 /** How much of the usual time sewing and weaving take with a bone needle and awl in the band. */
 export const NEEDLE_SPEED = 0.65;
@@ -152,20 +154,22 @@ export const FEAST_MEAL = 1.5;
 /** How much of the cold a cloak keeps off, and the deer hides that go into one. */
 export const CLOAK_WARM = 0.3;
 /** Where on the body a thing is worn: one thing to each place. */
-export const SLOTS = ['body', 'head', 'hands', 'feet', 'shoulder'] as const;
+export const SLOTS = ['body', 'head', 'hands', 'feet', 'shoulder', 'neck'] as const;
 export type Slot = (typeof SLOTS)[number];
-export type GarmentKind = 'cloak' | 'hat' | 'mittens' | 'shoes' | 'cape' | 'bag';
+export type GarmentKind = 'cloak' | 'hat' | 'mittens' | 'shoes' | 'cape' | 'bag' | 'necklace';
 /**
  * What can be worn: where, how much of the cold it keeps off, and who gets one first from the pile
- * (those who feel the cold most, the ones who walk furthest, or the band's best gatherers).
+ * (those who feel the cold most, the ones who walk furthest, or the band's best gatherers). A necklace is
+ * never handed out from the pile: it is given by one person to another.
  */
-export const GARMENTS: Record<GarmentKind, { slot: Slot; warm: number; first: 'cold' | 'walkers' | 'gatherers' }> = {
+export const GARMENTS: Record<GarmentKind, { slot: Slot; warm: number; first: 'cold' | 'walkers' | 'gatherers' | 'given' }> = {
   cloak: { slot: 'body', warm: CLOAK_WARM, first: 'cold' },
   cape: { slot: 'body', warm: 0.12, first: 'cold' },
   hat: { slot: 'head', warm: 0.1, first: 'cold' },
   mittens: { slot: 'hands', warm: 0.06, first: 'cold' },
   shoes: { slot: 'feet', warm: 0.04, first: 'walkers' },
   bag: { slot: 'shoulder', warm: 0, first: 'gatherers' },
+  necklace: { slot: 'neck', warm: 0, first: 'given' },
 };
 export const isGarment = (k: string): k is GarmentKind => k in GARMENTS;
 /** With a hide bag over the shoulder, a gatherer brings home this much more in a trip. */
@@ -318,7 +322,7 @@ export interface Item {
   /** how worn it is, 0 new .. 1 broken */
   wear: number;
   made: number;
-  /** who made it (-1: brought from beyond the map) */
+  /** who made it (-1: brought from beyond the map); for a necklace, who strung it and gave it */
   maker: number;
   /** a trap: the tile it is set on (absent or -1: on the pile; -2: in the basket of whoever is setting it) */
   tile?: number;
@@ -461,9 +465,8 @@ export interface Person {
   worn?: Partial<Record<Slot, number>>;
   /** nursed with herbs through a fever: until when it helps (absent: never) */
   tended?: number;
-  /** when they last gave someone an ornament, and who gave them the one they wear (absent: never, none) */
+  /** when they last gave someone an ornament (absent: never); the one they wear is an item worn at the neck */
   gave?: number;
-  necklace?: number;
 }
 
 export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed'] as const;

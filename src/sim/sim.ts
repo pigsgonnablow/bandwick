@@ -86,13 +86,13 @@ export function condition(wear: number) {
 const ITEM_USE: Record<ItemKind, string> = {
   chopper: 'trees felled', axe: 'trees felled', stick: 'trips with it', snare: 'days set', fishtrap: 'days set',
   basket: 'trips with it', pot: 'days of holding food', cloak: 'cold days', needle: 'things sewn', hat: 'cold days',
-  mittens: 'cold days', shoes: 'stretches of walking', cape: 'cold days', bag: 'loads carried',
+  mittens: 'cold days', shoes: 'stretches of walking', cape: 'cold days', bag: 'loads carried', necklace: 'years worn',
 };
 /** What kind of thing it is, in a few words. */
 const ITEM_ABOUT: Record<ItemKind, string> = {
   chopper: 'a tool', axe: 'a tool', stick: 'a tool', snare: 'a trap', fishtrap: 'a trap', basket: 'for gathering',
   pot: 'for the stores', cloak: 'clothing', needle: 'a tool', hat: 'clothing', mittens: 'clothing', shoes: 'clothing',
-  cape: 'clothing', bag: 'for gathering',
+  cape: 'clothing', bag: 'for gathering', necklace: 'an ornament',
 };
 /** How it is made and how long it lasts. */
 const ITEM_NOTE: Record<ItemKind, string> = {
@@ -110,8 +110,9 @@ const ITEM_NOTE: Record<ItemKind, string> = {
   shoes: 'Soft hide shoes gathered at the ankle with a thong. They wear through with walking, in a season or so.',
   cape: 'Reeds and grass knotted into a cape that sheds the wind like thatch: a poor cousin of a cloak, good for a winter or two.',
   bag: 'A hide bag with a strap over the shoulder, for whatever is gathered. It lasts a year or two of loads.',
+  necklace: 'Teeth and shells strung on a cord and given to someone dear. It is worn for pride and remembrance, and goes into the grave with its wearer.',
 };
-const SLOT_PLACE: Record<Slot, string> = { body: 'The shoulders and back', head: 'The head', hands: 'The hands', feet: 'The feet', shoulder: 'Over the shoulder' };
+const SLOT_PLACE: Record<Slot, string> = { body: 'The shoulders and back', head: 'The head', hands: 'The hands', feet: 'The feet', shoulder: 'Over the shoulder', neck: 'Around the neck' };
 const MATERIAL_ONE: Record<string, string> = { hides: 'hide', bones: 'bone', cordage: 'cordage', stone: 'stone', wood: 'wood', fiber: 'fiber', mud: 'mud' };
 
 function annualMortality(age: number) {
@@ -510,10 +511,16 @@ export class Sim {
       // and from before the one crafting job: twisting and knapping are recipes now
       const t = p.task as { kind: string; ref: number; amount: number } | null;
       if (t?.kind === 'twist') { t.kind = 'craft'; t.ref = RECIPE_KEYS.indexOf('cordage'); t.amount = t.amount > 0 ? 1 : 0; }
-      if (t?.kind === 'knap') { t.kind = 'craft'; t.ref = RECIPE_KEYS.indexOf(ITEM_KINDS[t.ref]); }
+      if (t?.kind === 'knap') { t.kind = 'craft'; t.ref = RECIPE_KEYS.indexOf(ITEM_KINDS[t.ref] as RecipeKey); }
       // and from before there was more to wear than a cloak
       const old = p as Person & { cloak?: number };
       if (old.cloak !== undefined) { (p.worn ??= {}).body = old.cloak; delete old.cloak; }
+    }
+    const beads = new Map<Person, number>();
+    for (const p of this.people) {
+      // and from before a necklace was a thing worn: it only remembered who gave it
+      const old = p as Person & { necklace?: number };
+      if (old.necklace !== undefined) { if (p.alive) beads.set(p, old.necklace); delete old.necklace; }
     }
     this.byId = new Map(this.people.map((p) => [p.id, p]));
     this.buildings = d.buildings as Building[];
@@ -538,6 +545,7 @@ export class Sim {
         this.giveTools(c, { chopper: 2, axe: 2, stick: c.knows.includes('digstick') ? 1 : 0 });
       }
     }
+    for (const [p, giver] of beads) this.giveNecklace(p, giver);
     this.deer = d.deer as Deer[];
     this.herds = d.herds as Herd[];
     this.propsVersion++;
@@ -1447,7 +1455,7 @@ export class Sim {
    * choppers, a digging stick or two (two where there is mud to dig for walls), baskets for the pickers, and
    * pots for the stores.
    */
-  toolToMake(c = this.camp): ItemKind | null {
+  toolToMake(c = this.camp): RecipeKey & ItemKind | null {
     const ms = this.members(c);
     // what is already being made at the fire counts too, or every crafter makes the same tool all day
     const have = (k: ItemKind) => this.toolsOf(c, k).length + ms.filter((p) => p.task?.kind === 'craft' && p.task.amount > 0 && RECIPE_KEYS[p.task.ref] === k).length;
@@ -1468,7 +1476,7 @@ export class Sim {
     const dressed = ms.filter((p) => this.age(p) >= 1).length;
     const walkers = ms.filter((p) => this.age(p) >= 3).length;
     const gatherers = ms.filter((p) => this.age(p) >= 9).length;
-    const small = (share: number): ItemKind | null => {
+    const small = (share: number): RecipeKey & ItemKind | null => {
       if (this.knows('shoes', c) && c.stock.hides >= 1 && c.stock.cordage >= 1 && have('shoes') < Math.ceil(walkers * share)) return 'shoes';
       if (this.knows('hats', c) && c.stock.hides >= 1 && have('hat') < Math.ceil(dressed * share)) return 'hat';
       if (this.knows('bags', c) && c.stock.hides >= 1 && c.stock.cordage >= 1 && have('bag') < Math.max(1, Math.floor((gatherers / 3) * Math.min(1, share * 2)))) return 'bag';
@@ -1540,6 +1548,8 @@ export class Sim {
       } else {
         if (w && w.worn?.[slot] === it.id) delete w.worn![slot];
         delete it.wearer;
+        // a necklace goes into the grave with whoever wore it
+        if (GARMENTS[it.kind].first === 'given') this.items.splice(this.items.indexOf(it), 1);
       }
     }
     for (const c of this.liveCamps()) this.handOut(c);
@@ -1597,6 +1607,18 @@ export class Sim {
     }
     return 1 - through;
   }
+  /**
+   * A necklace strung by one person and put round another's neck. One they wore already is put away: a
+   * necklace is never passed on.
+   */
+  giveNecklace(p: Person, giver: number) {
+    const old = this.wornIn(p, 'neck');
+    if (old) this.items.splice(this.items.indexOf(old), 1);
+    const it: Item = { id: this.newId(), kind: 'necklace', band: p.band, holder: -1, wear: 0, made: this.tick, maker: giver };
+    this.items.push(it);
+    this.dress(p, it);
+    return it;
+  }
   /** Put something on someone (taking off and returning to the pile whatever they wore there). */
   dress(p: Person, it: Item) {
     if (!isGarment(it.kind)) return;
@@ -1613,7 +1635,7 @@ export class Sim {
    * A better thing replaces a worse one, which goes back on the pile for the next.
    */
   private handOut(c: Camp) {
-    const free = this.items.filter((i) => isGarment(i.kind) && i.band === c.id && i.wearer === undefined && i.holder < 0 && (i.tile ?? -1) === -1);
+    const free = this.items.filter((i) => isGarment(i.kind) && GARMENTS[i.kind].first !== 'given' && i.band === c.id && i.wearer === undefined && i.holder < 0 && (i.tile ?? -1) === -1);
     if (!free.length) return;
     const ms = this.members(c).filter((p) => this.age(p) >= 1);
     const order = (k: GarmentKind) => {
@@ -3399,8 +3421,8 @@ export class Sim {
       if (pile) { x = pile.x + 0.5; z = pile.z + 0.5; }
     }
     const pct = Math.round(it.wear * 100);
-    lines.push(L('Condition', `${condition(it.wear)[0].toUpperCase()}${condition(it.wear).slice(1)}: ${pct}% worn`));
-    lines.push(L('Life left', `About ${Math.max(1, Math.round((1 - it.wear) * spec.uses))} of ${spec.uses} ${ITEM_USE[it.kind]}`));
+    if (it.kind !== 'necklace') lines.push(L('Condition', `${condition(it.wear)[0].toUpperCase()}${condition(it.wear).slice(1)}: ${pct}% worn`));
+    if (it.kind !== 'necklace') lines.push(L('Life left', `About ${Math.max(1, Math.round((1 - it.wear) * spec.uses))} of ${spec.uses} ${ITEM_USE[it.kind]}`));
     if (isGarment(it.kind)) {
       const g = GARMENTS[it.kind];
       lines.push(L('Worn on', SLOT_PLACE[g.slot]));
@@ -3411,13 +3433,18 @@ export class Sim {
     const rc = RECIPES[it.kind as RecipeKey];
     if (rc) lines.push(L('Made from', Object.entries(rc.uses).map(([m, n]) => `${n} ${n === 1 ? MATERIAL_ONE[m] ?? m : m}`).join(', ')));
     const maker = this.byId.get(it.maker);
-    lines.push(maker ? L('Made by', maker.name, pref(maker.id)) : L('Made by', 'Someone beyond the hills: it came with the band'));
-    lines.push(L('Made', this.when(it.made)));
+    if (it.kind === 'necklace') {
+      if (maker) lines.push(L('Given by', maker.name, pref(maker.id)));
+      lines.push(L('Given', this.when(it.made)));
+    } else {
+      lines.push(maker ? L('Made by', maker.name, pref(maker.id)) : L('Made by', 'Someone beyond the hills: it came with the band'));
+      lines.push(L('Made', this.when(it.made)));
+    }
     const n = it.mended ?? 0;
     if (n > 0) {
       const mender = it.mender !== undefined ? this.byId.get(it.mender) : undefined;
       lines.push(L('Mended', `${n === 1 ? 'Once' : n === 2 ? 'Twice' : `${n} times`}${mender ? `, last by ${mender.name}` : ''}${n >= MEND_MAX ? '; too patched to mend again' : ''}`, mender ? pref(mender.id) : undefined));
-    } else if (isGarment(it.kind) || it.kind === 'basket') lines.push(L('Mended', it.wear >= MEND_AT ? 'Not yet, though it wants mending' : 'Never'));
+    } else if ((isGarment(it.kind) && it.kind !== 'necklace') || it.kind === 'basket') lines.push(L('Mended', it.wear >= MEND_AT ? 'Not yet, though it wants mending' : 'Never'));
     return {
       ref, title: spec.label, subtitle: `${camp.name} · ${ITEM_ABOUT[it.kind]}`, lines, notes: [ITEM_NOTE[it.kind]],
       x, z, follow, item: it.kind,
@@ -3784,10 +3811,6 @@ export class Sim {
         const it = this.heldBy(p);
         return it ? `${ITEMS[it.kind].label.toLowerCase()}${it.wear >= 0.6 ? ', well worn' : it.wear < 0.1 ? ', new' : ''}` : null;
       })(),
-      necklace: (() => {
-        const g = p.necklace !== undefined ? this.byId.get(p.necklace) : undefined;
-        return g ? `a necklace from ${g.name}` : null;
-      })(),
       cloak: (() => {
         const it = this.wornIn(p, 'body');
         return it ? `${ITEMS[it.kind].label.toLowerCase()}${it.wear >= 0.6 ? ', well worn' : it.wear < 0.1 ? ', new' : ''}` : null;
@@ -3803,7 +3826,7 @@ export class Sim {
             id: it.id, kind: it.kind, label: ITEMS[it.kind].label, wear: it.wear, condition: condition(it.wear),
             maker: maker ? { id: maker.id, name: maker.name } : null, made: it.made,
             mended: it.mended ?? 0, mender: mender ? { id: mender.id, name: mender.name } : null,
-            warm: isGarment(it.kind) ? GARMENTS[it.kind].warm : 0,
+            warm: isGarment(it.kind) ? GARMENTS[it.kind].warm : 0, given: it.kind === 'necklace',
           },
         };
       }),

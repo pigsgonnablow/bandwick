@@ -196,7 +196,7 @@ function GearFigure({ p }: { p: PersonDetail }) {
       <circle cx="10" cy="64" r="3.5" fill={fill('hands')} /><circle cx="50" cy="64" r="3.5" fill={fill('hands')} />
       <path d="M15 108 h8 v5 h-10 z M37 108 h8 l2 5 h-10 z" fill={fill('feet')} />
       {on('shoulder') && <><path d="M18 32 L46 66" stroke="#5c4630" stroke-width="2" /><rect x="42" y="62" width="10" height="11" rx="2" fill="#8a6a46" /></>}
-      {p.necklace && <path d="M24 28 q6 6 12 0" stroke="#e8dcc0" stroke-width="1.6" fill="none" />}
+      {on('neck') && <path d="M24 28 q6 6 12 0" stroke="#e8dcc0" stroke-width="1.6" fill="none" />}
     </svg>
   );
 }
@@ -237,7 +237,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
               {p.carry > 0 && CARRYING[p.carry] && (<><dt data-tip={GEAR_ROW_TIPS.Carrying}>Carrying</dt><dd>{CARRYING[p.carry]}{p.carryAmt > 1 ? ` (${Math.round(p.carryAmt)})` : ''}</dd></>)}
               {p.tool && (<><dt data-tip={GEAR_ROW_TIPS['In hand']}>In hand</dt><dd>A {p.tool}</dd></>)}
               {(() => {
-                const worn = [...p.gear.filter((g) => g.item).map((g) => g.item!.label.toLowerCase()), ...(p.necklace ? [p.necklace] : [])];
+                const worn = p.gear.filter((g) => g.item).map((g) => g.item!.label.toLowerCase());
                 return worn.length > 0 && (<><dt data-tip={PERSON_ROW_TIPS.Wearing}>Wearing</dt><dd>{worn[0][0].toUpperCase() + worn.join(', ').slice(1)}</dd></>);
               })()}
               <dt data-tip={PERSON_ROW_TIPS.Where}>Where</dt>
@@ -264,8 +264,6 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
                     <dd class={g.item ? '' : 'muted'}>{g.item ? <ItemLine it={g.item} w={w} engine={engine} /> : 'Nothing'}</dd>
                   </>
                 ))}
-                <dt data-tip={GEAR_ROW_TIPS.Neck}>Neck</dt>
-                <dd class={p.necklace ? '' : 'muted'}>{p.necklace ? p.necklace[0].toUpperCase() + p.necklace.slice(1) + '.' : 'Nothing'}</dd>
                 <dt data-tip={GEAR_ROW_TIPS['In hand']}>In hand</dt>
                 <dd class={p.toolDetail ? '' : 'muted'}>{p.toolDetail ? <ItemLine it={p.toolDetail} w={w} engine={engine} /> : 'Nothing'}</dd>
                 <dt data-tip={GEAR_ROW_TIPS.Carrying}>Carrying</dt>

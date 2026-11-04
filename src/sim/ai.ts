@@ -1717,7 +1717,7 @@ export function runTask(s: Sim, p: Person) {
       face(p, q.x, q.z);
       if (--t.timer > 0) return;
       t.amount = 0;
-      q.necklace = p.id;
+      s.giveNecklace(q, p.id);
       s.book('gifts.given', 1);
       const partner = q.id === p.partner;
       s.adjust(q, p, partner ? 6 : 10);

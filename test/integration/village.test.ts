@@ -251,7 +251,6 @@ describe('necklaces of teeth and shells', () => {
     p.partner = -1;
     p.rel.clear();
     p.rel.set(q.id, 70);
-    q.necklace = undefined;
     q.x = s.camp.x + 3; q.z = s.camp.z;
     q.task = { ...task(s, 'idle', q), stage: 1, timer: 9999 };
     p.x = s.camp.x + 1.4; p.z = s.camp.z;
@@ -260,7 +259,12 @@ describe('necklaces of teeth and shells', () => {
     const fondness = q.rel.get(p.id) ?? 0;
     const belonging = q.belonging = 40;
     finishTask(s, p, 2000);
-    expect(q.necklace).toBe(p.id);
+    // a thing worn at the neck, like anything else worn, that remembers who gave it
+    const it = s.wornIn(q, 'neck')!;
+    expect(it.kind).toBe('necklace');
+    expect(it.maker).toBe(p.id);
+    expect(it.wearer).toBe(q.id);
+    expect(s.wornBy(q)).toContain(it);
     expect(q.rel.get(p.id) ?? 0).toBeGreaterThan(fondness + 5);
     expect(q.belonging).toBeGreaterThan(belonging);
     expect(q.memories.some((m) => m.kind === 'gift' && m.subject === p.id)).toBe(true);
@@ -277,8 +281,29 @@ describe('necklaces of teeth and shells', () => {
       if (s.tick % TICKS_PER_DAY === 0) s.camp.stock.trinkets = Math.max(s.camp.stock.trinkets, 4);
     }
     expect(total(s, 'gifts.given')).toBeGreaterThan(0);
-    expect(s.living().some((p) => p.necklace !== undefined)).toBe(true);
+    expect(s.living().some((p) => s.wornIn(p, 'neck')?.kind === 'necklace')).toBe(true);
     for (const ts of givers.values()) for (let i = 1; i < ts.length; i++) expect(ts[i] - ts[i - 1]).toBeGreaterThan(GIFT_DAYS * TICKS_PER_DAY);
+  });
+
+  it('go into the grave with whoever wore one', () => {
+    const s = sim(1);
+    const [p, q] = [adult(s), adult(s)];
+    const it = s.giveNecklace(q, p.id);
+    s.kill(q, 'old age');
+    runTo(s, s.tick + TICKS_PER_DAY + 1);
+    expect(s.items).not.toContain(it);
+  });
+
+  it('worn in an old save, where only the giver was kept, become one', () => {
+    const s = sim(1);
+    const [p, q] = [adult(s), adult(s)];
+    const save = JSON.parse(JSON.stringify(s.serialize()));
+    save.people.find((o: { id: number }) => o.id === q.id).necklace = p.id;
+    const r = new Sim(s.world, save);
+    const it = r.wornIn(r.byId.get(q.id)!, 'neck')!;
+    expect(it.kind).toBe('necklace');
+    expect(it.maker).toBe(p.id);
+    expect('necklace' in r.byId.get(q.id)!).toBe(false);
   });
 
   it('give the materials back if the one they were for is gone', () => {
