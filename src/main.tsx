@@ -115,9 +115,13 @@ interface SimLink {
 export class Engine {
   view!: WorldView;
   private pictures: ItemPictures | null = null;
-  /** A picture of a kind of made thing, for its window (null until the models are in). */
-  itemPicture(kind: string) {
-    return this.pictures?.get(kind) ?? null;
+  /** Whether a kind of made thing has a model to show in its window (false until the models are in). */
+  hasItemPicture(kind: string) {
+    return this.pictures?.has(kind) ?? false;
+  }
+  /** Draw a kind of made thing, turned by the given angles, onto a window's canvas. */
+  paintItem(kind: string, yaw: number, pitch: number, out: HTMLCanvasElement) {
+    return this.pictures?.paint(kind, yaw, pitch, out) ?? false;
   }
   snap: Snapshot = {
     loading: 'Shaping the land', error: null, world: null, name: '', tick: 0, speed: 1, paused: false, tps: 0, skipping: false,

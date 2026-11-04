@@ -1,9 +1,10 @@
 // Floating info windows: click anything in the world and a window opens beside it, joined to it
 // by a thin line. Drag a window by its header; pin it to keep it open while you click other
 // things, so several can sit side by side for comparison.
-import { useRef } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 import type { Engine, Snapshot, InfoWin, PersonDetail } from '../main';
 import { WIN_W } from '../main';
+import { ITEM_PIC_SIZE } from '../render/itempic';
 import { SKILLS, HEALTH } from '../sim/band';
 import { CARRYING, SLOT_WORDS, gearLine, warmthWords } from './words';
 import { TICKS_PER_YEAR } from '../sim/time';
@@ -145,11 +146,11 @@ function Win({ w, s, engine, focus }: { w: InfoWin; s: Snapshot; engine: Engine;
 }
 
 function ThingBody({ c, engine }: { c: NonNullable<InfoWin['card']>; engine: Engine }) {
-  const pic = c.item ? engine.itemPicture(c.item) : null;
+  const pic = c.item && engine.hasItemPicture(c.item) ? c.item : null;
   return (
     <div class="win-body scroll">
       {c.subtitle && <div class="sub">{c.subtitle}{c.gone ? ' · gone now' : ''}</div>}
-      {pic && <div class="item-pic"><img src={pic} alt={c.title} width={136} height={136} /></div>}
+      {pic && <ItemViewer kind={pic} title={c.title} engine={engine} />}
       {c.lines.length > 0 && (
         <dl class="rows compact family">
           {c.lines.map((l, i) => (
@@ -161,6 +162,74 @@ function ThingBody({ c, engine }: { c: NonNullable<InfoWin['card']>; engine: Eng
         </dl>
       )}
       {c.notes.map((n) => <p key={n} class="note">{n}</p>)}
+    </div>
+  );
+}
+
+/** The thing's model, which turns in hand while you drag over it; a double click sets it back. */
+function ItemViewer({ kind, title, engine }: { kind: string; title: string; engine: Engine }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const st = useRef({ yaw: 0, pitch: 0, drag: null as null | { x: number; y: number; id: number }, frame: 0 });
+  const draw = () => {
+    const cv = ref.current;
+    if (!cv || st.current.frame) return;
+    st.current.frame = requestAnimationFrame(() => {
+      st.current.frame = 0;
+      if (ref.current) engine.paintItem(kind, st.current.yaw, st.current.pitch, ref.current);
+    });
+  };
+  useEffect(() => {
+    const cv = ref.current!;
+    const px = Math.round(ITEM_PIC_SIZE * Math.min(2, devicePixelRatio || 1));
+    cv.width = px;
+    cv.height = px;
+    st.current.yaw = 0;
+    st.current.pitch = 0;
+    draw();
+    return () => {
+      cancelAnimationFrame(st.current.frame);
+      st.current.frame = 0;
+    };
+  }, [kind]);
+  const down = (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    st.current.drag = { x: e.clientX, y: e.clientY, id: e.pointerId };
+  };
+  const move = (e: PointerEvent) => {
+    const d = st.current.drag;
+    if (!d || d.id !== e.pointerId) return;
+    e.stopPropagation();
+    const k = Math.PI / ITEM_PIC_SIZE; // dragging across the whole picture turns it half way round
+    st.current.yaw += (e.clientX - d.x) * k;
+    st.current.pitch = Math.max(-1.4, Math.min(1.4, st.current.pitch + (e.clientY - d.y) * k));
+    d.x = e.clientX;
+    d.y = e.clientY;
+    draw();
+  };
+  const up = (e: PointerEvent) => {
+    if (st.current.drag?.id !== e.pointerId) return;
+    st.current.drag = null;
+  };
+  const reset = () => {
+    st.current.yaw = 0;
+    st.current.pitch = 0;
+    draw();
+  };
+  return (
+    <div class="item-pic">
+      <canvas
+        ref={ref}
+        role="img"
+        aria-label={title}
+        title="Drag to turn it around · double-click to set it back"
+        onPointerDown={down}
+        onPointerMove={move}
+        onPointerUp={up}
+        onPointerCancel={up}
+        onDblClick={reset}
+      />
     </div>
   );
 }

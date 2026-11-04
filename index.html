@@ -121,7 +121,8 @@
   .gear .rows { flex: 1; margin-bottom: 0; }
   .item-pic { display: flex; justify-content: center; margin: 2px 0 8px; padding: 6px 0; border-radius: 8px;
     background: radial-gradient(closest-side, rgba(242, 233, 212, 0.10), rgba(242, 233, 212, 0)); }
-  .item-pic img { display: block; width: 136px; height: 136px; }
+  .item-pic canvas { display: block; width: 136px; height: 136px; cursor: grab; touch-action: none; }
+  .item-pic canvas:active { cursor: grabbing; }
   .gear-figure { flex: none; color: var(--muted); margin-top: 2px; }
   .row.between { justify-content: space-between; align-items: flex-start; }
   .small { font-size: 11.5px; }
