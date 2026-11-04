@@ -265,7 +265,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
                   </>
                 ))}
                 <dt data-tip={GEAR_ROW_TIPS.Neck}>Neck</dt>
-                <dd class={p.necklace ? '' : 'muted'}>{p.necklace ? p.necklace[0].toUpperCase() + p.necklace.slice(1) + '.' : 'Nothing'}</dd>
+                <dd class={p.necklace ? '' : 'muted'}>{p.necklaceFrom ? <>A necklace from {who(p.necklaceFrom)}.</> : p.necklace ? p.necklace[0].toUpperCase() + p.necklace.slice(1) + '.' : 'Nothing'}</dd>
                 <dt data-tip={GEAR_ROW_TIPS['In hand']}>In hand</dt>
                 <dd class={p.toolDetail ? '' : 'muted'}>{p.toolDetail ? <ItemLine it={p.toolDetail} w={w} engine={engine} /> : 'Nothing'}</dd>
                 <dt data-tip={GEAR_ROW_TIPS.Carrying}>Carrying</dt>

@@ -3788,6 +3788,11 @@ export class Sim {
         const g = p.necklace !== undefined ? this.byId.get(p.necklace) : undefined;
         return g ? `a necklace from ${g.name}` : null;
       })(),
+      /** who gave them the necklace they wear, so the Gear tab can link to them */
+      necklaceFrom: (() => {
+        const g = p.necklace !== undefined ? this.byId.get(p.necklace) : undefined;
+        return g ? { id: g.id, name: g.name, alive: g.alive } : null;
+      })(),
       cloak: (() => {
         const it = this.wornIn(p, 'body');
         return it ? `${ITEMS[it.kind].label.toLowerCase()}${it.wear >= 0.6 ? ', well worn' : it.wear < 0.1 ? ', new' : ''}` : null;
