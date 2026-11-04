@@ -3241,6 +3241,8 @@ export class Sim {
     return this.buildings.map((b) => ({
       empty: b.built && (b.kind === 'hut' || b.kind === 'leanto') && !living.some((p) => p.home === b.id),
       id: b.id, band: b.band, kind: b.kind, x: b.x, z: b.z, rot: b.rot, built: b.built,
+      // a site only planned so far (nothing carried to it, no work done) is not on the ground yet
+      begun: b.built || b.work > 0 || b.wood + b.fiber + b.cordage + b.mud + b.stone > 0,
       progress: b.built ? 1 : Math.min(0.98, (b.work / Math.max(1, specOf(b).work)) * 0.85 + (b.wood / Math.max(1, specOf(b).wood)) * 0.15),
       walls: b.walls ?? 'wood',
       fuel: b.fuel, owner: b.owner, bedding: (b.bedding ?? 0) > 0,
