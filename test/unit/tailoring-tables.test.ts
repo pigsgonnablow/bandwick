@@ -12,7 +12,8 @@ import { dressStyle } from '../../src/render/band';
 import { PHRASE, INTEREST } from '../../src/render/director';
 import { CARRYING, SLOT_WORDS, gearLine, warmthWords, clothesLine } from '../../src/ui/words';
 
-const KINDS = Object.keys(GARMENTS) as (keyof typeof GARMENTS)[];
+// (a necklace is worn but never made at the fire or handed out: it is given)
+const KINDS = (Object.keys(GARMENTS) as (keyof typeof GARMENTS)[]).filter((k): k is Exclude<keyof typeof GARMENTS, 'necklace'> => k !== 'necklace');
 
 describe('garments', () => {
   it('are each worn in one of the places on the body', () => {
@@ -21,7 +22,8 @@ describe('garments', () => {
     // two things only share a place when one is the poor cousin of the other
     const body = KINDS.filter((k) => GARMENTS[k].slot === 'body').sort();
     expect(body).toEqual(['cape', 'cloak']);
-    for (const slot of SLOTS) if (slot !== 'body') expect(KINDS.filter((k) => GARMENTS[k].slot === slot).length, slot).toBe(1);
+    for (const slot of SLOTS) if (slot !== 'body' && slot !== 'neck') expect(KINDS.filter((k) => GARMENTS[k].slot === slot).length, slot).toBe(1);
+    expect(GARMENTS.necklace).toMatchObject({ slot: 'neck', warm: 0, first: 'given' });
   });
 
   it('are things the band can make, each from a recipe it has to think of first', () => {

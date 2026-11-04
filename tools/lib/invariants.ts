@@ -5,7 +5,7 @@ import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, yearOf } from '../../src/sim/time';
 import { FAR_GRAVE } from '../../src/sim/ai';
-import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS, GARMENTS, isGarment, MEND_MAX } from '../../src/sim/band';
+import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS, GARMENTS, isGarment, MEND_MAX, type RecipeKey } from '../../src/sim/band';
 import { dayOf } from '../../src/sim/time';
 import { knowHowFor } from '../../src/sim/know';
 
@@ -63,7 +63,7 @@ export class InvariantChecker {
       if ((it.mended ?? 0) > 0 && !isGarment(it.kind)) flag('a tool mended like clothes', `${at} ${it.kind} ${it.id}`);
       if ((it.mended ?? 0) > MEND_MAX) flag('mended past all patching', `${at} ${it.kind} ${it.id} ${it.mended}`);
       if (it.mender !== undefined && !sim.byId.get(it.mender)) flag('mended by nobody known', `${at} ${it.kind} ${it.id}`);
-      const need = RECIPES[it.kind].knows;
+      const need = RECIPES[it.kind as RecipeKey]?.knows;
       if (need && !c.knows.includes(need)) flag("tool the band doesn't know how to make", `${at} ${c.name}: ${it.kind}`);
       if (it.tile === -2 && !sim.people.some((p) => p.alive && p.task?.kind === 'trap' && p.task.route?.includes(it.id)))
         flag('trap in nobody\'s basket', `${at} ${it.kind} ${it.id}`);
@@ -119,7 +119,8 @@ export class InvariantChecker {
         else if (GARMENTS[it.kind].slot !== slot) flag('worn in the wrong place', `${at} ${p.name} ${it.kind} on ${slot}`);
         else if (it.wearer !== p.id) flag('worn thing that does not know its wearer', `${at} ${p.name} -> ${it.wearer}`);
       }
-      if (p.necklace !== undefined && !sim.byId.has(p.necklace)) flag('necklace from nobody', `${at} ${p.name} ${p.necklace}`);
+      const neck = sim.wornIn(p, 'neck');
+      if (neck && !sim.byId.has(neck.maker)) flag('necklace from nobody', `${at} ${p.name} ${neck.maker}`);
       if ((p.tended ?? 0) > sim.tick + NURSE_DAYS * TICKS_PER_DAY) flag('nursed too far ahead', `${at} ${p.name}`);
       const t = p.task;
       if (t && (t.kind === 'gift' || t.kind === 'nurse')) {

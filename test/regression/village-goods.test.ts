@@ -64,7 +64,7 @@ describe('a necklace called off', () => {
     st.fiber = 0;
     p.task = task('gift', { ref: q.id, amount: 1, stage: 3, timer: 1 });
     runTask(s, p);
-    expect(q.necklace).toBe(p.id);
+    expect(s.wornIn(q, 'neck')?.maker).toBe(p.id);
     expect(p.task).toBeNull();
     abandon(s, p);
     expect(st.trinkets).toBe(0);

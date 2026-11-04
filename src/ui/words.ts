@@ -10,10 +10,12 @@ export const CARRYING: Record<number, string> = {
 };
 
 /** Where on the body something is worn, as the Gear tab says it. */
-export const SLOT_WORDS: Record<string, string> = { head: 'Head', body: 'Body', hands: 'Hands', feet: 'Feet', shoulder: 'Shoulder' };
+export const SLOT_WORDS: Record<string, string> = { head: 'Head', body: 'Body', hands: 'Hands', feet: 'Feet', shoulder: 'Shoulder', neck: 'Neck' };
 
 /** One worn or held thing, in a line: "Fur hat, worn. Made by Ada; mended twice, last by Bo." */
-export function gearLine(it: { label: string; condition: string; maker: { name: string } | null; mended?: number; mender?: { name: string } | null }) {
+export function gearLine(it: { label: string; condition: string; maker: { name: string } | null; mended?: number; mender?: { name: string } | null; given?: boolean }) {
+  // a necklace does not wear out: say who gave it
+  if (it.given) return `${it.label}${it.maker ? ` from ${it.maker.name}` : ''}.`;
   const made = it.maker ? ` Made by ${it.maker.name}.` : '';
   const n = it.mended ?? 0;
   const mended = n > 0 ? ` Mended ${n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`}${it.mender ? `, last by ${it.mender.name}` : ''}.` : '';

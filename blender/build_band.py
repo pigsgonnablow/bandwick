@@ -11,7 +11,7 @@ Conventions (read by src/render/band.ts):
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
   boat__dugout                                                    the dugout the first band lands in (origin at the waterline, bow to -Y).
-  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag}  each made thing in real colours,
+  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace}  each made thing in real colours,
       for the picture in its window (the game fits it to the picture).
   bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
@@ -2149,7 +2149,7 @@ def mirror(keys):
 # the picture in an item's window. The game fits each one to its picture, so only the shape and the colours
 # matter here, not the size or where the origin is. Tools and traps are the ones the game already shows in
 # people's hands and in the land; the clothes are the ones people wear, with their region codes painted in
-# real colours; the needle, the mittens and the shoes have no other model.
+# real colours; the needle, the mittens, the shoes and the necklace have no other model.
 
 
 def item_copy(src, name, rot=None):
@@ -2260,6 +2260,27 @@ for x in (-0.016, 0.016):
     q.cyl(8, 0.0142, 0.0142, (x, 0.0056, 0.0215), (x, 0.0056, 0.0240), THONG, raw=False)
 obj = q.finish("item__shoes")
 repaint(obj, [((0, 0, 0), HIDE_TAN), (L_(THONG), THONG)], 67)
+
+q = Part()  # a necklace: deer teeth and shells strung on a twisted cord, the knot at the top
+rr = random.Random(68)
+CORD = (120, 96, 64)
+SHELL = (232, 222, 200)
+SHELL_DK = (204, 178, 150)
+R = 0.030
+ring = [Vector((math.sin(k / 24 * math.tau) * R, 0, math.cos(k / 24 * math.tau) * R * 1.15)) for k in range(25)]
+for a_, b_ in zip(ring, ring[1:]):
+    q.cyl(4, 0.0011, 0.0011, a_, b_, CORD, rr, 0.03, cap=False)
+q.blob((0, 0, R * 1.15 + 0.001), (0.0026, 0.0020, 0.0024), CORD, rr, 0.03)  # the knot
+for j, k in enumerate(range(7, 18)):  # round the bottom: a tooth, a shell, a tooth...
+    a = k / 24 * math.tau
+    at = Vector((math.sin(a) * R, 0, math.cos(a) * R * 1.15))
+    down = Vector((math.sin(a) * 0.35, 0, -1)).normalized()
+    if j % 2 == 0:  # a deer tooth hanging point down, the root end bound to the cord
+        q.cyl(6, 0.0026, 0.0009, at, at + down * 0.013, BONE, rr, 0.05)
+        q.blob(at + down * 0.0135, (0.0009, 0.0009, 0.0012), BONE_DK, rr, 0.03)
+    else:  # a small shell, its back to the front
+        q.blob(at + down * 0.0035, (0.0034, 0.0016, 0.0040), SHELL if j % 4 == 1 else SHELL_DK, rr, 0.06, subdiv=2)
+q.finish("item__necklace")
 
 import json
 

@@ -60,7 +60,8 @@ describe('discoveries', () => {
 
 describe('recipes and tools', () => {
   it('have a recipe for every tool, and every recipe asks only for a known discovery and real stores', () => {
-    for (const k of ITEM_KINDS) expect(RECIPE_KEYS.some((r) => RECIPES[r].makes === k), k).toBe(true);
+    // (all but the necklace, which is strung as a gift for someone rather than made for the pile)
+    for (const k of ITEM_KINDS) if (k !== 'necklace') expect(RECIPE_KEYS.some((r) => RECIPES[r].makes === k), k).toBe(true);
     for (const k of RECIPE_KEYS) {
       const r = RECIPES[k];
       if (r.knows) expect(DISCOVERY.has(r.knows), `${k} needs ${r.knows}`).toBe(true);
