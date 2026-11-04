@@ -710,7 +710,9 @@ export class BandLayer {
 
   // ---------------------------------------------------------------- frames
   setBuildings(b: NonNullable<Frame['buildings']>) {
-    this.buildings = b;
+    // a building the band has only planned shows nothing until someone carries something to it or starts work:
+    // no frame, no pile of poles (so the first band's lean-to isn't standing on the shore before they land)
+    this.buildings = b.filter((q) => q.begun);
   }
 
   /** New positions from the simulation. */
