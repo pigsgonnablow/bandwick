@@ -3751,12 +3751,12 @@ export class Sim {
       .map(([q, v]) => ({ id: q, name: name(q), v, alive: this.byId.get(q)?.alive ?? false }))
       .filter((r) => r.alive)
       .sort((a, b) => b.v - a.v);
-    const home = this.buildings.find((b) => b.id === p.home);
+    const home = p.alive ? this.buildings.find((b) => b.id === p.home) : undefined;
     return {
       id: p.id, name: p.name, sex: p.sex, age: this.age(p), alive: p.alive, cause: p.cause,
       death: p.death, birth: p.birth,
       needs: { food: p.food, rest: p.rest, warmth: p.warmth, belonging: p.belonging, safety: p.safety },
-      health: p.health, mood: p.mood, sick: p.sick > 0, pregnant: p.pregnantUntil > 0,
+      health: p.health, mood: p.mood, sick: p.alive && p.sick > 0, pregnant: p.alive && p.pregnantUntil > 0,
       traits: p.traits.slice(),
       skills: Array.from(p.skills),
       /** which skills the card shows (the band's crafts it has no use for yet are left out) */
