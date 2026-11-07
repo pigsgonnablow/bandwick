@@ -9,6 +9,8 @@ Conventions (read by src/render/band.ts):
   deer__{body,head,jaw,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
   finch__{body,wingL,wingR}, goose__{body,wingL,wingR}             birds, wings spread from the shoulder; beaten, held out or folded in the shader.
   fish__{body,tail}                                                a brown trout in two parts, bent in the shader as it swims and leaps.
+  wolf__{body,head,jaw,tail,legFL,legFR,legBL,legBR}, dog__{...the same}   a grey wolf and a tawny dog, posed in the shader.
+  carcass__deer                                                     a deer pulled down by wolves, lying on its side, torn open.
   hare__{body,head,ears,fore,hind}                                 a brown hare in parts, posed in the shader (hopping, sitting up, nibbling).
   carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,basket,basketFull,hare} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
@@ -743,6 +745,126 @@ for name, x, y in (("legFL", -0.035, -0.09), ("legFR", 0.035, -0.09), ("legBL", 
 # A brown hare crouched on the ground, ~0.13 long nose to tail (a touch bigger than life, to be seen at all
 # among the deer), in five parts the game poses in the shader: body (with the tail), head, ears, the forelegs,
 # and the haunches with their long hind feet. Origin at the ground under the middle of the body.
+# ---------------------------------------------------------------- wolves, and the dogs tamed from them
+# One build for both: a lean grey wolf with a dark saddle, pale cheeks and belly and a long bushy tail
+# hanging behind, and a smaller tawny dog with a white chest and blaze, a shorter muzzle and its tail
+# curled up over its back. In parts, posed in the shader: trotting and galloping legs, the head (a nod at
+# the shoulders and at the poll), a lower jaw that opens to howl, bark or eat, and the tail.
+def canid(prefix, s, cols, curl, blaze):
+    coat, back, pale, dark, nose = cols
+    V = lambda x, y, z: (x * s, y * s, z * s)
+
+    body = [(-0.104, 0.018, 0.024, 0.163), (-0.092, 0.032, 0.042, 0.160), (-0.066, 0.039, 0.050, 0.154), (-0.030, 0.036, 0.043, 0.156),
+            (0.010, 0.030, 0.034, 0.162), (0.048, 0.031, 0.034, 0.164), (0.080, 0.031, 0.033, 0.165), (0.100, 0.022, 0.024, 0.167),
+            (0.110, 0.010, 0.012, 0.169)]
+    body = [(y * s, rx * s, rz * s, cz * s) for (y, rx, rz, cz) in body]
+
+    def body_col(c):
+        z, y = c.z / s, c.y / s
+        if z < 0.128 or (y < -0.07 and z < 0.15):
+            return pale  # belly and chest
+        if z > 0.188 and -0.06 < y < 0.07:
+            return back  # the saddle
+        return coat
+
+    q = Part()
+    loft_y(q, body, 10, body_col)
+    q.finish(f"{prefix}__body")
+
+    q = Part()  # neck with a thick ruff, a broad skull, a tapering muzzle, a dark nose, eyes, pointed ears
+    neck = [(V(0, -0.080, 0.165), 0.027 * s, 0.033 * s), (V(0, -0.100, 0.188), 0.024 * s, 0.027 * s), (V(0, -0.116, 0.205), 0.019 * s, 0.021 * s)]
+    sweep(q, neck, 8, lambda c: pale if c.z / s < 0.178 and c.y / s < -0.095 else coat, caps=(True, False))
+    mz = 0.75 if blaze else 1.0  # a dog's muzzle is shorter
+    head = [(V(0, -0.113, 0.210), 0.019 * s, 0.019 * s), (V(0, -0.128, 0.213), 0.021 * s, 0.019 * s), (V(0, -0.143, 0.209), 0.015 * s, 0.0135 * s),
+            (V(0, -0.143 - 0.020 * mz, 0.203), 0.0098 * s, 0.0088 * s), (V(0, -0.143 - 0.036 * mz, 0.2005), 0.0072 * s, 0.0064 * s)]
+
+    def head_col(c):
+        y, z = c.y / s, c.z / s
+        if y < -0.143 - 0.031 * mz:
+            return nose if z > 0.198 else pale
+        if blaze and abs(c.x / s) < 0.006 and z > 0.205 and y < -0.12:
+            return pale  # the white blaze down a dog's face
+        if z < 0.204 and y < -0.13:
+            return pale  # cheeks and muzzle
+        return coat
+
+    sweep(q, head, 8, head_col)
+    q.box(V(0, -0.143 - 0.036 * mz, 0.2045), V(0.009, 0.004, 0.006), nose, rnd, 0.0)
+    for ex in (-1, 1):
+        q.box(V(ex * 0.0128, -0.137, 0.2165), V(0.0035, 0.0055, 0.004), (60, 44, 20) if blaze else (176, 128, 40), rnd, 0.0, rot=Matrix.Rotation(ex * 0.4, 3, "Z"))
+        q.box(V(ex * 0.0142, -0.1385, 0.2168), V(0.0012, 0.0022, 0.0022), (16, 12, 10), rnd, 0.0)  # pupil
+        # ears: a tall pointed wolf's ear, a smaller one tipped over on a dog
+        base = Vector(V(ex * 0.0115, -0.120, 0.226))
+        tip = Vector(V(ex * 0.016, -0.118, 0.250)) if not blaze else Vector(V(ex * 0.019, -0.127, 0.240))
+        a = base + Vector(V(0, -0.007, -0.002)); b = base + Vector(V(0, 0.007, -0.002))
+        th = Vector((ex * 0.0018 * s, 0, 0))
+        solid(q, [a, b, tip, a + th, b + th, tip + th * 0.5], [(0, 1, 2), (5, 4, 3), (0, 3, 4, 1), (1, 4, 5, 2), (2, 5, 3, 0)], coat, raw=False)
+        ia, ib, it = a + Vector((0, -0.0012 * s, 0.0025 * s)), b + Vector((0, 0.0012 * s, 0.0025 * s)), base.lerp(tip, 0.8)
+        solid(q, [ia - th * 0.4, ib - th * 0.4, it - th * 0.4, ia + th * 0.2, ib + th * 0.2, it + th * 0.2],
+              [(0, 1, 2), (5, 4, 3), (0, 3, 4, 1), (1, 4, 5, 2), (2, 5, 3, 0)], dark if not blaze else pale, raw=False)
+    q.finish(f"{prefix}__head")
+
+    q = Part()  # lower jaw: hidden while shut, dropped open to howl, bark or tear at a kill
+    jaw = [(V(0, -0.141, 0.198), 0.0105 * s, 0.0055 * s), (V(0, -0.141 - 0.018 * mz, 0.1955), 0.0082 * s, 0.0045 * s),
+           (V(0, -0.141 - 0.033 * mz, 0.1945), 0.0058 * s, 0.0036 * s)]
+    sweep(q, jaw, 8, lambda c: (120, 50, 50) if c.z / s > 0.1975 else pale)
+    for ex in (-1, 1):
+        q.box(V(ex * 0.0045, -0.141 - 0.031 * mz, 0.1985), V(0.0016, 0.0016, 0.0045), (236, 230, 214), rnd, 0.0)  # fang
+    q.finish(f"{prefix}__jaw")
+
+    q = Part()  # the tail: a wolf's hangs low and bushy with a dark tip, a dog's curls up over its back
+    if curl:
+        tail = [(V(0, 0.104, 0.170), 0.0075 * s, 0.0085 * s), (V(0, 0.120, 0.188), 0.0095 * s, 0.0095 * s), (V(0, 0.124, 0.212), 0.0092 * s, 0.0092 * s),
+                (V(0, 0.110, 0.228), 0.0075 * s, 0.0075 * s), (V(0, 0.094, 0.226), 0.003 * s, 0.003 * s)]
+        sweep(q, tail, 7, lambda c: pale if c.z / s > 0.222 else coat)
+    else:
+        tail = [(V(0, 0.104, 0.170), 0.0085 * s, 0.0095 * s), (V(0, 0.124, 0.152), 0.0135 * s, 0.0145 * s), (V(0, 0.137, 0.122), 0.0135 * s, 0.0135 * s),
+                (V(0, 0.143, 0.096), 0.0095 * s, 0.0095 * s), (V(0, 0.145, 0.080), 0.003 * s, 0.003 * s)]
+        sweep(q, tail, 7, lambda c: dark if c.z / s < 0.1 or (c.z / s > 0.15 and c.y / s < 0.125) else coat)
+    q.finish(f"{prefix}__tail")
+
+    for name, x, y in (("legFL", -0.021, -0.066), ("legFR", 0.021, -0.066), ("legBL", -0.021, 0.072), ("legBR", 0.021, 0.072)):
+        q = Part()
+        if y < 0:  # foreleg: straight, slim, the wrist a little forward, a round paw
+            path = [((x, y, 0.163), 0.0125, 0.017), ((x, y - 0.002, 0.120), 0.0095, 0.011), ((x, y, 0.072), 0.0062, 0.0068),
+                    ((x, y - 0.001, 0.036), 0.0056, 0.006), ((x, y - 0.004, 0.012), 0.006, 0.0062)]
+        else:  # hind leg: a muscled thigh back to the hock, the cannon forward to the paw
+            path = [((x, y - 0.004, 0.168), 0.0155, 0.022), ((x, y + 0.008, 0.123), 0.012, 0.014), ((x, y + 0.022, 0.083), 0.0072, 0.008),
+                    ((x, y + 0.014, 0.042), 0.0056, 0.006), ((x, y + 0.006, 0.012), 0.006, 0.0062)]
+        path = [(V(*p), rx * s, rz * s) for (p, rx, rz) in path]
+        sweep(q, path, 6, lambda c: pale if c.z / s < 0.06 or (y < 0 and c.y / s < y - 0.004) else coat)
+        py = path[-1][0][1] - 0.004 * s
+        q.box((x * s, py, 0.004 * s), (0.013 * s, 0.017 * s, 0.008 * s), pale if blaze else (90, 80, 70), rnd, 0.0, taper=0.8)  # paw
+        q.finish(f"{prefix}__{name}")
+
+
+canid("wolf", 1.0, ((128, 120, 108), (78, 72, 66), (204, 198, 184), (52, 48, 44), (30, 26, 24)), curl=False, blaze=False)
+canid("dog", 0.82, ((176, 128, 76), (140, 98, 56), (232, 224, 208), (96, 66, 40), (34, 28, 24)), curl=True, blaze=True)
+
+
+# a deer the wolves have pulled down: lying on its side, legs out, head along the ground, a raw wound
+# torn in the flank with the ribs showing (drawn at a kill while the pack feeds)
+q = Part()
+def _pose(name, M):
+    me = bpy.data.objects[name].data.copy()
+    me.transform(M)
+    q.bm.from_mesh(me)
+    bpy.data.meshes.remove(me)
+_rot = lambda a, p: Matrix.Translation(p) @ Matrix.Rotation(a, 4, "X") @ Matrix.Translation(-Vector(p))
+_side = Matrix.Translation((0, 0, -0.150)) @ Matrix.Translation((0, 0, 0.2)) @ Matrix.Rotation(math.pi / 2, 4, "Y") @ Matrix.Translation((0, 0, -0.2))
+_pose("deer__body", _side)
+_pose("deer__head", _side @ _rot(0.95, (0, -0.10, 0.21)))
+for _n, _a in (("legFL", -0.55), ("legFR", -0.35), ("legBL", 0.45), ("legBR", 0.65)):
+    _pose(f"deer__{_n}", _side @ _rot(_a, (0, -0.09 if "F" in _n[3] else 0.09, 0.15)))
+WOUND, RAW, RIB = (96, 22, 22), (150, 40, 36), (222, 210, 190)
+q.blob((0.004, 0.006, 0.094), (0.030, 0.052, 0.009), WOUND, rnd, 0.06, noise=0.25)
+q.blob((0.004, 0.002, 0.099), (0.022, 0.038, 0.007), RAW, rnd, 0.08, noise=0.3)
+for _k in range(4):
+    _y = -0.022 + _k * 0.013
+    q.cyl(5, 0.0026, 0.0022, (-0.018, _y - 0.002, 0.100), (0.024, _y + 0.004, 0.103), RIB, rnd, 0.03)
+q.finish("carcass__deer")
+
+
 HARE_COAT = (148, 112, 74)
 HARE_BACK = (108, 82, 56)    # grizzled darker along the spine
 HARE_BELLY = (226, 214, 190)

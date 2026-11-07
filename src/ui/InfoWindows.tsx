@@ -305,6 +305,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
               <dd>{p.doing ?? (p.task ? DOING[p.task] ?? p.task : 'Nothing much')}{p.indoors ? ', indoors' : ''}</dd>
               {p.carry > 0 && CARRYING[p.carry] && (<><dt data-tip={GEAR_ROW_TIPS.Carrying}>Carrying</dt><dd>{CARRYING[p.carry]}{p.carryAmt > 1 ? ` (${Math.round(p.carryAmt)})` : ''}</dd></>)}
               {p.tool && (<><dt data-tip={GEAR_ROW_TIPS['In hand']}>In hand</dt><dd>A {p.tool}</dd></>)}
+              {p.dog && (<><dt>Dog</dt><dd>{p.dog}</dd></>)}
               {(() => {
                 const worn = p.gear.filter((g) => g.item).map((g) => g.item!.label.toLowerCase());
                 return worn.length > 0 && (<><dt data-tip={PERSON_ROW_TIPS.Wearing}>Wearing</dt><dd>{worn[0][0].toUpperCase() + worn.join(', ').slice(1)}</dd></>);

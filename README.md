@@ -125,6 +125,18 @@ breath steaming, and a stag with a rival close by squares up to him: they lock a
 fro and crash together until one gives way. A roaring or fighting stag hardly notices people, and is
 an easier kill. In winter the herds keep to the woods, and the snow slows a running deer; hunters
 follow fresh tracks to herds further out (the hoofprints show in the snow, filling in over time).
+Wolves roam the wilds in a pack or two, well away from people. A hungry pack picks out the nearest
+deer and runs it down, fanning out round it (more easily in deep snow), then feeds at the kill and
+needs nothing more for a couple of weeks; deer bolt from a wolf on the hunt as they do from people.
+Wolves keep clear of the camp fires (further at night, and further still from a camp with dogs),
+slink off from anyone who comes near, lie up in the middle of the day and howl at dusk. A camp that
+hears them notes it, and they are the only wolves that can attack someone alone far from camp. Cubs
+are born in spring. A good hunter who has watched them hunt, or heard them round the fire, may take in
+a cub and raise the first dog (a discovery); after that a band takes in a pup now and then for its
+hunters, about one dog for every four grown people. A dog goes everywhere with its keeper, out ahead on
+a hunt, nosing about when they stop, lying across the doorway while they sleep. A grown dog finds deer
+further off and holds them at bay (a better kill), and helps fend off an attack. Wolves and dogs leave
+prints in the snow too.
 
 **Crafting.** Everything made by the fire is one job with a list of recipes (`RECIPES` in
 `src/sim/band.ts`): cordage, the hand chopper and the stone axe so far. Each morning the plan says

@@ -123,7 +123,12 @@ export class Director {
       const close = b.task === 'hunt' || b.task === 'fish' ? 13 : 9.5;
       return take({ key: `p${b.id}`, personId: b.id, x: b.x, z: b.z, zoom: close, until: now + 12000, caption: `${nm} ${PHRASE[b.task] ?? 'is about'}.`, why: 'person' });
     }
-    // 4. the wild: a herd
+    // 4. the wild: a wolf pack on the hunt, at a kill or howling, else a herd
+    const wolf = band.wolves.visible.find((v) => v.state === 2 || v.state === 3 || v.state === 5);
+    if (wolf && !recently('wolves', 120000)) {
+      const caption = wolf.state === 2 ? 'A wolf pack runs down a deer.' : wolf.state === 3 ? 'Wolves feed at a kill.' : 'The wolves howl.';
+      return take({ key: 'wolves', personId: -1, x: wolf.x, z: wolf.z, zoom: 11, until: now + 8000, caption, why: 'wolves' });
+    }
     const deer = band.visibleDeer;
     if (deer.length && !recently('deer', 60000)) {
       const d = deer[(this.shots * 13) % deer.length];
