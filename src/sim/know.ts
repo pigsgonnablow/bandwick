@@ -29,6 +29,7 @@ export type Practice =
   | 'sickbed' // a day sitting with someone sick with fever (each adult at camp)
   | 'sew' // a cloak sewn by the fire
   | 'dig_stick' // a trip's digging done with a digging stick
+  | 'wolves' // a hunt with a wolf pack close by, or an evening hearing them howl round camp
 
 /**
  * What someone has to be before they can have an idea. Only skill levels for now; a new kind of
@@ -264,6 +265,14 @@ export const DISCOVERIES: Discovery[] = [
     practice: { deadwood: 1, forage: 0.1 }, odds: 90,
     found: 'learned which of the mushrooms in the autumn woods are good to eat, and which make you sick',
     taught: 'pick the good mushrooms in autumn', memory: 'Picked the first good mushrooms.',
+  },
+  {
+    // (a hunter who has watched the wolves run deer down, and heard them round the fire at night, takes in a
+    // cub left behind by its pack and raises it on scraps; it grows up to hunt beside them and to bark at strangers)
+    key: 'dogs', label: 'Dogs', needs: [], requires: [skill(SK.hunt, 12)],
+    practice: { wolves: 1 }, odds: 14,
+    found: 'took in a wolf cub left behind by its pack, raised it on scraps by the fire, and it grew up to hunt at their side: the first dog',
+    taught: 'raise dogs to hunt with', memory: 'Raised the first dog from a wolf cub.',
   },
   {
     // (hidework is learned at the drying rack, so it can't be what leads to it)

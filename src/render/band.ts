@@ -10,6 +10,7 @@ import { HareLayer } from './hares';
 import { FishLayer } from './fish';
 import { BirdLayer } from './birds';
 import { TrackLayer } from './tracks';
+import { WolfLayer, Keeper } from './wolves';
 import { WorldData, WATER, STEP } from '../sim/types';
 import { addCommon } from './shaderlib';
 import { U } from './env';
@@ -28,6 +29,7 @@ const BASKET = 94, BASKET_FULL = 93;
 /** A hare from the snares, carried home dangling from the fist on the trap round. */
 const HARE = 92;
 const TRAP_TASK = TASK_KINDS.indexOf('trap') + 1;
+const HUNT_TASK = TASK_KINDS.indexOf('hunt') + 1;
 const EGGS_TASK = TASK_KINDS.indexOf('eggs') + 1, HONEY_TASK = TASK_KINDS.indexOf('honey') + 1;
 /** How walls that are not wood colour a building that has no model of its own for them (multiplied over its own colours). */
 const WALL_TINT: Record<string, [number, number, number]> = { daub: [1.0, 0.86, 0.68], stone: [0.8, 0.82, 0.86] };
@@ -194,7 +196,7 @@ interface Shown {
   band: number;
   /** the tool in hand: 0 none, 1 chopper, 2 axe, 3 digging stick, 4 snare, 5 fish trap, 6 basket */
   tool: number;
-  /** what they wear (the sim's dress flags: 1 cloak, 2 hat, 4 shoes, 8 reed cape, 16 bag, 32 mittens) */
+  /** what they wear (the sim's dress flags: 1 cloak, 2 hat, 4 shoes, 8 reed cape, 16 bag, 32 mittens), and 64 a dog with them (128 a pup) */
   dress: number;
   /** where the axe swing had got to last frame; whether this stab has hit the water yet */
   swing: number; splashed: boolean;
@@ -240,6 +242,9 @@ export class BandLayer {
   birds: BirdLayer;
   /** hoofprints left in the snow */
   tracks = new TrackLayer();
+  /** wolf packs from the simulation, and each keeper's dog at their heels */
+  wolves: WolfLayer;
+  private keepers: Keeper[] = [];
   /** anyone robbing a nest (kind 0) or smoking out a hive (kind 1) this frame, at the tree */
   private gleaners: { id: number; kind: number; x: number; z: number; y: number }[] = [];
   private carryMeshes = new Map<number, THREE.InstancedMesh>();
@@ -278,7 +283,8 @@ export class BandLayer {
     this.hares = new HareLayer(world.size, world.terrain, (x, z) => this.groundAt(x, z), geoms);
     this.fish = new FishLayer(world, geoms, (x, z, y, size, drops) => this.waterMark(x, z, y, size, drops));
     this.birds = new BirdLayer(world, (x, z) => this.groundAt(x, z), geoms);
-    this.group.add(this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh, this.birds.group, this.tracks.mesh);
+    this.wolves = new WolfLayer(geoms, (x, z) => this.groundAt(x, z), this.tracks);
+    this.group.add(this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh, this.birds.group, this.tracks.mesh, this.wolves.group);
     // carried things
     const carryNames: [number, string][] = [
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
@@ -941,6 +947,7 @@ export class BandLayer {
       d.seen = seen;
     }
     for (const [id, d] of this.deer) if (d.seen !== seen) this.deer.delete(id);
+    if (f.wolves) this.wolves.setWolves(f.wolves, now, this.tickMs, seen);
   }
 
   private alpha(now: number) {
@@ -1419,6 +1426,13 @@ export class BandLayer {
     const paced = now - this.frameAt > 1200 ? 0 : dt * Math.min(4, Math.max(0.5, this.tpsNow / BASE_TPS));
     this.hares.update(paced, camTarget, this.viewZoom, this.visible);
     this.tracks.update(paced);
+    // dogs go with whoever keeps them (the living, out and about or indoors)
+    this.keepers.length = 0;
+    for (const [id, s] of this.people) {
+      if (!(s.dress & 64) || s.act === ACT.Dead) continue;
+      this.keepers.push({ id, x: s.dx, y: s.y, z: s.dz, angle: s.angle, indoors: s.indoors, pup: (s.dress & 128) !== 0, hunting: s.task === HUNT_TASK });
+    }
+    this.wolves.update(dt, now, follow, this.keepers);
     // fish scatter from anyone in the water and from a spear going in
     const spears = this.rings.filter((r) => r.size >= 0.5 && now - r.at < 400);
     this.fish.update(paced, camTarget, this.viewZoom, this.swimmers, spears);

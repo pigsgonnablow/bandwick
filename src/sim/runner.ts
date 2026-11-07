@@ -28,6 +28,8 @@ export interface Frame {
   speed: number; // effective ticks per second
   people: Float32Array;
   deer: Float32Array;
+  /** the wolves (Sim.WOLF_STRIDE floats each) */
+  wolves: Float32Array;
   buildings?: ReturnType<Sim['packBuildings']>;
   props?: ReturnType<Sim['packProps']>;
   summary?: ReturnType<Sim['summary']>;
@@ -215,6 +217,7 @@ export class Runner {
       speed: this.measuredTps,
       people: sim.packPeople(),
       deer: sim.packDeer(),
+      wolves: sim.packWolves(),
       skipping: this.skipTo > sim.tick,
     };
     if (force || sim.buildingsVersion !== this.buildingsVersion) {
@@ -247,7 +250,7 @@ export class Runner {
       f.events = sim.events.slice(this.eventCursor);
       this.eventCursor = sim.events.length;
     }
-    const transfer: Transferable[] = [f.people.buffer as ArrayBuffer, f.deer.buffer as ArrayBuffer];
+    const transfer: Transferable[] = [f.people.buffer as ArrayBuffer, f.deer.buffer as ArrayBuffer, f.wolves.buffer as ArrayBuffer];
     if (f.game) transfer.push(f.game.buffer as ArrayBuffer);
     if (f.fish) transfer.push(f.fish.buffer as ArrayBuffer);
     if (f.props) for (const k of ['type', 'x', 'y', 'z', 'rot', 'scale', 'alive', 'val'] as const) transfer.push(f.props[k].buffer as ArrayBuffer);

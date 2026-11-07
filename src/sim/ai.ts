@@ -706,8 +706,9 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
     }
     case 'hunt': {
       // fresh tracks in the snow lead hunters to deer much further out, and keep them on the trail
-      const snow = snowLies(s.tick);
-      let best = -1, bestD = snow ? 72 : 56;
+      const snow = snowLies(s.tick), dog = s.hasDog(p);
+      // and a dog picks up a scent where a hunter alone would see nothing
+      let best = -1, bestD = (snow ? 72 : 56) + (dog ? 16 : 0);
       s.deer.forEach((d, i) => {
         if (!d.alive) return;
         const dist = hyp(d.x - c.x, d.z - c.z);
@@ -718,10 +719,10 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       });
       if (best < 0) return null;
       const d = s.deer[best];
-      p.thought = snow ? 'Following tracks in the snow.' : d.state === 4 ? 'Stalking two stags locked in a fight.' : 'Tracking deer.';
+      p.thought = dog ? 'Following the dog onto a scent.' : snow ? 'Following tracks in the snow.' : d.state === 4 ? 'Stalking two stags locked in a fight.' : 'Tracking deer.';
       const t = newTask(s, kind, s.tileOf(d), d.x, d.z, d.id, true);
       // time to walk out there, plus time to stalk and chase
-      t.deadline = s.tick + (snow ? 150 : 110) + Math.round(hyp(d.x - p.x, d.z - p.z) / 0.3);
+      t.deadline = s.tick + (snow ? 150 : 110) + (dog ? 30 : 0) + Math.round(hyp(d.x - p.x, d.z - p.z) / 0.3);
       return t;
     }
     case 'fish': {
@@ -2342,7 +2343,9 @@ export function runTask(s: Sim, p: Person) {
           if (p.health <= 0) return s.kill(p, 'hunting');
         }
         // a stag with his antlers locked in another's, or roaring for the rut, makes an easier mark
-        const chance = 0.15 + p.skills[SK.hunt] * 0.022 + (s.has(p, 'brave') ? 0.05 : 0) + (d.state === 4 ? 0.1 : d.state === 3 ? 0.04 : 0);
+        const chance = 0.15 + p.skills[SK.hunt] * 0.022 + (s.has(p, 'brave') ? 0.05 : 0) + (d.state === 4 ? 0.1 : d.state === 3 ? 0.04 : 0)
+          // a dog holds the deer at bay
+          + (s.hasDog(p) ? 0.07 : 0);
         flash(p, FLASH.Thrust);
         if (r.next() < chance) {
           d.alive = false;
@@ -2370,6 +2373,7 @@ export function runTask(s: Sim, p: Person) {
           }
           train(p, 'hunt.kill');
           s.practise(p, 'hunt');
+          if (s.nearestWolf(p.x, p.z).dist < 16) s.practise(p, 'wolves');
           if (p.kills === 1) s.remember(p, 'first_kill', 18, 2, -1, 'Brought down their first deer.');
           if (s.stats.kills === 1) s.event('hunt', `${p.name} brought down the band's first deer at ${s.camp.name}.`, [p.id], p.x, p.z, 3);
           p.carry = CARRY.Meat;
@@ -2379,6 +2383,7 @@ export function runTask(s: Sim, p: Person) {
         } else {
           train(p, 'hunt.miss');
           s.practise(p, 'hunt', 0.2);
+          if (s.nearestWolf(p.x, p.z).dist < 16) s.practise(p, 'wolves', 0.5);
           p.thought = 'Missed. Following the herd.';
           p.path = null;
         }
