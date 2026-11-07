@@ -7,6 +7,7 @@ import { SHAKE } from './props';
 import type { Frame } from '../sim/runner';
 import { BASE_TPS } from '../sim/runner';
 import { HareLayer } from './hares';
+import { FishLayer } from './fish';
 import { WorldData, WATER, STEP } from '../sim/types';
 import { addCommon } from './shaderlib';
 import { U } from './env';
@@ -222,6 +223,8 @@ export class BandLayer {
   private deerMesh: THREE.InstancedMesh;
   /** a few of the hares the simulation counts on the land, hopping about near the camera */
   hares: HareLayer;
+  /** trout glimpsed under the water, rising and leaping, more where the water is full of fish */
+  fish: FishLayer;
   private carryMeshes = new Map<number, THREE.InstancedMesh>();
   private buildingMeshes = new Map<string, THREE.InstancedMesh>();
   private flames: THREE.InstancedMesh;
@@ -256,7 +259,8 @@ export class BandLayer {
     this.villagers = this.makeVillagers(geoms);
     this.deerMesh = this.makeDeer(geoms);
     this.hares = new HareLayer(world.size, world.terrain, (x, z) => this.groundAt(x, z), geoms);
-    this.group.add(this.villagers, this.deerMesh, this.hares.mesh);
+    this.fish = new FishLayer(world, geoms, (x, z, y, size, drops) => this.waterMark(x, z, y, size, drops));
+    this.group.add(this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh);
     // carried things
     const carryNames: [number, string][] = [
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
@@ -770,6 +774,15 @@ export class BandLayer {
     }
     this.rings.push({ x, y, z, at: now, size: 0.5 });
   }
+  /** A mark on the water: a ring spreading from a point, and a splash of `drops` drops. */
+  private waterMark(x: number, z: number, y: number, size: number, drops: number) {
+    for (let k = 0; k < drops; k++) {
+      const a = Math.random() * Math.PI * 2, sp = 0.05 + Math.random() * 0.16;
+      this.bits.push({ x, y: y + 0.01, z, vx: Math.cos(a) * sp, vy: 0.45 + Math.random() * 0.45, vz: Math.sin(a) * sp,
+        age: 0, life: 0.5, size: 0.007 + Math.random() * 0.006, r: 0.82, g: 0.9, b: 0.98, floor: y });
+    }
+    this.rings.push({ x, y, z, at: performance.now(), size });
+  }
   /** Whoever is nearest a point (a tree just felled), if anyone is close. */
   nearestTo(x: number, z: number, within = 1.2) {
     let best: { x: number; z: number } | null = null, bd = within;
@@ -783,6 +796,8 @@ export class BandLayer {
   onFrame(f: Frame, tps: number, now: number) {
     this.tpsNow = tps;
     if (f.game) this.hares.setGame(f.game);
+    if (f.fish) this.fish.setFish(f.fish);
+    this.fish.setTick(f.tick);
     // where everyone is drawn right now becomes the start of the next glide
     // (this must be measured before the frame clock is reset)
     const a = this.alpha(now);
@@ -1292,6 +1307,9 @@ export class BandLayer {
     // hares keep the game's pace: still while it is paused, quicker (up to a point) when it runs fast
     const paced = now - this.frameAt > 1200 ? 0 : dt * Math.min(4, Math.max(0.5, this.tpsNow / BASE_TPS));
     this.hares.update(paced, camTarget, this.viewZoom, this.visible);
+    // fish scatter from anyone in the water and from a spear going in
+    const spears = this.rings.filter((r) => r.size >= 0.5 && now - r.at < 400);
+    this.fish.update(paced, camTarget, this.viewZoom, this.swimmers, spears);
 
     this.drawBuildings(night, camTarget);
     this.drawAuras(night);

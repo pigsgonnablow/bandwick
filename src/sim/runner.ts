@@ -36,6 +36,8 @@ export interface Frame {
   traps?: ReturnType<Sim['packTraps']>;
   /** the hares on each tile (see Sim.packGame), when they have changed */
   game?: Uint8Array;
+  /** how full each water tile is of fish (see Sim.packFish), when that has changed */
+  fish?: Uint8Array;
   /** one answer per open info window, in the order asked */
   looks?: Look[];
   skipping: boolean;
@@ -71,6 +73,7 @@ export class Runner {
   private propsVersion = -1;
   private buildingsVersion = -1;
   private gameVersion = -1;
+  private fishVersion = -1;
   private eventCursor = 0;
   private targets: Ref[] = [];
   private focusBand = -1;
@@ -102,7 +105,7 @@ export class Runner {
     this.crashed = false;
     this.skipTo = -1;
     this.post({ type: 'world', world, tick: sim.tick });
-    this.propsVersion = this.buildingsVersion = this.gameVersion = -1;
+    this.propsVersion = this.buildingsVersion = this.gameVersion = this.fishVersion = -1;
     this.eventCursor = 0;
     this.owed = 0;
     this.last = this.now();
@@ -222,6 +225,10 @@ export class Runner {
       this.gameVersion = sim.gameVersion;
       f.game = sim.packGame();
     }
+    if (force || sim.fishVersion !== this.fishVersion) {
+      this.fishVersion = sim.fishVersion;
+      f.fish = sim.packFish();
+    }
     // prop changes are batched: a felled tree can wait half a second to vanish
     if (sim.propsVersion !== this.propsVersion && (force || t - this.lastProps > 450)) {
       this.propsVersion = sim.propsVersion;
@@ -242,6 +249,7 @@ export class Runner {
     }
     const transfer: Transferable[] = [f.people.buffer as ArrayBuffer, f.deer.buffer as ArrayBuffer];
     if (f.game) transfer.push(f.game.buffer as ArrayBuffer);
+    if (f.fish) transfer.push(f.fish.buffer as ArrayBuffer);
     if (f.props) for (const k of ['type', 'x', 'y', 'z', 'rot', 'scale', 'alive', 'val'] as const) transfer.push(f.props[k].buffer as ArrayBuffer);
     this.post(f, transfer);
   }

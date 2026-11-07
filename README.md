@@ -112,6 +112,10 @@ of the hares are drawn near the camera, more on open grass than in the woods and
 snares have thinned them out: they feed, hop about, sit up to watch anyone passing and bolt when
 someone comes close (only for show: the count is what the snares catch from). The hares from the
 snares come home dangling from the trapper's hand.
+Fish show too: trout glimpsed under the surface near the camera, scattering from anyone swimming
+or a spear going in, and rises dimpling the water with now and then a fish leaping clear, all more
+often where the water is full and less where it has been fished out. Lakes and rivers go still under
+the winter ice; the sea does not.
 
 **Crafting.** Everything made by the fire is one job with a list of recipes (`RECIPES` in
 `src/sim/band.ts`): cordage, the hand chopper and the stone axe so far. Each morning the plan says
