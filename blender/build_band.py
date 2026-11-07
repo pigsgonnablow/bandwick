@@ -7,6 +7,7 @@ Conventions (read by src/render/band.ts):
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
   deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
+  fish__{body,tail}                                                a brown trout in two parts, bent in the shader as it swims and leaps.
   hare__{body,head,ears,fore,hind}                                 a brown hare in parts, posed in the shader (hopping, sitting up, nibbling).
   carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,basket,basketFull,hare} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
@@ -775,6 +776,77 @@ for ex in (-1, 1):
     q.box((ex * 0.017, 0.012, 0.0035), (0.009, 0.050, 0.007), HARE_COAT, hr, 0.03, taper=0.8)
     ellip(q, (ex * 0.017, -0.012, 0.003), (0.0045, 0.0055, 0.003), HARE_BELLY)
 q.finish("hare__hind")
+
+# ---------------------------------------------------------------- fish
+# A brown trout, ~0.10 long (bigger than life, like everything else that has to be seen from the camera), in two
+# parts the game bends in the shader: the fore body with the head, and the tail end with the tail fin. Origin at the
+# middle of the body; it swims along -y (the game's +z). Olive back, golden flanks with dark spots, a cream belly.
+TROUT_BACK = (78, 74, 44)
+TROUT_SIDE = (178, 150, 84)
+TROUT_BELLY = (226, 214, 176)
+TROUT_SPOT = (52, 40, 30)
+TROUT_RED = (168, 62, 44)
+TROUT_FIN = (122, 104, 62)
+fr = random.Random(31)
+
+
+def trout_col(c, rz):
+    if c.z > rz * 0.45:
+        return TROUT_BACK
+    if c.z < -rz * 0.45:
+        return TROUT_BELLY
+    return TROUT_SIDE
+
+
+TROUT = [(-0.052, 0.002, 0.003, 0.0), (-0.046, 0.0055, 0.0085, 0.0), (-0.036, 0.0080, 0.0125, 0.0005), (-0.024, 0.0092, 0.0145, 0.001),
+         (-0.010, 0.0094, 0.0150, 0.001), (0.004, 0.0088, 0.0138, 0.001), (0.014, 0.0076, 0.0116, 0.0008)]
+TROUT_TAIL = [(0.014, 0.0076, 0.0116, 0.0008), (0.026, 0.0058, 0.0084, 0.0005), (0.036, 0.0040, 0.0058, 0.0003), (0.044, 0.0026, 0.0040, 0.0)]
+
+
+def trout_part(rings):
+    q = Part()
+    rmax = max(r[2] for r in rings)
+    bm = q.bm
+    segs = 10
+    loops = [[bm.verts.new((math.cos(k / segs * math.tau) * rx, y, cz + math.sin(k / segs * math.tau) * rz)) for k in range(segs)] for (y, rx, rz, cz) in rings]
+    faces = []
+    for i in range(len(loops) - 1):
+        a, b = loops[i], loops[i + 1]
+        faces += [bm.faces.new((a[k], b[k], b[(k + 1) % segs], a[(k + 1) % segs])) for k in range(segs)]
+    faces.append(bm.faces.new(loops[0]))
+    faces.append(bm.faces.new(list(reversed(loops[-1]))))
+    for f in faces:
+        q.paint([f], trout_col(f.calc_center_median(), rmax), fr, 0.05)
+    return q
+
+
+def fin(q, pts, color=TROUT_FIN, w=0.0008, axis=(1, 0, 0)):
+    """A thin fin from a flat outline, given a hair of thickness across `axis`."""
+    n = len(pts)
+    vs = [Vector(p) for p in pts]
+    off = Vector(axis) * w
+    solid(q, [v + off for v in vs] + [v - off for v in vs],
+          [list(range(n)), list(range(2 * n - 1, n - 1, -1))] + [(k, (k + 1) % n, n + (k + 1) % n, n + k) for k in range(n)], color, raw=False)
+
+
+q = trout_part(TROUT)
+fin(q, [(0, -0.012, 0.014), (0, 0.004, 0.0125), (0, 0.000, 0.022), (0, -0.008, 0.023)])  # dorsal fin
+for ex in (-1, 1):  # pectoral fins, swept back under the gills, and the eyes
+    fin(q, [(ex * 0.006, -0.036, -0.008), (ex * 0.006, -0.032, -0.008), (ex * 0.014, -0.026, -0.012), (ex * 0.012, -0.030, -0.013)], axis=(0, 0, 1))
+    q.box((ex * 0.0058, -0.044, 0.0025), (0.0016, 0.0030, 0.0030), TROUT_SPOT, fr, 0.0)
+    # dark spots on the flank, a few ringed red low down
+    for k in range(7):
+        y = -0.030 + k * 0.007 + fr.uniform(-0.002, 0.002)
+        z = fr.uniform(-0.002, 0.009)
+        rx = 0.0093 * math.sqrt(max(0.05, 1 - (z / 0.0148) ** 2))
+        q.box((ex * rx, y, z), (0.0010, 0.0015, 0.0014), TROUT_RED if z < 0.002 and k % 2 else TROUT_SPOT, fr, 0.0)
+q.finish("fish__body")
+
+q = trout_part(TROUT_TAIL)
+fin(q, [(0, 0.040, 0.0035), (0, 0.058, 0.014), (0, 0.054, 0.0), (0, 0.058, -0.013), (0, 0.040, -0.0030)])  # the tail fin, a shallow fork
+fin(q, [(0, 0.020, 0.0085), (0, 0.030, 0.0065), (0, 0.028, 0.0110)])  # adipose fin
+fin(q, [(0, 0.018, -0.0090), (0, 0.030, -0.0060), (0, 0.026, -0.0130)])  # anal fin
+q.finish("fish__tail")
 
 # ---------------------------------------------------------------- carried items (in hand/shoulder space)
 BARK = (110, 80, 54)

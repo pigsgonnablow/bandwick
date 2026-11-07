@@ -258,6 +258,8 @@ export class Sim {
   /** small game (hares) on each grass and forest tile, and what the land holds when left alone */
   game: Float32Array;
   gameCap: Float32Array;
+  /** bumped whenever the fish in the water change (for the renderer, which shows them rising) */
+  fishVersion = 1;
   /** bumped whenever the hares on the land change (for the renderer, which shows a few of them) */
   gameVersion = 1;
   fishingSpots: number[] = [];
@@ -1334,6 +1336,7 @@ export class Sim {
         const c = this.fishCap[i];
         if (c > 0 && this.fish[i] < c) this.fish[i] = Math.min(c, this.fish[i] + (0.06 * c * (1 - this.fish[i] / (c * 1.05)) + 0.02) * slow);
       }
+      this.fishVersion++;
     }
   }
 
@@ -3259,6 +3262,12 @@ export class Sim {
       out[o + 4] = d.fz;
       out[o + 5] = d.state + (d.fawn ? 10 : 0);
     });
+    return out;
+  }
+  /** The fish in each water tile, for the renderer: 0 where none live, else 1 + 200 times how full the water is. */
+  packFish(): Uint8Array {
+    const out = new Uint8Array(this.fish.length);
+    for (let i = 0; i < out.length; i++) if (this.fishCap[i] > 0) out[i] = 1 + Math.round(Math.max(0, Math.min(1, this.fish[i] / this.fishCap[i])) * 200);
     return out;
   }
   /** The hares on each tile, for the renderer: 0 where no hares live, else 1 + twenty times how many there are. */
