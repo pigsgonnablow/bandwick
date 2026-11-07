@@ -7,7 +7,8 @@ Conventions (read by src/render/band.ts):
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
   deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
-  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,basket,basketFull} attached to a person's hands or shoulder.
+  hare__{body,head,ears,fore,hind}                                 a brown hare in parts, posed in the shader (hopping, sitting up, nibbling).
+  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,basket,basketFull,hare} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
   boat__dugout                                                    the dugout the first band lands in (origin at the waterline, bow to -Y).
@@ -716,6 +717,65 @@ for name, x, y in (("legFL", -0.035, -0.09), ("legFR", 0.035, -0.09), ("legBL", 
     hoof(q, x, path[-1][0][1])
     q.finish(f"deer__{name}")
 
+# ---------------------------------------------------------------- hare
+# A brown hare crouched on the ground, ~0.13 long nose to tail (a touch bigger than life, to be seen at all
+# among the deer), in five parts the game poses in the shader: body (with the tail), head, ears, the forelegs,
+# and the haunches with their long hind feet. Origin at the ground under the middle of the body.
+HARE_COAT = (148, 112, 74)
+HARE_BACK = (108, 82, 56)    # grizzled darker along the spine
+HARE_BELLY = (226, 214, 190)
+HARE_WHITE = (240, 236, 228)  # the scut's underside
+HARE_BLACK = (34, 29, 26)     # ear tips, the top of the tail
+HARE_EYE = (70, 44, 22)
+hr = random.Random(21)
+
+
+def ellip(q, center, size, color, rot=None, amt=0.04, subdiv=1):
+    """An ellipsoid of radii `size`, turned by `rot` about its own centre."""
+    R = rot or Matrix.Identity(3)
+    for v in q.blob((0, 0, 0), size, color, hr, amt, subdiv=subdiv):
+        v.co = R @ v.co + Vector(center)
+
+
+q = Part()  # the body: low in front, rising to a round rump, pale underneath; the scut white below, black on top
+HARE_BODY = [(-0.036, 0.008, 0.010, 0.044), (-0.028, 0.017, 0.019, 0.042), (-0.014, 0.022, 0.024, 0.041), (0.002, 0.025, 0.027, 0.042),
+             (0.018, 0.027, 0.029, 0.043), (0.032, 0.026, 0.027, 0.043), (0.044, 0.020, 0.021, 0.042), (0.052, 0.009, 0.010, 0.042)]
+loft_y(q, HARE_BODY, 10, lambda c: HARE_BELLY if c.z < 0.026 else HARE_BACK if c.z > 0.066 and abs(c.x) < 0.012 else HARE_COAT)
+ellip(q, (0, 0.056, 0.044), (0.0085, 0.0075, 0.0085), HARE_WHITE)
+ellip(q, (0, 0.058, 0.0505), (0.006, 0.005, 0.004), HARE_BLACK)
+q.finish("hare__body")
+
+q = Part()  # the head on a short neck: a blunt muzzle, pale chin, dark nose, eyes set high on the sides
+ellip(q, (0, -0.033, 0.057), (0.012, 0.013, 0.015), HARE_COAT)
+ellip(q, (0, -0.047, 0.066), (0.0145, 0.019, 0.0145), HARE_COAT)
+ellip(q, (0, -0.061, 0.061), (0.009, 0.010, 0.0085), HARE_COAT)
+ellip(q, (0, -0.058, 0.056), (0.008, 0.009, 0.005), HARE_BELLY)
+q.box((0, -0.0695, 0.0625), (0.006, 0.003, 0.004), HARE_BLACK, hr, 0.0)
+for ex in (-1, 1):
+    q.box((ex * 0.0115, -0.050, 0.0705), (0.003, 0.0055, 0.0045), HARE_EYE, hr, 0.0, rot=Matrix.Rotation(ex * 0.3, 3, "Z"))
+q.finish("hare__head")
+
+q = Part()  # the long ears, standing up and swept back, splayed a little, black at the tips
+for ex in (-1, 1):
+    R = Matrix.Rotation(ex * 0.22, 3, "Y") @ Matrix.Rotation(-0.5, 3, "X")
+    base = Vector((ex * 0.006, -0.040, 0.077))
+    ellip(q, base + R @ Vector((0, 0, 0.021)), (0.0030, 0.0062, 0.023), HARE_COAT, R)
+    ellip(q, base + R @ Vector((0, 0, 0.039)), (0.0032, 0.0046, 0.0065), HARE_BLACK, R)
+q.finish("hare__ears")
+
+q = Part()  # forelegs, slim and straight under the chest
+for ex in (-1, 1):
+    q.cyl(5, 0.0042, 0.0032, (ex * 0.0095, -0.026, 0.034), (ex * 0.0095, -0.032, 0.003), HARE_COAT, hr, 0.04)
+    ellip(q, (ex * 0.0095, -0.0345, 0.0025), (0.0038, 0.0058, 0.0025), HARE_BELLY)
+q.finish("hare__fore")
+
+q = Part()  # the haunches, and the long hind feet flat on the ground beneath them
+for ex in (-1, 1):
+    ellip(q, (ex * 0.019, 0.026, 0.028), (0.0105, 0.021, 0.019), HARE_COAT)
+    q.box((ex * 0.017, 0.012, 0.0035), (0.009, 0.050, 0.007), HARE_COAT, hr, 0.03, taper=0.8)
+    ellip(q, (ex * 0.017, -0.012, 0.003), (0.0045, 0.0055, 0.003), HARE_BELLY)
+q.finish("hare__hind")
+
 # ---------------------------------------------------------------- carried items (in hand/shoulder space)
 BARK = (110, 80, 54)
 q = Part()
@@ -982,6 +1042,11 @@ q.cyl(4, 0.004, 0.003, (0, 0, -0.07), (0, 0, 0.0), WOOD_DARK, rnd, 0.03)
 for k in range(3):
     noose(q, (0, 0, -0.035 + k * 0.004), 0.016 - k * 0.002, segs=6)
 q.finish("carry__snare")
+q = Part()  # a hare from the snares, carried home dangling by the noose's cord from the fist
+q.cyl(3, 0.0016, 0.0016, (0, 0, 0.004), (0, 0, -0.022), CORD, rnd, 0.0, cap=False)
+noose(q, (0, 0, -0.026), 0.006, segs=5)
+hare(q, (0, 0, -0.066), hang=True)
+q.finish("carry__hare")
 
 
 def fishtrap(q, full):

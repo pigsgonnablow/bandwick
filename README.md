@@ -107,7 +107,11 @@ caught a hare gives 2 meat, a fish trap up to 4 fish from the same stock spear-f
 where the hares or fish are gone are taken up, and traps from the pile are set where the hares run
 thickest within about 10 tiles of camp, never two side by side. The catch comes home in one load.
 Traps work through winter, when hare tracks in the snow make snaring easier. A band that moves or
-joins another takes its traps up. A tile's card says what trap is set there and what it holds.
+joins another takes its traps up. A tile's card says what trap is set there and what it holds. A few
+of the hares are drawn near the camera, more on open grass than in the woods and fewer where the
+snares have thinned them out: they feed, hop about, sit up to watch anyone passing and bolt when
+someone comes close (only for show: the count is what the snares catch from). The hares from the
+snares come home dangling from the trapper's hand.
 
 **Crafting.** Everything made by the fire is one job with a list of recipes (`RECIPES` in
 `src/sim/band.ts`): cordage, the hand chopper and the stone axe so far. Each morning the plan says
