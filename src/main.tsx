@@ -624,7 +624,7 @@ export class Engine {
       band.markerAt = null;
       if (ref) {
         const pos = this.positionOfRef(ref);
-        if (pos && ref.kind !== 'person' && ref.kind !== 'tile' && ref.kind !== 'item') band.markerAt = { ...pos, r: ref.kind === 'deer' || ref.kind === 'wolf' ? -ref.id : pos.r };
+        if (pos && ref.kind !== 'person' && ref.kind !== 'tile' && ref.kind !== 'item') band.markerAt = { ...pos, r: ref.kind === 'deer' || ref.kind === 'wolf' || ref.kind === 'beast' ? -ref.id : pos.r };
       }
     }
     this.emit();
@@ -645,6 +645,10 @@ export class Engine {
     if (ref.kind === 'wolf') {
       const d = this.view.band?.wolves.visible.find((q) => q.id === ref.id);
       return d ? { x: d.x, y: d.y - 0.12, z: d.z, r: 0.24 } : null;
+    }
+    if (ref.kind === 'beast') {
+      const d = this.view.band?.beasts.visible.find((q) => q.id === ref.id);
+      return d ? { x: d.x, y: d.y - 0.06, z: d.z, r: 0.2 } : null;
     }
     if (ref.kind === 'building') {
       const b = this.view.band?.getBuildings().find((q) => q.id === ref.id);
@@ -692,6 +696,12 @@ export class Engine {
       const p = proj(v.x, v.y, v.z);
       const d = Math.hypot(p.x - cx, p.y - cy);
       if (d < 16) offer({ kind: 'wolf', id: v.id }, v.pup ? 'Wolf cub' : v.state === 2 ? 'Wolf, hunting' : 'Wolf', d - 4);
+    }
+    for (const v of band.beasts.visible) {
+      const p = proj(v.x, v.y, v.z);
+      const d = Math.hypot(p.x - cx, p.y - cy);
+      const name = v.kind === 0 ? (v.young ? 'Piglet' : 'Wild boar') : v.kind === 1 ? (v.young ? 'Fox cub' : 'Fox') : v.young ? 'Beaver kit' : 'Beaver';
+      if (d < 14) offer({ kind: 'beast', id: v.id }, name, d - 4);
     }
     for (const b of band.getBuildings()) {
       const base = w.groundY[b.z * w.size + b.x];
@@ -1017,6 +1027,10 @@ export class Engine {
         if (s.sel && s.sel.kind === 'deer' && this.view.band?.markerAt) {
           const d = this.view.band.visibleDeer.find((q) => q.id === s.sel!.id);
           if (d) this.view.band.markerAt = { x: d.x, y: d.y - 0.2, z: d.z, r: -d.id };
+        }
+        if (s.sel && s.sel.kind === 'beast' && this.view.band?.markerAt) {
+          const d = this.view.band.beasts.visible.find((q) => q.id === s.sel!.id);
+          if (d) this.view.band.markerAt = { x: d.x, y: d.y - 0.06, z: d.z, r: -d.id };
         }
         if (s.sel && s.sel.kind === 'wolf' && this.view.band?.markerAt) {
           const d = this.view.band.wolves.visible.find((q) => q.id === s.sel!.id);
