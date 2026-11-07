@@ -8,6 +8,7 @@ import type { Frame } from '../sim/runner';
 import { BASE_TPS } from '../sim/runner';
 import { HareLayer } from './hares';
 import { FishLayer } from './fish';
+import { BirdLayer } from './birds';
 import { WorldData, WATER, STEP } from '../sim/types';
 import { addCommon } from './shaderlib';
 import { U } from './env';
@@ -26,6 +27,7 @@ const BASKET = 94, BASKET_FULL = 93;
 /** A hare from the snares, carried home dangling from the fist on the trap round. */
 const HARE = 92;
 const TRAP_TASK = TASK_KINDS.indexOf('trap') + 1;
+const EGGS_TASK = TASK_KINDS.indexOf('eggs') + 1, HONEY_TASK = TASK_KINDS.indexOf('honey') + 1;
 /** How walls that are not wood colour a building that has no model of its own for them (multiplied over its own colours). */
 const WALL_TINT: Record<string, [number, number, number]> = { daub: [1.0, 0.86, 0.68], stone: [0.8, 0.82, 0.86] };
 /** A flying chip of wood or a drop of water. */
@@ -225,6 +227,10 @@ export class BandLayer {
   hares: HareLayer;
   /** trout glimpsed under the water, rising and leaping, more where the water is full of fish */
   fish: FishLayer;
+  /** finch flocks, geese passing over, birds round a robbed nest and bees round a smoked hive */
+  birds: BirdLayer;
+  /** anyone robbing a nest (kind 0) or smoking out a hive (kind 1) this frame, at the tree */
+  private gleaners: { id: number; kind: number; x: number; z: number; y: number }[] = [];
   private carryMeshes = new Map<number, THREE.InstancedMesh>();
   private buildingMeshes = new Map<string, THREE.InstancedMesh>();
   private flames: THREE.InstancedMesh;
@@ -260,7 +266,8 @@ export class BandLayer {
     this.deerMesh = this.makeDeer(geoms);
     this.hares = new HareLayer(world.size, world.terrain, (x, z) => this.groundAt(x, z), geoms);
     this.fish = new FishLayer(world, geoms, (x, z, y, size, drops) => this.waterMark(x, z, y, size, drops));
-    this.group.add(this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh);
+    this.birds = new BirdLayer(world, (x, z) => this.groundAt(x, z), geoms);
+    this.group.add(this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh, this.birds.group);
     // carried things
     const carryNames: [number, string][] = [
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
@@ -798,6 +805,7 @@ export class BandLayer {
     if (f.game) this.hares.setGame(f.game);
     if (f.fish) this.fish.setFish(f.fish);
     this.fish.setTick(f.tick);
+    this.birds.setTick(f.tick);
     // where everyone is drawn right now becomes the start of the next glide
     // (this must be measured before the frame clock is reset)
     const a = this.alpha(now);
@@ -945,6 +953,7 @@ export class BandLayer {
     const col = new THREE.Color();
     let n = 0;
     this.visible.length = 0;
+    this.gleaners.length = 0;
     this.swimmers.length = 0;
     this.auraList.length = 0;
     // infants riding with a carer: the carer shows a bundle instead
@@ -1177,6 +1186,8 @@ export class BandLayer {
       }
       if (bc && s.act !== ACT.Dead) this.auraList.push({ x, y: s.y, z, r: 1.0 * Math.max(0.7, scale), c: bc.color, k: 0.6 });
       this.visible.push({ id, x, y: s.y + 0.42 * scale, z, child: s.age < 14 });
+      if ((s.task === EGGS_TASK && s.shownAct === ACT.Gather) || (s.task === HONEY_TASK && s.shownAct === ACT.Tend))
+        this.gleaners.push({ id, kind: s.task === EGGS_TASK ? 0 : 1, x: s.fx, z: s.fz, y: this.groundAt(s.fx, s.fz) });
       if (id === this.selected) Object.assign(sel, { x, y: s.y, z });
       if (id === this.hovered) Object.assign(hov, { x, y: s.y, z });
     }
@@ -1310,6 +1321,7 @@ export class BandLayer {
     // fish scatter from anyone in the water and from a spear going in
     const spears = this.rings.filter((r) => r.size >= 0.5 && now - r.at < 400);
     this.fish.update(paced, camTarget, this.viewZoom, this.swimmers, spears);
+    this.birds.update(paced, camTarget, this.viewZoom, night, this.visible, this.gleaners);
 
     this.drawBuildings(night, camTarget);
     this.drawAuras(night);
