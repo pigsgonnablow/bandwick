@@ -580,6 +580,8 @@ export interface Deer {
   /** the stag it has locked antlers with, while sparring */
   foe?: number;
   alive: boolean;
+  /** brought down by wolves rather than by hunters */
+  byWolves?: boolean;
   fawn: boolean;
 }
 

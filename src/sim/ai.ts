@@ -2414,6 +2414,7 @@ export function runTask(s: Sim, p: Person) {
         if (r.next() < chance) {
           const got = Math.min(s.fish[w], Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (seasonOf(s.tick) === 3 ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1)));
           s.fish[w] -= got;
+          s.fishVersion++;
           train(p, 'fish.catch');
           // standing in the shallows with reeds to hand is what makes someone think of a woven trap
           if (c.stock.fiber >= 3) s.practise(p, 'fish_fiber', got < 3 ? 1.5 : 1);

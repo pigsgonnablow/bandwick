@@ -49,6 +49,8 @@ export class WolfLayer {
   private dogs = new Map<number, Dog>();
   /** wolves on screen, for clicking */
   visible: { id: number; x: number; y: number; z: number; pup: boolean; state: number }[] = [];
+  /** where the dogs are drawn (hares and finches shy from them as from people) */
+  dogSpots: { x: number; z: number }[] = [];
 
   constructor(geoms: Map<string, THREE.BufferGeometry>, private groundAt: (x: number, z: number) => number, private tracks: TrackLayer) {
     this.wolfMesh = this.makeMesh(geoms, 'wolf', 1, 128);
@@ -140,6 +142,7 @@ export class WolfLayer {
     // the dogs: at their keeper's heels
     const seen = new Set<number>();
     let m = 0;
+    this.dogSpots.length = 0;
     for (const k of keepers) {
       seen.add(k.id);
       let d = this.dogs.get(k.id);
@@ -185,6 +188,7 @@ export class WolfLayer {
       this.stride(d, ox, oz, dt, size);
       this.settle(d, dt, sit, lie);
       if (m < this.dogMesh.instanceMatrix.count) this.place(this.dogMesh, m++, d, k.id, size, 1);
+      if (!k.indoors) this.dogSpots.push({ x: d.dx, z: d.dz });
     }
     for (const id of this.dogs.keys()) if (!seen.has(id)) this.dogs.delete(id);
     this.finish(this.dogMesh, m);

@@ -2591,6 +2591,7 @@ export class Sim {
       } else if (roll < 0.13) {
         this.plentyYear = year;
         for (let i = 0; i < this.fish.length; i++) this.fish[i] = this.fishCap[i];
+        this.fishVersion++;
         this.event('plenty', 'A year of plenty: the bushes are heavy with fruit and the water thick with fish.', [], here.x, here.z, 4);
         for (const p of this.living()) this.remember(p, 'plenty', 12, 2, -1, 'Lived through a year of plenty.');
       }
@@ -3335,9 +3336,22 @@ export class Sim {
   }
 
   private spawnWolf(k: Pack, x: number, z: number, pup: boolean) {
-    const i = Math.floor(z) * this.N + Math.floor(x);
-    if (!this.grid.walkable(i) || this.world.water[i] !== WATER.None) { x = k.hx; z = k.hz; }
+    if (!this.dryLand(x, z)) {
+      // (the middle of the range, else beside a grown wolf of the pack, else nowhere)
+      const mate = this.wolves.find((w) => w.alive && w.pack === k.id && !w.pup);
+      if (this.dryLand(k.hx, k.hz)) { x = k.hx; z = k.hz; }
+      else if (mate) { x = mate.x; z = mate.z; }
+      else return;
+    }
     this.wolves.push({ id: this.nextId++, pack: k.id, x, z, tx: x, tz: z, fx: x + 1, fz: z, state: WOLF.Rest, timer: 0, alive: true, pup });
+  }
+
+  /** Whether a point is on walkable dry land (somewhere a wolf can be, or a pack's range can lie). */
+  private dryLand(x: number, z: number) {
+    const tx = Math.floor(x), tz = Math.floor(z);
+    if (tx < 0 || tz < 0 || tx >= this.N || tz >= this.N) return false;
+    const i = tz * this.N + tx;
+    return this.grid.walkable(i) && this.world.water[i] === WATER.None;
   }
 
   /** How far wolves keep from each camp: further from a fire at night, and from a camp that keeps dogs. */
@@ -3382,7 +3396,7 @@ export class Sim {
         const near = shy.reduce((a, b) => (hyp(k.hx - a.x, k.hz - a.z) < hyp(k.hx - b.x, k.hz - b.z) ? a : b));
         const len = hyp(k.hx - near.x, k.hz - near.z) || 1;
         const nx = k.hx + ((k.hx - near.x) / len) * 0.5, nz = k.hz + ((k.hz - near.z) / len) * 0.5;
-        if (nx > 2 && nz > 2 && nx < this.N - 2 && nz < this.N - 2) { k.hx = nx; k.hz = nz; }
+        if (nx > 2 && nz > 2 && nx < this.N - 2 && nz < this.N - 2 && this.dryLand(nx, nz)) { k.hx = nx; k.hz = nz; }
       }
       if (this.tick >= k.next) {
         k.tx = k.hx + r.range(-12, 12);
@@ -3415,7 +3429,11 @@ export class Sim {
         }
         if (prey) { k.prey = prey.id; k.chaseFrom = this.tick; }
         // and drifts its range towards wherever there is game
-        if (prey && bd > 18) { k.hx += (prey.x - k.hx) * 0.1; k.hz += (prey.z - k.hz) * 0.1; }
+        if (prey && bd > 18) {
+          // (never out onto a lake: the range's middle stays on dry land)
+          const nx = k.hx + (prey.x - k.hx) * 0.1, nz = k.hz + (prey.z - k.hz) * 0.1;
+          if (this.dryLand(nx, nz)) { k.hx = nx; k.hz = nz; }
+        }
       }
       // at dusk and through the night a resting pack gathers and howls
       if (!prey && dark && r.chance(0.006) && !pack.some((w) => w.state === WOLF.Feed)) {
@@ -3456,6 +3474,7 @@ export class Sim {
           w.state = WOLF.Chase;
           if (len < 0.55 && r.chance(prey.fawn ? 0.7 : snow ? 0.6 : 0.4)) {
             prey.alive = false;
+            prey.byWolves = true;
             this.stats.wolfKills++;
             k.prey = -1;
             // a deer feeds the pack for a couple of weeks (hares and smaller game between), longer when deer are scarce
@@ -3766,7 +3785,7 @@ export class Sim {
       const sheltering = isWinter(this.tick) && this.world.terrain[this.tileOf(d)] === T.Forest;
       const lines: CardLine[] = [
         L('Herd', `${herd.length} deer${herd.some((q) => q.fawn) ? `, ${herd.filter((q) => q.fawn).length} ${herd.filter((q) => q.fawn).length === 1 ? 'fawn' : 'fawns'}` : ''}`),
-        L('Doing', !d.alive ? 'Taken by hunters' : d.state === 2 ? 'Running from people' : d.state === 4 ? 'Locking antlers with a rival stag'
+        L('Doing', !d.alive ? (d.byWolves ? 'Taken by wolves' : 'Taken by hunters') : d.state === 2 ? (this.nearestWolf(d.x, d.z).dist < 6 ? 'Running from wolves' : 'Running from people') : d.state === 4 ? 'Locking antlers with a rival stag'
           : d.state === 3 ? 'Roaring for the rut' : sheltering ? (d.state === 1 ? 'Moving through the trees' : 'Browsing under the trees')
           : d.state === 1 ? 'Moving with the herd' : 'Grazing'),
         L('Meat', d.fawn ? 'About 4 meals' : 'About 8 meals'),
@@ -3790,7 +3809,7 @@ export class Sim {
       const lines: CardLine[] = [
         L('Pack', `${pack.length} wolves${pups ? `, ${pups} ${pups === 1 ? 'cub' : 'cubs'}` : ''}`),
         L('Doing', doing),
-        L('Hunger', !k ? '' : this.tick < k.fed ? 'Fed' : k.prey >= 0 ? 'Hunting' : 'Hungry'),
+        L('Hunger', !k ? '' : this.tick < k.fed - 60 ? 'Fed' : k.prey >= 0 ? 'Hunting' : 'Hungry'),
       ];
       return {
         ref, title: w.pup ? 'Wolf cub' : 'Grey wolf', subtitle: 'Wild wolf', lines,

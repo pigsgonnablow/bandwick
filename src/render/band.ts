@@ -1424,8 +1424,6 @@ export class BandLayer {
 
     // hares keep the game's pace: still while it is paused, quicker (up to a point) when it runs fast
     const paced = now - this.frameAt > 1200 ? 0 : dt * Math.min(4, Math.max(0.5, this.tpsNow / BASE_TPS));
-    this.hares.update(paced, camTarget, this.viewZoom, this.visible);
-    this.tracks.update(paced);
     // dogs go with whoever keeps them (the living, out and about or indoors)
     this.keepers.length = 0;
     for (const [id, s] of this.people) {
@@ -1433,10 +1431,14 @@ export class BandLayer {
       this.keepers.push({ id, x: s.dx, y: s.y, z: s.dz, angle: s.angle, indoors: s.indoors, pup: (s.dress & 128) !== 0, hunting: s.task === HUNT_TASK });
     }
     this.wolves.update(dt, now, follow, this.keepers);
+    // hares and finches take fright at wolves and dogs as well as at people
+    const scary = this.wolves.visible.length || this.wolves.dogSpots.length ? [...this.visible, ...this.wolves.visible, ...this.wolves.dogSpots] : this.visible;
+    this.hares.update(paced, camTarget, this.viewZoom, scary);
+    this.tracks.update(paced);
     // fish scatter from anyone in the water and from a spear going in
     const spears = this.rings.filter((r) => r.size >= 0.5 && now - r.at < 400);
     this.fish.update(paced, camTarget, this.viewZoom, this.swimmers, spears);
-    this.birds.update(paced, camTarget, this.viewZoom, night, this.visible, this.gleaners);
+    this.birds.update(paced, camTarget, this.viewZoom, night, scary, this.gleaners);
 
     this.drawBuildings(night, camTarget);
     this.drawAuras(night);
