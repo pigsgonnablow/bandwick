@@ -337,7 +337,7 @@ export interface Item {
 
 /** Anything in the world that can be clicked. */
 export interface Ref {
-  kind: 'person' | 'deer' | 'building' | 'prop' | 'tile' | 'item';
+  kind: 'person' | 'deer' | 'wolf' | 'building' | 'prop' | 'tile' | 'item';
   id: number;
 }
 export interface CardLine {
@@ -450,6 +450,8 @@ export interface Person {
   babyFather: number;
   look: number; // seed for clothes, skin, hair
   kills: number;
+  /** the tick a dog came to them as a pup, once the band keeps dogs (a dog goes everywhere with them) */
+  dog?: number;
   /** a rare constitution: ages far more slowly once old (absent = no) */
   hardy?: boolean;
   /** who killed them, if someone did */
@@ -573,10 +575,48 @@ export interface Deer {
   tz: number;
   fx: number;
   fz: number;
-  state: number; // 0 graze, 1 walk, 2 flee
+  state: number; // 0 graze, 1 walk, 2 flee, 3 roar (the rut), 4 spar with another stag
+  timer: number;
+  /** the stag it has locked antlers with, while sparring */
+  foe?: number;
+  alive: boolean;
+  /** brought down by wolves rather than by hunters */
+  byWolves?: boolean;
+  fawn: boolean;
+}
+
+/** A wolf. Packs roam well away from people, run deer down (more easily in deep snow), feed at the kill,
+ *  howl at dusk and keep clear of camp fires and of anyone who comes near. */
+export interface Wolf {
+  id: number;
+  pack: number;
+  x: number;
+  z: number;
+  tx: number;
+  tz: number;
+  /** a point it faces */
+  fx: number;
+  fz: number;
+  state: number; // WOLF.*
   timer: number;
   alive: boolean;
-  fawn: boolean;
+  /** a cub of this spring (drawn smaller, kept back from the chase) */
+  pup: boolean;
+}
+export const WOLF = { Rest: 0, Trot: 1, Chase: 2, Feed: 3, Slink: 4, Howl: 5, Lie: 6 } as const;
+
+export interface Pack {
+  id: number;
+  /** the middle of the pack's range, and where it is heading */
+  hx: number;
+  hz: number;
+  tx: number;
+  tz: number;
+  next: number;
+  /** the deer being run down (-1 none), when the chase began, and the tick the pack goes hungry again */
+  prey: number;
+  chaseFrom: number;
+  fed: number;
 }
 
 /** Grown deer with odd ids are stags (they wear antlers; the renderer uses the same rule), the rest are does. */

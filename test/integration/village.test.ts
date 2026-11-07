@@ -212,6 +212,8 @@ describe('bone needles', () => {
       p.task = task(s, 'craft', p, RECIPE_KEYS.indexOf('cloak'));
       p.x = s.camp.x + 1; p.z = s.camp.z;
       p.task.goal = s.tileOf(p); p.task.gx = p.x; p.task.gz = p.z;
+      // (and forget any path they were already following)
+      p.path = null;
       for (let i = 0; i < 60 && p.task!.stage === 0; i++) { runTask(s, p); s.tick++; }
       expect(p.task!.stage).toBe(1);
       return p.task!.timer;

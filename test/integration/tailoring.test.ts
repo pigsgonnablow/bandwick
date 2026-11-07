@@ -388,6 +388,8 @@ describe('the Gear tab', () => {
   });
 
   it('shows the tool in hand, and the band\'s summary counts who wears what', () => {
+    // (whatever they were working with is put down first: one tool in hand at a time)
+    for (const it of s.items) if (it.holder === p.id) it.holder = -1;
     const axe = garment('axe');
     axe.holder = p.id;
     expect(s.inspect(p.id)!.toolDetail?.kind).toBe('axe');

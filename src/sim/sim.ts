@@ -8,13 +8,13 @@ import {
 } from './types';
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
-  Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Stock, SimEvent, Task, TaskKind, Memory,
+  Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Wolf, Pack, WOLF, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
   BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS,
 } from './band';
 import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
-  isDark, temperature, berriesRipe, freshFrozen, seasonPos, seasonOf, ageYears, yearOf, dayOf, hourOf,
+  isDark, temperature, berriesRipe, freshFrozen, rutting, snowLies, isWinter, seasonPos, seasonOf, ageYears, yearOf, dayOf, hourOf,
 } from './time';
 import { decide, runTask, abandon, sendHome, delivering, FAR_GRAVE } from './ai';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets } from './know';
@@ -158,6 +158,9 @@ export interface Camp {
   founded: number;
   /** what the band has discovered (keys of DISCOVERIES), in the order it learned them */
   knows: string[];
+  /** when wolves were last heard howling from camp, and whether the band has noted them at all */
+  heardWolves?: number;
+  wolvesNoted?: boolean;
   /** what a newcomer who married in will teach the band, and when */
   learning?: { k: string; at: number; by: number }[];
   /** how and when it came to know each thing it knows (absent for what it knew in saves from before this was kept) */
@@ -205,6 +208,8 @@ export class Sim {
   items: Item[] = [];
   deer: Deer[] = [];
   herds: Herd[] = [];
+  wolves: Wolf[] = [];
+  packs: Pack[] = [];
   /** every band that has ever had a camp, in order of founding */
   camps: Camp[] = [];
   /** the band being worked on right now (each person's own while they think and act) */
@@ -214,6 +219,7 @@ export class Sim {
   rLife: Rng;
   rAi: Rng;
   rWild: Rng;
+  rWolf: Rng;
   anomaly = 0;
   private nextId = 1;
   /** A fresh id for a camp, building, person or thing. */
@@ -269,7 +275,7 @@ export class Sim {
   quarryTiles: number[] = [];
   /** per tile: how many standing trees */
   treesOnTile: Uint8Array;
-  stats = { births: 0, deaths: 0, peak: 0, starved: 0, froze: 0, kills: 0, felled: 0 };
+  stats = { births: 0, deaths: 0, peak: 0, starved: 0, froze: 0, kills: 0, felled: 0, wolfKills: 0 };
   /** fortune's years: a year of plenty, a year the berries failed (year numbers; 0 for none yet) */
   plentyYear = 0;
   blightYear = 0;
@@ -284,6 +290,7 @@ export class Sim {
     this.rLife = Rng.stream(seed, 'life');
     this.rAi = Rng.stream(seed, 'ai');
     this.rWild = Rng.stream(seed, 'wild');
+    this.rWolf = Rng.stream(seed, 'wolves');
     this.tongue = new Tongue(Rng.stream(seed, 'tongue'));
     // props
     const cap = world.propCount + 4096;
@@ -361,6 +368,7 @@ export class Sim {
     }
     this.foundBand();
     this.placeHerds();
+    this.placePacks();
     this.plan();
   }
 
@@ -388,7 +396,7 @@ export class Sim {
       params: { ...this.world.params },
       worldHash: this.world.hash,
       tick: this.tick, anomaly: this.anomaly, nextId: this.nextId, nextEvent: this.nextEvent, eventHash: this.eventHash,
-      rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState() },
+      rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState(), wolves: this.rWolf.getState() },
       props: {
         count: n,
         type: pick(this.propType), x: pick(this.propX), y: pick(this.propY), z: pick(this.propZ), rot: pick(this.propRot),
@@ -421,6 +429,8 @@ export class Sim {
       items: this.items.map((i) => ({ ...i })),
       deer: this.deer.map((d) => ({ ...d })),
       herds: this.herds.map((h) => ({ ...h })),
+      wolves: this.wolves.map((w) => ({ ...w })),
+      packs: this.packs.map((k) => ({ ...k })),
     };
   }
 
@@ -450,6 +460,7 @@ export class Sim {
     this.rLife.setState(d.rng.life);
     this.rAi.setState(d.rng.ai);
     this.rWild.setState(d.rng.wild);
+    if (d.rng.wolves) this.rWolf.setState(d.rng.wolves);
     this.tongue.r.setState(d.rng.tongue);
     // props: replace the freshly generated ones with the saved, lived-in set
     const n = d.props.count;
@@ -552,6 +563,11 @@ export class Sim {
     for (const [p, giver] of beads) this.giveNecklace(p, giver);
     this.deer = d.deer as Deer[];
     this.herds = d.herds as Herd[];
+    // saves from before the wolves: packs move into the wilds now
+    if (d.wolves && d.packs) {
+      this.wolves = d.wolves;
+      this.packs = d.packs;
+    } else this.placePacks();
     this.propsVersion++;
     this.buildingsVersion++;
   }
@@ -1118,6 +1134,7 @@ export class Sim {
       }
     }
     this.updateDeer();
+    this.updateWolves();
   }
 
   /** Who carries an infant about: their mother, else their father, else whoever took them in. */
@@ -1890,6 +1907,8 @@ export class Sim {
     this.grasses();
     this.trees(dayOfYear);
     this.herdsDaily(dayOfYear);
+    this.packsDaily(dayOfYear);
+    this.dogsDaily();
     this.traps();
     this.dressAndBed();
     // each band's own day: stores, births and deaths, and the morning plan
@@ -2022,7 +2041,8 @@ export class Sim {
     for (const h of this.herds) {
       const members = this.deer.filter((d) => d.alive && d.herd === h.id);
       if (dayOfYear === 4 && members.length >= 2) {
-        const fawns = Math.floor(members.length / 4) + (r.chance(0.45) ? 1 : 0);
+        // (more than they did before there were wolves to take their share)
+        const fawns = Math.floor(members.length / 3) + (r.chance(0.55) ? 1 : 0);
         for (let k = 0; k < fawns && members.length + k < 9; k++) this.spawnDeer(h, members[0].x, members[0].z, true);
       }
       if (dayOfYear === 30) for (const d of members) d.fawn = false;
@@ -2034,9 +2054,11 @@ export class Sim {
     // a hunted-out range is slowly refilled by deer drifting in from the wilds (not right beside camp)
     if (dayOfYear === 6) {
       for (const h of this.herds) {
-        if (this.deer.some((d) => d.alive && d.herd === h.id)) continue;
+        // (a lone deer left over counts as hunted out: it has no one to breed with)
+        const left = this.deer.filter((d) => d.alive && d.herd === h.id).length;
+        if (left >= 2) continue;
         if (this.camps.some((c) => !c.gone && hyp(h.hx - c.x, h.hz - c.z) <= 20) || !r.chance(0.3)) continue;
-        for (let k = 0; k < 3; k++) this.spawnDeer(h, h.hx, h.hz, false);
+        for (let k = left; k < 3; k++) this.spawnDeer(h, h.hx, h.hz, false);
       }
     }
     if (this.deer.length > 400) this.deer = this.deer.filter((d) => d.alive);
@@ -2167,6 +2189,8 @@ export class Sim {
       const home = p.home >= 0 ? this.buildings.find((b) => b.id === p.home) : undefined;
       if (!home || !home.built || home.kind === 'leanto') this.practise(p, 'night_out');
       if (lit) this.practise(p, 'evening_fire');
+      // wolves howling round camp of a night set people thinking about them
+      if (this.camp.heardWolves !== undefined && this.tick - this.camp.heardWolves < TICKS_PER_DAY) this.practise(p, 'wolves', 0.25);
     }
     this.teach();
   }
@@ -2567,6 +2591,7 @@ export class Sim {
       } else if (roll < 0.13) {
         this.plentyYear = year;
         for (let i = 0; i < this.fish.length; i++) this.fish[i] = this.fishCap[i];
+        this.fishVersion++;
         this.event('plenty', 'A year of plenty: the bushes are heavy with fruit and the water thick with fish.', [], here.x, here.z, 4);
         for (const p of this.living()) this.remember(p, 'plenty', 12, 2, -1, 'Lived through a year of plenty.');
       }
@@ -2678,8 +2703,11 @@ export class Sim {
     for (const q of this.people) if (q !== p && q.alive && hyp(q.x - p.x, q.z - p.z) < 4) return;
     if (!r.chance(0.00025 * (seasonOf(this.tick) === 3 ? 2 : 1))) return;
     const bear = seasonOf(this.tick) !== 3 && this.world.terrain[this.tileOf(p)] === T.Forest && r.chance(0.4);
+    // wolves only where a pack is about
+    if (!bear && this.nearestWolf(p.x, p.z).dist > 15) return;
     const what = bear ? 'a bear' : 'wolves';
-    const escape = 0.62 + (this.has(p, 'brave') ? 0.15 : 0) + (p.carry === CARRY.Spear ? 0.15 : 0) + (this.age(p) < 14 || this.age(p) > 60 ? -0.25 : 0);
+    const escape = 0.62 + (this.has(p, 'brave') ? 0.15 : 0) + (p.carry === CARRY.Spear ? 0.15 : 0) + (this.age(p) < 14 || this.age(p) > 60 ? -0.25 : 0)
+      + (this.hasDog(p) ? 0.15 : 0);
     if (r.chance(escape)) {
       p.health = Math.max(5, p.health - 45);
       p.safety = 0;
@@ -3139,24 +3167,59 @@ export class Sim {
     if (this.tick % 2) return;
     const r = this.rWild;
     const people = this.people.filter((p) => p.alive && !p.indoors && this.age(p) >= 2);
+    const winter = isWinter(this.tick), rut = rutting(this.tick), snow = snowLies(this.tick);
+    const N = this.world.size;
     for (const h of this.herds) {
       if (this.tick >= h.next) {
         h.tx = h.hx + r.range(-9, 9);
         h.tz = h.hz + r.range(-9, 9);
+        // in winter the herd keeps to the shelter of the trees, browsing where the snow lies thin
+        if (winter) {
+          for (let k = 0; k < 4; k++) {
+            const tx = Math.floor(h.tx), tz = Math.floor(h.tz);
+            if (tx >= 0 && tz >= 0 && tx < N && tz < N && this.world.terrain[tz * N + tx] === T.Forest) break;
+            h.tx = h.hx + r.range(-9, 9);
+            h.tz = h.hz + r.range(-9, 9);
+          }
+        }
         h.next = this.tick + r.int(60, 160);
       }
     }
+    const byId = (id: number | undefined) => (id === undefined ? undefined : this.deer.find((q) => q.id === id && q.alive));
+    // a stag breaks off a fight (or is killed in one): his rival is left standing
+    const unlock = (d: Deer) => {
+      const f = byId(d.foe);
+      d.foe = undefined;
+      if (f && f.foe === d.id) {
+        f.foe = undefined;
+        if (f.state === 4) {
+          f.state = 0;
+          f.timer = r.int(4, 12);
+        }
+      }
+    };
     for (const d of this.deer) {
-      if (!d.alive) continue;
+      if (!d.alive) {
+        if (d.foe !== undefined) unlock(d);
+        continue;
+      }
       const h = this.herds[d.herd];
-      // danger: the nearest person (hunters are stealthier)
-      let threat: Person | null = null, td = 99;
+      // danger: the nearest person (hunters are stealthier; a roaring or fighting stag is too taken up to notice much)
+      let threat: { x: number; z: number } | null = null, td = 99;
+      const heed = d.state === 4 ? 0.5 : d.state === 3 ? 0.75 : 1;
       for (const p of people) {
         const dist = hyp(p.x - d.x, p.z - d.z);
-        const radius = p.task?.kind === 'hunt' ? Math.max(1.5, 2.6 - p.skills[SK.hunt] * 0.06) : 3.6;
+        const radius = (p.task?.kind === 'hunt' ? Math.max(1.5, 2.6 - p.skills[SK.hunt] * 0.06) : 3.6) * heed;
         if (dist < radius && dist < td) { td = dist; threat = p; }
       }
+      // and wolves: a pack on the hunt is seen further off
+      for (const w of this.wolves) {
+        if (!w.alive || Math.abs(w.x - d.x) > 6 || Math.abs(w.z - d.z) > 6) continue;
+        const dist = hyp(w.x - d.x, w.z - d.z);
+        if (dist < (w.state === WOLF.Chase ? 5 : 3) * heed && dist < td) { td = dist; threat = w; }
+      }
       if (threat) {
+        if (d.foe !== undefined) unlock(d);
         const ax = d.x - threat.x, az = d.z - threat.z;
         const len = hyp(ax, az) || 1;
         d.tx = d.x + (ax / len) * 7;
@@ -3171,15 +3234,65 @@ export class Sim {
       }
       if (d.state !== 2) {
         if (d.timer > 0) d.timer--;
-        else if (r.chance(0.08)) {
+        else if (d.state === 4) {
+          // the fight is over: one gives way, and now and then the other bellows after him
+          unlock(d);
+          d.state = 0;
+          d.timer = r.int(10, 30);
+          if (r.chance(0.5)) {
+            d.state = 3;
+            d.timer = r.int(8, 14);
+          }
+        } else if (r.chance(0.08)) {
           d.state = d.state === 0 ? 1 : 0;
           d.timer = r.int(10, 40);
           d.tx = h.tx + r.range(-2, 2);
           d.tz = h.tz + r.range(-2, 2);
+          // the autumn rut: stags stop to roar, and square up to any rival close by
+          if (rut && isStag(d) && r.chance(0.35)) {
+            const rival = this.deer.find((q) => q !== d && q.alive && isStag(q) && q.herd === d.herd && q.state < 2 && hyp(q.x - d.x, q.z - d.z) < 5);
+            if (rival && r.chance(0.4)) {
+              d.state = rival.state = 4;
+              d.foe = rival.id;
+              rival.foe = d.id;
+              d.timer = rival.timer = r.int(24, 44);
+            } else {
+              d.state = 3;
+              d.timer = r.int(8, 16);
+            }
+          }
         }
       }
-      if (d.state === 0) continue;
-      const speed = (d.state === 2 ? 0.7 : 0.16) * 2;
+      if (d.state === 0 || d.state === 3) continue;
+      if (d.state === 4) {
+        // close in until the antlers meet, then push head to head
+        const f = byId(d.foe);
+        if (!f) {
+          d.foe = undefined;
+          d.state = 0;
+          continue;
+        }
+        const dx = f.x - d.x, dz = f.z - d.z;
+        const len = hyp(dx, dz) || 1;
+        d.fx = f.x;
+        d.fz = f.z;
+        const gap = len - 0.34;
+        if (gap > 0.02) {
+          const step = Math.min(0.12, gap / 2);
+          const nx = d.x + (dx / len) * step, nz = d.z + (dz / len) * step;
+          const from = this.tileOf(d), to = this.tileOf({ x: nx, z: nz });
+          if (to === from || (this.grid.step(from, to) && this.world.water[to] === WATER.None)) {
+            d.x = nx;
+            d.z = nz;
+          } else {
+            unlock(d);
+            d.state = 0;
+          }
+        }
+        continue;
+      }
+      // deep snow slows a running deer down
+      const speed = (d.state === 2 ? (snow ? 0.55 : 0.7) : 0.16) * 2;
       const dx = d.tx - d.x, dz = d.tz - d.z;
       const len = hyp(dx, dz);
       if (len < 0.2) {
@@ -3198,6 +3311,286 @@ export class Sim {
         d.tz = d.z + r.range(-4, 4);
       }
     }
+  }
+
+  // ------------------------------------------------------------------ wolves
+  /** A few packs, each in a range well away from the first camp and from each other. */
+  private placePacks() {
+    const w = this.world, N = this.N;
+    let land = 0;
+    for (let i = 0; i < N * N; i++) if (w.water[i] === WATER.None) land++;
+    const target = Math.max(1, Math.min(3, Math.floor(land / 3000)));
+    const r = this.rWolf;
+    for (let tries = 0; this.packs.length < target && tries < 4000; tries++) {
+      const i = r.int(0, N * N);
+      const t = w.terrain[i];
+      if ((t !== T.Forest && t !== T.Grass) || !this.grid.walkable(i) || w.water[i] !== WATER.None) continue;
+      const x = (i % N) + 0.5, z = ((i / N) | 0) + 0.5;
+      if (this.liveCamps().some((c) => hyp(x - c.x, z - c.z) < 30)) continue;
+      if (this.packs.some((k) => hyp(k.hx - x, k.hz - z) < 28)) continue;
+      const pack: Pack = { id: this.packs.length, hx: x, hz: z, tx: x, tz: z, next: 0, prey: -1, chaseFrom: 0, fed: 0 };
+      this.packs.push(pack);
+      const n = r.int(3, 6);
+      for (let k = 0; k < n; k++) this.spawnWolf(pack, x + r.range(-1.5, 1.5), z + r.range(-1.5, 1.5), false);
+    }
+  }
+
+  private spawnWolf(k: Pack, x: number, z: number, pup: boolean) {
+    if (!this.dryLand(x, z)) {
+      // (the middle of the range, else beside a grown wolf of the pack, else nowhere)
+      const mate = this.wolves.find((w) => w.alive && w.pack === k.id && !w.pup);
+      if (this.dryLand(k.hx, k.hz)) { x = k.hx; z = k.hz; }
+      else if (mate) { x = mate.x; z = mate.z; }
+      else return;
+    }
+    this.wolves.push({ id: this.nextId++, pack: k.id, x, z, tx: x, tz: z, fx: x + 1, fz: z, state: WOLF.Rest, timer: 0, alive: true, pup });
+  }
+
+  /** Whether a point is on walkable dry land (somewhere a wolf can be, or a pack's range can lie). */
+  private dryLand(x: number, z: number) {
+    const tx = Math.floor(x), tz = Math.floor(z);
+    if (tx < 0 || tz < 0 || tx >= this.N || tz >= this.N) return false;
+    const i = tz * this.N + tx;
+    return this.grid.walkable(i) && this.world.water[i] === WATER.None;
+  }
+
+  /** How far wolves keep from each camp: further from a fire at night, and from a camp that keeps dogs. */
+  private wolfShy() {
+    const dark = isDark(this.tick);
+    return this.liveCamps().map((c) => ({
+      x: c.x, z: c.z,
+      r: 12 + (dark && this.hearth(c)?.fuel > 0 ? 5 : 0) + (this.members(c).some((p) => p.dog !== undefined) ? 4 : 0),
+    }));
+  }
+
+  /** Whether a grown dog goes about with this person. */
+  hasDog(p: Person) {
+    return p.dog !== undefined && this.tick - p.dog > 12 * TICKS_PER_DAY;
+  }
+
+  /** The nearest living wolf to a point, and how far it is. */
+  nearestWolf(x: number, z: number) {
+    let best: Wolf | null = null, bd = Infinity;
+    for (const w of this.wolves) {
+      if (!w.alive) continue;
+      const d = hyp(w.x - x, w.z - z);
+      if (d < bd) { bd = d; best = w; }
+    }
+    return { wolf: best, dist: bd };
+  }
+
+  private updateWolves() {
+    if (this.tick % 2) return;
+    const r = this.rWolf;
+    const shy = this.wolfShy();
+    const feared = (x: number, z: number, more = 0) => shy.some((c) => hyp(x - c.x, z - c.z) < c.r + more);
+    const people = this.people.filter((p) => p.alive && !p.indoors && this.age(p) >= 2);
+    const dark = isDark(this.tick), snow = snowLies(this.tick), hour = hourOf(this.tick);
+    for (const k of this.packs) {
+      const pack = this.wolves.filter((w) => w.alive && w.pack === k.id);
+      if (!pack.length) continue;
+      let cx = 0, cz = 0;
+      for (const w of pack) { cx += w.x / pack.length; cz += w.z / pack.length; }
+      // a camp set up in the pack's range pushes it out
+      if (feared(k.hx, k.hz, 6)) {
+        const near = shy.reduce((a, b) => (hyp(k.hx - a.x, k.hz - a.z) < hyp(k.hx - b.x, k.hz - b.z) ? a : b));
+        const len = hyp(k.hx - near.x, k.hz - near.z) || 1;
+        const nx = k.hx + ((k.hx - near.x) / len) * 0.5, nz = k.hz + ((k.hz - near.z) / len) * 0.5;
+        if (nx > 2 && nz > 2 && nx < this.N - 2 && nz < this.N - 2 && this.dryLand(nx, nz)) { k.hx = nx; k.hz = nz; }
+      }
+      if (this.tick >= k.next) {
+        k.tx = k.hx + r.range(-12, 12);
+        k.tz = k.hz + r.range(-12, 12);
+        for (let n = 0; n < 4 && feared(k.tx, k.tz, 3); n++) {
+          k.tx = k.hx + r.range(-12, 12);
+          k.tz = k.hz + r.range(-12, 12);
+        }
+        if (feared(k.tx, k.tz, 3)) { k.tx = k.hx; k.tz = k.hz; }
+        k.next = this.tick + r.int(100, 240);
+      }
+      // the hunt: a hungry pack picks out the nearest deer and runs it down (only so long, and never into a camp)
+      const grown = pack.filter((w) => !w.pup).length;
+      let prey = k.prey >= 0 ? this.deer.find((d) => d.id === k.prey && d.alive) : undefined;
+      if (k.prey >= 0 && (!prey || this.tick - k.chaseFrom > 140 || feared(prey.x, prey.z))) {
+        k.prey = -1;
+        prey = undefined;
+        k.fed = Math.max(k.fed, this.tick + 60);
+        for (const w of pack) if (w.state === WOLF.Chase) { w.state = WOLF.Trot; w.timer = r.int(10, 30); w.tx = cx + r.range(-2, 2); w.tz = cz + r.range(-2, 2); }
+      }
+      if (!prey && grown >= 2 && this.tick >= k.fed && this.tick % 20 === 0) {
+        // the longer it goes hungry, the further afield it looks
+        let bd = 18 + Math.min(22, ((this.tick - k.fed) / TICKS_PER_DAY) * 4);
+        for (const d of this.deer) {
+          if (!d.alive) continue;
+          const dist = hyp(d.x - cx, d.z - cz);
+          // a herd down to its last few is left be
+          if (dist < bd && this.deer.filter((q) => q.alive && q.herd === d.herd).length < 3) continue;
+          if (dist < bd && !feared(d.x, d.z, 2)) { bd = dist; prey = d; }
+        }
+        if (prey) { k.prey = prey.id; k.chaseFrom = this.tick; }
+        // and drifts its range towards wherever there is game
+        if (prey && bd > 18) {
+          // (never out onto a lake: the range's middle stays on dry land)
+          const nx = k.hx + (prey.x - k.hx) * 0.1, nz = k.hz + (prey.z - k.hz) * 0.1;
+          if (this.dryLand(nx, nz)) { k.hx = nx; k.hz = nz; }
+        }
+      }
+      // at dusk and through the night a resting pack gathers and howls
+      if (!prey && dark && r.chance(0.006) && !pack.some((w) => w.state === WOLF.Feed)) {
+        const t = r.int(14, 26);
+        for (const w of pack) if (w.state !== WOLF.Slink) { w.state = WOLF.Howl; w.timer = t + r.int(0, 4); w.fx = cx; w.fz = cz; w.fx = w.x + (w.x - cx) + 0.01; w.fz = w.z + (w.z - cz); }
+        // a camp in earshot hears them
+        for (const c of this.liveCamps()) {
+          if (hyp(c.x - cx, c.z - cz) > 30) continue;
+          c.heardWolves = this.tick;
+          if (!c.wolvesNoted) {
+            c.wolvesNoted = true;
+            this.event('wolves', `Wolves were heard howling in the hills around ${c.name}.`, [], cx, cz, 2);
+          }
+        }
+      }
+      pack.forEach((w, idx) => {
+        // people: a wolf keeps its distance, and slinks off from anyone who comes too close
+        let threat: { x: number; z: number } | null = null, td = w.pup ? 6 : 5;
+        for (const p of people) {
+          const dist = hyp(p.x - w.x, p.z - w.z);
+          if (dist < td) { td = dist; threat = p; }
+        }
+        if (!threat && feared(w.x, w.z)) threat = shy.reduce((a, b) => (hyp(w.x - a.x, w.z - a.z) < hyp(w.x - b.x, w.z - b.z) ? a : b));
+        if (threat) {
+          const ax = w.x - threat.x, az = w.z - threat.z;
+          const len = hyp(ax, az) || 1;
+          w.tx = w.x + (ax / len) * 7;
+          w.tz = w.z + (az / len) * 7;
+          w.state = WOLF.Slink;
+          w.timer = 14;
+        } else if (prey && !w.pup) {
+          // the pack fans out round the deer, closing in from the sides
+          const a = (idx - (pack.length - 1) / 2) * 0.7;
+          const dx = prey.x - w.x, dz = prey.z - w.z, len = hyp(dx, dz) || 1;
+          const side = Math.min(1.5, len * 0.3);
+          w.tx = prey.x - (dz / len) * Math.sin(a) * side;
+          w.tz = prey.z + (dx / len) * Math.sin(a) * side;
+          w.state = WOLF.Chase;
+          if (len < 0.55 && r.chance(prey.fawn ? 0.7 : snow ? 0.6 : 0.4)) {
+            prey.alive = false;
+            prey.byWolves = true;
+            this.stats.wolfKills++;
+            k.prey = -1;
+            // a deer feeds the pack for a couple of weeks (hares and smaller game between), longer when deer are scarce
+            const scarce = this.deer.filter((q) => q.alive).length < 30;
+            k.fed = this.tick + r.int(14, 21) * (scarce ? 2 : 1) * TICKS_PER_DAY;
+            const fx = prey.x, fz = prey.z;
+            for (const q of pack) {
+              if (q.state === WOLF.Slink) continue;
+              const ang = r.range(0, Math.PI * 2);
+              q.state = WOLF.Feed;
+              q.timer = r.int(90, 140);
+              q.tx = fx + Math.cos(ang) * 0.32;
+              q.tz = fz + Math.sin(ang) * 0.32;
+              q.fx = fx;
+              q.fz = fz;
+            }
+            for (const c of this.liveCamps()) if (hyp(c.x - fx, c.z - fz) < 24) this.event('wolf_kill', `Wolves brought down a deer within sight of ${c.name}.`, [], fx, fz, 1.5);
+            prey = undefined;
+          }
+        } else if (w.state === WOLF.Slink || w.state === WOLF.Chase) {
+          if (--w.timer <= 0) { w.state = WOLF.Rest; w.timer = r.int(6, 20); }
+        } else if (w.state === WOLF.Feed || w.state === WOLF.Howl) {
+          if (--w.timer <= 0) {
+            w.state = w.state === WOLF.Feed ? WOLF.Lie : WOLF.Rest;
+            w.timer = r.int(30, 80);
+            w.tx = w.x; w.tz = w.z;
+          }
+        } else if (w.timer > 0) w.timer--;
+        else {
+          // the pack lies up through the middle of the day and roams at dawn, dusk and by night
+          const idle = hour > 10.5 && hour < 15.5;
+          w.state = idle ? (r.chance(0.7) ? WOLF.Lie : WOLF.Rest) : r.chance(0.55) ? WOLF.Trot : WOLF.Rest;
+          w.timer = w.state === WOLF.Lie ? r.int(40, 90) : r.int(8, 30);
+          // pups keep close to the grown wolves
+          const spread = w.pup ? 1 : 2.5;
+          w.tx = (w.state === WOLF.Trot ? k.tx : cx) + r.range(-spread, spread);
+          w.tz = (w.state === WOLF.Trot ? k.tz : cz) + r.range(-spread, spread);
+        }
+        if (w.state === WOLF.Rest || w.state === WOLF.Lie || w.state === WOLF.Howl) return;
+        const speed = (w.state === WOLF.Chase ? (snow ? 0.7 : 0.75) : w.state === WOLF.Slink ? 0.45 : w.state === WOLF.Feed ? 0.08 : 0.2) * 2;
+        const dx = w.tx - w.x, dz = w.tz - w.z;
+        const len = hyp(dx, dz);
+        if (len < 0.15) {
+          if (w.state === WOLF.Trot) w.state = WOLF.Rest;
+          return;
+        }
+        const nx = w.x + (dx / len) * Math.min(speed, len), nz = w.z + (dz / len) * Math.min(speed, len);
+        const from = this.tileOf(w), to = this.tileOf({ x: nx, z: nz });
+        if (to === from || (this.grid.step(from, to) && this.world.water[to] === WATER.None)) {
+          if (w.state !== WOLF.Feed) { w.fx = w.x + dx; w.fz = w.z + dz; }
+          w.x = nx;
+          w.z = nz;
+        } else if (w.state !== WOLF.Chase) {
+          w.tx = w.x + r.range(-4, 4);
+          w.tz = w.z + r.range(-4, 4);
+        } else {
+          // round the obstacle: a sidestep
+          const sx = w.x - (dz / len) * 0.4, sz = w.z + (dx / len) * 0.4, st = this.tileOf({ x: sx, z: sz });
+          if (st === from || (this.grid.step(from, st) && this.world.water[st] === WATER.None)) { w.x = sx; w.z = sz; }
+        }
+      });
+    }
+  }
+
+  private packsDaily(dayOfYear: number) {
+    const r = this.rWolf;
+    for (const k of this.packs) {
+      const pack = this.wolves.filter((w) => w.alive && w.pack === k.id);
+      const grown = pack.filter((w) => !w.pup);
+      // cubs in late spring, grown by the autumn; a hard winter takes the odd wolf
+      if (dayOfYear === 8 && grown.length >= 2 && pack.length < 5) {
+        const n = r.int(1, 3);
+        for (let i = 0; i < n && pack.length + i < 6; i++) this.spawnWolf(k, k.hx + r.range(-0.6, 0.6), k.hz + r.range(-0.6, 0.6), true);
+      }
+      if (dayOfYear === 32) for (const w of pack) w.pup = false;
+      if (seasonOf(this.tick) === 3 && pack.length > 2 && r.chance(0.008)) pack[r.int(0, pack.length)].alive = false;
+      // an empty range is taken up again, now and then, by a pair from the wilds (not near a camp)
+      if (dayOfYear === 12 && !pack.length && r.chance(0.35) && !this.liveCamps().some((c) => hyp(c.x - k.hx, c.z - k.hz) < 25)) {
+        for (let i = 0; i < 3; i++) this.spawnWolf(k, k.hx + r.range(-1, 1), k.hz + r.range(-1, 1), false);
+      }
+    }
+    if (this.wolves.length > 120) this.wolves = this.wolves.filter((w) => w.alive);
+  }
+
+  /** A band that keeps dogs takes in a pup now and then, for a hunter who has none, up to about one for every four. */
+  private dogsDaily() {
+    const r = this.rAi;
+    for (const c of this.liveCamps()) {
+      if (!c.knows.includes('dogs')) continue;
+      const adults = this.members(c).filter((p) => this.age(p) >= 14);
+      const dogs = adults.filter((p) => p.dog !== undefined).length;
+      if (dogs >= Math.max(1, Math.ceil(adults.length / 4)) || !r.chance(0.2)) continue;
+      if (c.stock.meat + c.stock.fish < adults.length) continue;
+      const who = adults.filter((p) => p.dog === undefined && p.skills[SK.hunt] >= 4).sort((a, b) => b.skills[SK.hunt] - a.skills[SK.hunt])[0];
+      if (!who) continue;
+      who.dog = this.tick;
+      this.remember(who, 'dog', 12, 2, -1, 'Took in a pup to raise as a hunting dog.');
+      this.event('dog', `${who.name} of ${c.name} took in a pup to raise as a hunting dog.`, [who.id], who.x, who.z, 1);
+    }
+  }
+
+  static WOLF_STRIDE = 6;
+  /** The wolves, for the renderer: id, where, a point it faces, its state (plus 10 for a cub). */
+  packWolves(): Float32Array {
+    const list = this.wolves.filter((w) => w.alive);
+    const out = new Float32Array(list.length * Sim.WOLF_STRIDE);
+    list.forEach((w, i) => {
+      const o = i * Sim.WOLF_STRIDE;
+      out[o] = w.id;
+      out[o + 1] = w.x;
+      out[o + 2] = w.z;
+      out[o + 3] = w.fx;
+      out[o + 4] = w.fz;
+      out[o + 5] = w.state + (w.pup ? 10 : 0);
+    });
+    return out;
   }
 
   // ------------------------------------------------------------------ queries for the AI
@@ -3245,7 +3638,8 @@ export class Sim {
       const tool = this.heldBy(p);
       out[o + 15] = tool ? ITEM_KINDS.indexOf(tool.kind) + 1 : 0;
       // a hide cloak over the shoulders
-      out[o + 16] = this.dressFlags(p);
+      // what they wear, and the dog that goes about with them (128: still a pup)
+      out[o + 16] = this.dressFlags(p) | (p.dog !== undefined ? 64 + (this.hasDog(p) ? 0 : 128) : 0);
     });
     return out;
   }
@@ -3388,16 +3782,39 @@ export class Sim {
       if (!d) return null;
       const herd = this.deer.filter((q) => q.alive && q.herd === d.herd);
       const hunter = this.people.find((p) => p.alive && p.task?.kind === 'hunt' && p.task.ref === d.id);
+      const sheltering = isWinter(this.tick) && this.world.terrain[this.tileOf(d)] === T.Forest;
       const lines: CardLine[] = [
         L('Herd', `${herd.length} deer${herd.some((q) => q.fawn) ? `, ${herd.filter((q) => q.fawn).length} ${herd.filter((q) => q.fawn).length === 1 ? 'fawn' : 'fawns'}` : ''}`),
-        L('Doing', !d.alive ? 'Taken by hunters' : d.state === 2 ? 'Running from people' : d.state === 1 ? 'Moving with the herd' : 'Grazing'),
+        L('Doing', !d.alive ? (d.byWolves ? 'Taken by wolves' : 'Taken by hunters') : d.state === 2 ? (this.nearestWolf(d.x, d.z).dist < 6 ? 'Running from wolves' : 'Running from people') : d.state === 4 ? 'Locking antlers with a rival stag'
+          : d.state === 3 ? 'Roaring for the rut' : sheltering ? (d.state === 1 ? 'Moving through the trees' : 'Browsing under the trees')
+          : d.state === 1 ? 'Moving with the herd' : 'Grazing'),
         L('Meat', d.fawn ? 'About 4 meals' : 'About 8 meals'),
       ];
       if (hunter) lines.push(L('Hunted by', hunter.name, pref(hunter.id)));
       return {
         ref, title: d.fawn ? 'Red deer fawn' : isStag(d) ? 'Red deer stag' : 'Red deer doe', subtitle: d.alive ? 'Wild deer' : 'Killed',
-        lines, notes: [`Hunters have brought down ${this.stats.kills} deer so far. Herds breed each spring and drift away from danger.`],
+        lines, notes: [`Hunters have brought down ${this.stats.kills} deer so far. Herds breed each spring, stags fight over the does in the autumn rut, and in winter the herds shelter in the woods.`],
         x: d.x, z: d.z, gone: !d.alive,
+      };
+    }
+    if (ref.kind === 'wolf') {
+      const w = this.wolves.find((q) => q.id === ref.id);
+      if (!w) return null;
+      const k = this.packs[w.pack];
+      const pack = this.wolves.filter((q) => q.alive && q.pack === w.pack);
+      const pups = pack.filter((q) => q.pup).length;
+      const doing = !w.alive ? 'Gone' : w.state === WOLF.Chase ? 'Running down a deer' : w.state === WOLF.Feed ? 'Feeding at a kill'
+        : w.state === WOLF.Slink ? 'Slinking away from people' : w.state === WOLF.Howl ? 'Howling with the pack' : w.state === WOLF.Lie ? 'Lying up'
+        : w.state === WOLF.Trot ? 'Trotting with the pack' : 'Standing watch';
+      const lines: CardLine[] = [
+        L('Pack', `${pack.length} wolves${pups ? `, ${pups} ${pups === 1 ? 'cub' : 'cubs'}` : ''}`),
+        L('Doing', doing),
+        L('Hunger', !k ? '' : this.tick < k.fed - 60 ? 'Fed' : k.prey >= 0 ? 'Hunting' : 'Hungry'),
+      ];
+      return {
+        ref, title: w.pup ? 'Wolf cub' : 'Grey wolf', subtitle: 'Wild wolf', lines,
+        notes: [`Wolves have brought down ${this.stats.wolfKills ?? 0} deer. They keep clear of people and of the camp fires, and howl at dusk.`],
+        x: w.x, z: w.z, gone: !w.alive,
       };
     }
     if (ref.kind === 'building') {
@@ -3823,6 +4240,7 @@ export class Sim {
         .sort((a, b) => b.tick - a.tick),
       home: home ? labelOf(home) : null,
       kills: p.kills,
+      dog: p.dog === undefined ? null : this.hasDog(p) ? 'A hunting dog, raised from a pup' : 'A pup, still growing',
       carry: p.carry,
       carryAmt: p.carryAmt,
       tool: (() => {
@@ -3946,7 +4364,8 @@ export interface SaveData {
   nextId: number;
   nextEvent: number;
   eventHash: number;
-  rng: { life: number[]; ai: number[]; wild: number[]; tongue: number[] };
+  /** (saves from before the wolves have no `wolves` stream; it starts afresh) */
+  rng: { life: number[]; ai: number[]; wild: number[]; tongue: number[]; wolves: number[] };
   props: { count: number; type: string; x: string; y: string; z: string; rot: string; scale: string; alive: string; val: string; tile: string };
   propNote: Entries<number, string>;
   reserved: Entries<number, number>;
@@ -3974,6 +4393,9 @@ export interface SaveData {
   items?: Item[];
   deer: Deer[];
   herds: Herd[];
+  /** absent in saves from before the wolves */
+  wolves?: Wolf[];
+  packs?: Pack[];
 }
 
 /** Typed array bytes as base64 (works in browsers, workers and Node). */

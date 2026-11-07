@@ -158,7 +158,8 @@ describe('tools', () => {
     c.knows.push('baskets');
     expect(s.toolToMake()).toBe('basket');
     Object.assign(c.stock, { wood: 200, fiber: 40 });
-    for (let d = 0; d < 6 && s.toolsOf(c, 'basket').length < 2; d++) runTo(s, s.tick + TICKS_PER_DAY);
+    // (it waits on whoever is free from the food work, which can take a week or two)
+    for (let d = 0; d < 14 && s.toolsOf(c, 'basket').length < 2; d++) runTo(s, s.tick + TICKS_PER_DAY);
     expect(s.toolsOf(c, 'basket').length).toBeGreaterThanOrEqual(1);
     expect(s.toolsOf(c, 'basket').length).toBeLessThanOrEqual(Math.min(4, 1 + Math.floor(s.members().length / 5)));
   });
