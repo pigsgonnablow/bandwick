@@ -6,7 +6,7 @@ Conventions (read by src/render/band.ts):
       the game shows one of the four hair pieces (short, long, braids, bun), on some men the beard, and the cloak on those who have one.
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
-  deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
+  deer__{body,head,jaw,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
   finch__{body,wingL,wingR}, goose__{body,wingL,wingR}             birds, wings spread from the shoulder; beaten, held out or folded in the shader.
   fish__{body,tail}                                                a brown trout in two parts, bent in the shader as it swims and leaps.
   hare__{body,head,ears,fore,hind}                                 a brown hare in parts, posed in the shader (hopping, sitting up, nibbling).
@@ -674,6 +674,26 @@ for ex in (-1, 1):
                                                 (-ex * 0.0012, 0, 0.030), (-ex * 0.0012, -0.0055, 0.019), (-ex * 0.0030, 0, 0.014)]],
           [(0, 1, 5), (1, 2, 5), (2, 3, 5), (3, 4, 5), (4, 0, 5), (0, 4, 3, 2, 1)], BELLY, raw=False)
 q.finish("deer__head")
+
+MOUTH = (110, 52, 50)
+q = Part()  # the lower jaw, dropped open when a stag roars in the rut (hidden the rest of the time): pale under
+# the chin, the inside of the mouth dark and red, a tongue lying in it, a row of worn teeth at the front
+jaw = [((0, -0.181, 0.300), 0.0125, 0.0072), ((0, -0.196, 0.2955), 0.0105, 0.0062), ((0, -0.209, 0.2925), 0.0085, 0.0052),
+       ((0, -0.2185, 0.2905), 0.0065, 0.0042)]
+
+
+def jaw_mid(y):
+    for (a, _, _), (b, _, _) in zip(jaw, jaw[1:]):
+        if b[1] <= y <= a[1]:
+            k = (y - a[1]) / (b[1] - a[1])
+            return a[2] + (b[2] - a[2]) * k
+    return jaw[-1][0][2] if y < jaw[-1][0][1] else jaw[0][0][2]
+
+
+sweep(q, jaw, 8, lambda c: MOUTH if c.z > jaw_mid(c.y) + 0.0025 else (DEER if c.y > -0.19 and c.z < jaw_mid(c.y) - 0.004 else BELLY))
+q.box((0, -0.199, 0.3005), (0.0070, 0.020, 0.0026), (176, 92, 92), rnd, 0.0, rot=Matrix.Rotation(0.2, 3, "X"))  # tongue
+q.box((0, -0.2175, 0.2952), (0.0085, 0.0028, 0.0030), (226, 218, 196), rnd, 0.0)  # teeth
+q.finish("deer__jaw")
 
 
 def tine(q, a, b, r0, r1):

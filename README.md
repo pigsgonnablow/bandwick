@@ -120,6 +120,11 @@ Birds too: small flocks of finches feed on open grass near the camera, go up tog
 comes close and come down again a few tiles off, and roost out of sight at night. Skeins of geese
 pass high over, northward early in spring and southward in autumn. A pair of birds flutters round
 a tree while someone robs their nest, and bees boil out of a wild hive being smoked.
+The deer keep the seasons. In the autumn rut the stags stop to roar, neck out and jaw dropped, their
+breath steaming, and a stag with a rival close by squares up to him: they lock antlers, shove to and
+fro and crash together until one gives way. A roaring or fighting stag hardly notices people, and is
+an easier kill. In winter the herds keep to the woods, and the snow slows a running deer; hunters
+follow fresh tracks to herds further out (the hoofprints show in the snow, filling in over time).
 
 **Crafting.** Everything made by the fire is one job with a list of recipes (`RECIPES` in
 `src/sim/band.ts`): cordage, the hand chopper and the stone axe so far. Each morning the plan says

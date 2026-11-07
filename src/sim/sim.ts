@@ -14,7 +14,7 @@ import {
 } from './band';
 import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
-  isDark, temperature, berriesRipe, freshFrozen, seasonPos, seasonOf, ageYears, yearOf, dayOf, hourOf,
+  isDark, temperature, berriesRipe, freshFrozen, rutting, snowLies, isWinter, seasonPos, seasonOf, ageYears, yearOf, dayOf, hourOf,
 } from './time';
 import { decide, runTask, abandon, sendHome, delivering, FAR_GRAVE } from './ai';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets } from './know';
@@ -3139,24 +3139,53 @@ export class Sim {
     if (this.tick % 2) return;
     const r = this.rWild;
     const people = this.people.filter((p) => p.alive && !p.indoors && this.age(p) >= 2);
+    const winter = isWinter(this.tick), rut = rutting(this.tick), snow = snowLies(this.tick);
+    const N = this.world.size;
     for (const h of this.herds) {
       if (this.tick >= h.next) {
         h.tx = h.hx + r.range(-9, 9);
         h.tz = h.hz + r.range(-9, 9);
+        // in winter the herd keeps to the shelter of the trees, browsing where the snow lies thin
+        if (winter) {
+          for (let k = 0; k < 4; k++) {
+            const tx = Math.floor(h.tx), tz = Math.floor(h.tz);
+            if (tx >= 0 && tz >= 0 && tx < N && tz < N && this.world.terrain[tz * N + tx] === T.Forest) break;
+            h.tx = h.hx + r.range(-9, 9);
+            h.tz = h.hz + r.range(-9, 9);
+          }
+        }
         h.next = this.tick + r.int(60, 160);
       }
     }
+    const byId = (id: number | undefined) => (id === undefined ? undefined : this.deer.find((q) => q.id === id && q.alive));
+    // a stag breaks off a fight (or is killed in one): his rival is left standing
+    const unlock = (d: Deer) => {
+      const f = byId(d.foe);
+      d.foe = undefined;
+      if (f && f.foe === d.id) {
+        f.foe = undefined;
+        if (f.state === 4) {
+          f.state = 0;
+          f.timer = r.int(4, 12);
+        }
+      }
+    };
     for (const d of this.deer) {
-      if (!d.alive) continue;
+      if (!d.alive) {
+        if (d.foe !== undefined) unlock(d);
+        continue;
+      }
       const h = this.herds[d.herd];
-      // danger: the nearest person (hunters are stealthier)
+      // danger: the nearest person (hunters are stealthier; a roaring or fighting stag is too taken up to notice much)
       let threat: Person | null = null, td = 99;
+      const heed = d.state === 4 ? 0.5 : d.state === 3 ? 0.75 : 1;
       for (const p of people) {
         const dist = hyp(p.x - d.x, p.z - d.z);
-        const radius = p.task?.kind === 'hunt' ? Math.max(1.5, 2.6 - p.skills[SK.hunt] * 0.06) : 3.6;
+        const radius = (p.task?.kind === 'hunt' ? Math.max(1.5, 2.6 - p.skills[SK.hunt] * 0.06) : 3.6) * heed;
         if (dist < radius && dist < td) { td = dist; threat = p; }
       }
       if (threat) {
+        if (d.foe !== undefined) unlock(d);
         const ax = d.x - threat.x, az = d.z - threat.z;
         const len = hyp(ax, az) || 1;
         d.tx = d.x + (ax / len) * 7;
@@ -3171,15 +3200,65 @@ export class Sim {
       }
       if (d.state !== 2) {
         if (d.timer > 0) d.timer--;
-        else if (r.chance(0.08)) {
+        else if (d.state === 4) {
+          // the fight is over: one gives way, and now and then the other bellows after him
+          unlock(d);
+          d.state = 0;
+          d.timer = r.int(10, 30);
+          if (r.chance(0.5)) {
+            d.state = 3;
+            d.timer = r.int(8, 14);
+          }
+        } else if (r.chance(0.08)) {
           d.state = d.state === 0 ? 1 : 0;
           d.timer = r.int(10, 40);
           d.tx = h.tx + r.range(-2, 2);
           d.tz = h.tz + r.range(-2, 2);
+          // the autumn rut: stags stop to roar, and square up to any rival close by
+          if (rut && isStag(d) && r.chance(0.35)) {
+            const rival = this.deer.find((q) => q !== d && q.alive && isStag(q) && q.herd === d.herd && q.state < 2 && hyp(q.x - d.x, q.z - d.z) < 5);
+            if (rival && r.chance(0.4)) {
+              d.state = rival.state = 4;
+              d.foe = rival.id;
+              rival.foe = d.id;
+              d.timer = rival.timer = r.int(24, 44);
+            } else {
+              d.state = 3;
+              d.timer = r.int(8, 16);
+            }
+          }
         }
       }
-      if (d.state === 0) continue;
-      const speed = (d.state === 2 ? 0.7 : 0.16) * 2;
+      if (d.state === 0 || d.state === 3) continue;
+      if (d.state === 4) {
+        // close in until the antlers meet, then push head to head
+        const f = byId(d.foe);
+        if (!f) {
+          d.foe = undefined;
+          d.state = 0;
+          continue;
+        }
+        const dx = f.x - d.x, dz = f.z - d.z;
+        const len = hyp(dx, dz) || 1;
+        d.fx = f.x;
+        d.fz = f.z;
+        const gap = len - 0.34;
+        if (gap > 0.02) {
+          const step = Math.min(0.12, gap / 2);
+          const nx = d.x + (dx / len) * step, nz = d.z + (dz / len) * step;
+          const from = this.tileOf(d), to = this.tileOf({ x: nx, z: nz });
+          if (to === from || (this.grid.step(from, to) && this.world.water[to] === WATER.None)) {
+            d.x = nx;
+            d.z = nz;
+          } else {
+            unlock(d);
+            d.state = 0;
+          }
+        }
+        continue;
+      }
+      // deep snow slows a running deer down
+      const speed = (d.state === 2 ? (snow ? 0.55 : 0.7) : 0.16) * 2;
       const dx = d.tx - d.x, dz = d.tz - d.z;
       const len = hyp(dx, dz);
       if (len < 0.2) {
@@ -3388,15 +3467,18 @@ export class Sim {
       if (!d) return null;
       const herd = this.deer.filter((q) => q.alive && q.herd === d.herd);
       const hunter = this.people.find((p) => p.alive && p.task?.kind === 'hunt' && p.task.ref === d.id);
+      const sheltering = isWinter(this.tick) && this.world.terrain[this.tileOf(d)] === T.Forest;
       const lines: CardLine[] = [
         L('Herd', `${herd.length} deer${herd.some((q) => q.fawn) ? `, ${herd.filter((q) => q.fawn).length} ${herd.filter((q) => q.fawn).length === 1 ? 'fawn' : 'fawns'}` : ''}`),
-        L('Doing', !d.alive ? 'Taken by hunters' : d.state === 2 ? 'Running from people' : d.state === 1 ? 'Moving with the herd' : 'Grazing'),
+        L('Doing', !d.alive ? 'Taken by hunters' : d.state === 2 ? 'Running from people' : d.state === 4 ? 'Locking antlers with a rival stag'
+          : d.state === 3 ? 'Roaring for the rut' : sheltering ? (d.state === 1 ? 'Moving through the trees' : 'Browsing under the trees')
+          : d.state === 1 ? 'Moving with the herd' : 'Grazing'),
         L('Meat', d.fawn ? 'About 4 meals' : 'About 8 meals'),
       ];
       if (hunter) lines.push(L('Hunted by', hunter.name, pref(hunter.id)));
       return {
         ref, title: d.fawn ? 'Red deer fawn' : isStag(d) ? 'Red deer stag' : 'Red deer doe', subtitle: d.alive ? 'Wild deer' : 'Killed',
-        lines, notes: [`Hunters have brought down ${this.stats.kills} deer so far. Herds breed each spring and drift away from danger.`],
+        lines, notes: [`Hunters have brought down ${this.stats.kills} deer so far. Herds breed each spring, stags fight over the does in the autumn rut, and in winter the herds shelter in the woods.`],
         x: d.x, z: d.z, gone: !d.alive,
       };
     }

@@ -573,8 +573,10 @@ export interface Deer {
   tz: number;
   fx: number;
   fz: number;
-  state: number; // 0 graze, 1 walk, 2 flee
+  state: number; // 0 graze, 1 walk, 2 flee, 3 roar (the rut), 4 spar with another stag
   timer: number;
+  /** the stag it has locked antlers with, while sparring */
+  foe?: number;
   alive: boolean;
   fawn: boolean;
 }
