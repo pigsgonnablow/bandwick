@@ -79,6 +79,15 @@ export function berriesRipe(t: number) {
 export function isWinter(t: number) {
   return seasonOf(t) === 3;
 }
+/** The autumn rut: from early to late autumn the stags roar and fight over the does. */
+export function rutting(t: number) {
+  const s = seasonPos(t);
+  return s >= 2.2 && s < 2.75;
+}
+/** Snow lies on the ground through winter (matches the renderer's snow once it has settled). */
+export function snowLies(t: number) {
+  return seasonPos(t) >= 3.0;
+}
 /** Fresh water is frozen in deep winter (matches the renderer's ice). */
 export function freshFrozen(t: number) {
   const s = seasonPos(t);

@@ -9,6 +9,7 @@ import { BASE_TPS } from '../sim/runner';
 import { HareLayer } from './hares';
 import { FishLayer } from './fish';
 import { BirdLayer } from './birds';
+import { TrackLayer } from './tracks';
 import { WorldData, WATER, STEP } from '../sim/types';
 import { addCommon } from './shaderlib';
 import { U } from './env';
@@ -31,7 +32,11 @@ const EGGS_TASK = TASK_KINDS.indexOf('eggs') + 1, HONEY_TASK = TASK_KINDS.indexO
 /** How walls that are not wood colour a building that has no model of its own for them (multiplied over its own colours). */
 const WALL_TINT: Record<string, [number, number, number]> = { daub: [1.0, 0.86, 0.68], stone: [0.8, 0.82, 0.86] };
 /** A flying chip of wood or a drop of water. */
-interface Bit { x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number; life: number; size: number; r: number; g: number; b: number; floor: number }
+interface Bit {
+  x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number; life: number; size: number; r: number; g: number; b: number; floor: number;
+  /** a breath of vapour rather than a chip or a drop: it drifts up instead of falling, and spreads as it goes */
+  vapour?: boolean;
+}
 /** Water deeper than this share of someone's height means swimming rather than wading. */
 const SWIM_DEPTH = 0.72;
 const D_STRIDE = 6;
@@ -48,6 +53,10 @@ interface DeerShown {
   angle: number; want: number;
   phase: number; gait: number; moving: number;
   seen: number; state: number; fawn: boolean;
+  /** distance walked since the last print in the snow, and which foot comes next */
+  trail: number; foot: number;
+  /** the last roar it steamed a breath for, and the last clash of antlers it threw up snow or dirt for */
+  puffed: number; clashed: number;
 }
 const JT = gait.joints as unknown as Record<string, [number, number, number]>;
 const HIP_Y = JT.hip[1];
@@ -229,6 +238,8 @@ export class BandLayer {
   fish: FishLayer;
   /** finch flocks, geese passing over, birds round a robbed nest and bees round a smoked hive */
   birds: BirdLayer;
+  /** hoofprints left in the snow */
+  tracks = new TrackLayer();
   /** anyone robbing a nest (kind 0) or smoking out a hive (kind 1) this frame, at the tree */
   private gleaners: { id: number; kind: number; x: number; z: number; y: number }[] = [];
   private carryMeshes = new Map<number, THREE.InstancedMesh>();
@@ -267,7 +278,7 @@ export class BandLayer {
     this.hares = new HareLayer(world.size, world.terrain, (x, z) => this.groundAt(x, z), geoms);
     this.fish = new FishLayer(world, geoms, (x, z, y, size, drops) => this.waterMark(x, z, y, size, drops));
     this.birds = new BirdLayer(world, (x, z) => this.groundAt(x, z), geoms);
-    this.group.add(this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh, this.birds.group);
+    this.group.add(this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh, this.birds.group, this.tracks.mesh);
     // carried things
     const carryNames: [number, string][] = [
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
@@ -550,7 +561,7 @@ export class BandLayer {
   // ---------------------------------------------------------------- deer mesh
   private makeDeer(geoms: Map<string, THREE.BufferGeometry>) {
     const parts: [string, number, [number, number, number]][] = [
-      ['body', 0, [0, 0.19, 0]], ['head', 1, [0, 0.21, 0.1]], ['antlers', 6, [0, 0.21, 0.1]], ['spots', 7, [0, 0.19, 0]],
+      ['body', 0, [0, 0.19, 0]], ['head', 1, [0, 0.21, 0.1]], ['antlers', 6, [0, 0.21, 0.1]], ['spots', 7, [0, 0.19, 0]], ['jaw', 8, [0, 0.21, 0.1]],
       ['legFL', 2, [-0.035, 0.15, 0.09]], ['legFR', 3, [0.035, 0.15, 0.09]], ['legBL', 4, [-0.035, 0.15, -0.09]], ['legBR', 5, [0.035, 0.15, -0.09]],
     ];
     const list: THREE.BufferGeometry[] = [];
@@ -586,8 +597,19 @@ export class BandLayer {
             float st = iAnim.x;
             float ph = iAnim2.x * 6.2831853;
             float gait = iAnim2.y, mv = iAnim2.z, leap = iAnim2.w;
-            float a = 0.0;
+            float a = 0.0, tilt = 0.0;
             float bob = 0.0;
+            // the rut. A roaring stag (state 3) stretches his neck up and out and drops his jaw for a
+            // long bellow, then draws breath; two fighting stags (state 4) put their heads down and lock
+            // antlers, shove one way and then the other, and every so often draw back and crash together.
+            // iAnim.y is which way this one gives ground (+1 or -1), so the pair heave together.
+            float roar = step(2.5, st) * step(st, 3.5);
+            float spar = step(3.5, st);
+            float bell = roar * pow(max(0.0, sin((uTime + iAnim.y) * 1.7)), 1.5);
+            float cyc = fract(uTime / 2.4);
+            float draw = spar * smoothstep(0.62, 0.9, cyc) * (1.0 - smoothstep(0.9, 0.97, cyc));
+            float jolt = spar * (1.0 - smoothstep(0.0, 0.12, cyc));
+            float push = spar * iAnim.y * (sin(uTime * 0.9) * 0.7 + sin(uTime * 2.3 + 1.0) * 0.3) * (1.0 - draw);
             if (aPart > 1.5 && aPart < 5.5) {
               bool front = aPart < 3.5;
               bool left = aPart < 2.5 || (aPart > 3.5 && aPart < 4.5);
@@ -602,22 +624,48 @@ export class BandLayer {
               a = sw * mix(0.4, 0.8, gait) * mv;
               // springing up or down a ledge: forelegs tuck forward, hind legs push out behind
               a += leap * (front ? -0.7 : 0.55);
-            } else if (aPart > 0.5 && aPart < 6.5) {
+              // braced to fight: forefeet planted out in front, hind legs driving back, harder as he gains ground
+              a += spar * (front ? -0.22 - 0.1 * push : 0.3 + 0.18 * max(0.0, push));
+            } else if ((aPart > 0.5 && aPart < 6.5) || aPart > 7.5) {
               // grazing: head down most of the time, up now and then to look around
               float graze = st < 0.5 ? smoothstep(-0.3, 0.3, sin((uTime + iAnim.y) * 0.6)) * (1.0 - mv) : 0.0;
               // a nod in time with the walk, stretched out at the gallop
               float nod = sin(ph * 2.0) * 0.06 * mv * (1.0 - gait);
               a = graze + nod - 0.25 * gait * mv;
+              // roaring: neck stretched out and the nose thrown up, antlers laid back along the spine;
+              // fighting: neck low and the brow tucked so the antlers point at the rival, tossed up as they draw back
+              a += roar * 0.12 * bell + spar * (0.75 - 0.5 * draw + 0.1 * jolt);
+              tilt = roar * (-0.45 - 0.55 * bell) + spar * (1.0 - 0.5 * draw);
             }
             // the body rises over each stride: a slight sway at the walk, a bound at the gallop
             bob = (abs(sin(ph)) * mix(0.006, 0.035, gait)) * mv;
-            mat3 Rp = rx(a);
+            // the head nods on the top of the neck (the poll) as well as the neck swinging from the
+            // shoulders: the part of the head part beyond the poll bends with it, the lower jaw hinges open
+            // under the head (and is only there at all while roaring)
+            mat3 Rp = mat3(1.0);
+            T = vec3(0.0);
+            if (aPart > 7.5) {
+              vec3 hinge = vec3(0.0, 0.300, 0.181);
+              Rp = rx(bell * 0.6);
+              T = hinge - Rp * hinge;
+            }
+            if (tilt != 0.0 && ((aPart > 0.5 && aPart < 1.5) || (aPart > 5.5 && aPart < 6.5) || aPart > 7.5)) {
+              vec3 poll = vec3(0.0, 0.315, 0.150);
+              mat3 Rt = rx(tilt * smoothstep(0.13, 0.15, position.z));
+              Rp = Rt * Rp;
+              T = Rt * T + poll - Rt * poll;
+            }
+            mat3 Rn = rx(a);
+            Rp = Rn * Rp;
+            T = Rn * T + aPivot - Rn * aPivot;
+            if (aPart > 7.5 && roar < 0.5) Rp = mat3(0.0);
             // antlers are worn by stags only (iAnim.z), a dappled coat by fawns only (iAnim.w)
             if (aPart > 5.5 && aPart < 6.5 && iAnim.z < 0.5) Rp = mat3(0.0);
-            if (aPart > 6.5 && iAnim.w < 0.5) Rp = mat3(0.0);
+            if (aPart > 6.5 && aPart < 7.5 && iAnim.w < 0.5) Rp = mat3(0.0);
             R = Rp;
-            T = aPivot - Rp * aPivot;
-            T.y += bob;
+            T.y += bob + bell * 0.004;
+            // the pair heave to and fro together, and both rock back before each crash
+            T.z += push * 0.022 - draw * 0.03 + jolt * 0.008;
           }`)
         .replace('#include <beginnormal_vertex>', `
           mat3 poseR; vec3 poseT;
@@ -871,7 +919,7 @@ export class BandLayer {
       if (!d) {
         const gy = this.groundAt(nx, nz);
         d = { x: nx, z: nz, sx: nx, sz: nz, t0: now, dur: this.tickMs * 2, movedAt: 0, dx: nx, dz: nz, yf: gy, yb: gy, y: gy, pitch: 0,
-          angle: 0, want: 0, phase: (id % 17) / 17, gait: 0, moving: 0, seen, state: 0, fawn: false };
+          angle: 0, want: 0, phase: (id % 17) / 17, gait: 0, moving: 0, seen, state: 0, fawn: false, trail: 0, foot: 0, puffed: -1, clashed: -1 };
         this.deer.set(id, d);
       } else if (Math.abs(nx - d.x) + Math.abs(nz - d.z) > 1e-5) {
         // the herd only moves every other tick: glide from wherever it is drawn to the new spot
@@ -1202,11 +1250,16 @@ export class BandLayer {
         const b = this.bits[i];
         b.age += dt;
         if (b.age >= b.life) { this.bits[i] = this.bits[this.bits.length - 1]; this.bits.pop(); continue; }
-        b.vy -= 3.2 * dt;
+        if (b.age < 0) continue;
+        if (b.vapour) {
+          const drag = Math.exp(-dt * 1.6);
+          b.vx *= drag; b.vz *= drag;
+          b.vy += 0.04 * dt;
+        } else b.vy -= 3.2 * dt;
         b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
         if (b.y < b.floor) { b.y = b.floor; b.vx *= 0.3; b.vz *= 0.3; b.vy = 0; }
         if (k >= this.bitMesh.instanceMatrix.count) continue;
-        const sz = b.size * (1 - Math.max(0, (b.age - b.life * 0.6) / (b.life * 0.4)));
+        const sz = b.size * (1 - Math.max(0, (b.age - b.life * 0.6) / (b.life * 0.4))) * (b.vapour ? 1 + b.age * 2.2 : 1);
         bm4.makeRotationY(i * 1.3 + b.age * 6).scale(new THREE.Vector3(sz, sz, sz)).setPosition(b.x, b.y, b.z);
         this.bitMesh.setMatrixAt(k, bm4);
         this.bitMesh.setColorAt(k, bc.setRGB(b.r, b.g, b.b).convertSRGBToLinear());
@@ -1267,6 +1320,7 @@ export class BandLayer {
     const pitchQ = new THREE.Quaternion(), xAxis = new THREE.Vector3(1, 0, 0);
     let dn = 0;
     this.visibleDeer.length = 0;
+    const snowy = this.tracks.snowy;
     for (const [id, d] of this.deer) {
       if (dn >= dAnim.count) break;
       const t = Math.min(1, (now - d.t0) / d.dur);
@@ -1299,12 +1353,58 @@ export class BandLayer {
       d.pitch += (pitchGoal - d.pitch) * Math.min(1, dt * 14);
       const leap = Math.min(1, Math.abs(rise) / (STEP * 0.5));
       d.y = (d.yf + d.yb) / 2 + leap * (1 - leap * 0.5) * 0.08 * size;
+      // a line of slots behind it in the snow, left and right feet in turn
+      if (snowy && moved > 0 && moved < 1) {
+        d.trail += moved;
+        const gap = stride * 0.5;
+        while (d.trail > gap) {
+          d.trail -= gap;
+          d.foot = 1 - d.foot;
+          const side = (d.foot ? 1 : -1) * 0.03 * size, back = d.trail;
+          const px = x + Math.cos(d.angle) * side - Math.sin(d.angle) * back, pz = z - Math.sin(d.angle) * side - Math.cos(d.angle) * back;
+          this.tracks.press(px, this.groundAt(px, pz) + 0.003, pz, d.angle, size);
+        }
+      }
+      // two stags locked together heave as one: each needs to know which way it gives ground
+      const yields = Math.sin(d.angle + 0.3) >= 0 ? 1 : -1;
+      if (d.state === 4 && yields > 0) {
+        // each crash of antlers throws up a spurt of snow or earth between them
+        const n = Math.floor(U.uTime.value / 2.4);
+        if (n !== d.clashed) {
+          if (d.clashed >= 0 && Math.hypot(x - camTarget.x, z - camTarget.z) < 30) {
+            const hx2 = x + Math.sin(d.angle) * 0.17, hz2 = z + Math.cos(d.angle) * 0.17, gy = this.groundAt(hx2, hz2);
+            const white = U.uSnow.value > 0.4;
+            for (let k = 0; k < 6; k++) {
+              const a2 = Math.random() * Math.PI * 2, sp = 0.1 + Math.random() * 0.25;
+              this.bits.push({ x: hx2, y: d.y + 0.22, z: hz2, vx: Math.cos(a2) * sp, vy: 0.3 + Math.random() * 0.5, vz: Math.sin(a2) * sp,
+                age: 0, life: 0.7, size: 0.008 + Math.random() * 0.006, r: white ? 0.93 : 0.5, g: white ? 0.95 : 0.4, b: white ? 0.98 : 0.3, floor: gy });
+            }
+          }
+          d.clashed = n;
+        }
+      }
+      // a roaring stag's breath steams in the cold autumn air at the height of each bellow
+      if (d.state === 3) {
+        const tr = (U.uTime.value + (id % 97) * 0.61) * 1.7;
+        const cycle = Math.floor((tr - Math.PI * 0.5) / (Math.PI * 2));
+        if (cycle !== d.puffed) {
+          if (d.puffed >= 0 && Math.hypot(x - camTarget.x, z - camTarget.z) < 30) {
+            const mx = x + Math.sin(d.angle) * 0.26 * size, mz = z + Math.cos(d.angle) * 0.26 * size;
+            for (let k = 0; k < 5; k++) {
+              this.bits.push({ x: mx, y: d.y + 0.37 * size, z: mz, vx: Math.sin(d.angle) * (0.12 + k * 0.03) + (Math.random() - 0.5) * 0.05, vy: 0.05 + Math.random() * 0.05,
+                vz: Math.cos(d.angle) * (0.12 + k * 0.03) + (Math.random() - 0.5) * 0.05, age: -k * 0.05, life: 1.3, size: 0.012 + Math.random() * 0.006,
+                r: 0.92, g: 0.93, b: 0.95, floor: -99, vapour: true });
+            }
+          }
+          d.puffed = cycle;
+        }
+      }
       pos.set(x, d.y, z);
       q.setFromAxisAngle(up, d.angle).multiply(pitchQ.setFromAxisAngle(xAxis, -d.pitch));
       scl.setScalar(size);
       m4.compose(pos, q, scl);
       this.deerMesh.setMatrixAt(dn, m4);
-      dAnim.setXYZW(dn, d.state, (id % 97) * 0.61, !d.fawn && id % 2 ? 1 : 0, d.fawn ? 1 : 0);
+      dAnim.setXYZW(dn, d.state, d.state === 4 ? yields : (id % 97) * 0.61, !d.fawn && id % 2 ? 1 : 0, d.fawn ? 1 : 0);
       dAnim2.setXYZW(dn, d.phase, d.gait, d.moving, leap);
       dn++;
       this.visibleDeer.push({ id, x, y: d.y + 0.2, z, fawn: d.fawn, state: d.state });
@@ -1318,6 +1418,7 @@ export class BandLayer {
     // hares keep the game's pace: still while it is paused, quicker (up to a point) when it runs fast
     const paced = now - this.frameAt > 1200 ? 0 : dt * Math.min(4, Math.max(0.5, this.tpsNow / BASE_TPS));
     this.hares.update(paced, camTarget, this.viewZoom, this.visible);
+    this.tracks.update(paced);
     // fish scatter from anyone in the water and from a spear going in
     const spears = this.rings.filter((r) => r.size >= 0.5 && now - r.at < 400);
     this.fish.update(paced, camTarget, this.viewZoom, this.swimmers, spears);

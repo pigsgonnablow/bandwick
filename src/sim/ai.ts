@@ -3,7 +3,7 @@
 import type { Sim } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill } from './band';
-import { hourOf, isDark, berriesRipe, freshFrozen, seasonOf, dayOf, TICKS_PER_DAY } from './time';
+import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
 const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
@@ -705,7 +705,9 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       return newTask(s, kind, s.propTile[k], s.propX[k] + 0.25, s.propZ[k] + 0.2, k);
     }
     case 'hunt': {
-      let best = -1, bestD = 56;
+      // fresh tracks in the snow lead hunters to deer much further out, and keep them on the trail
+      const snow = snowLies(s.tick);
+      let best = -1, bestD = snow ? 72 : 56;
       s.deer.forEach((d, i) => {
         if (!d.alive) return;
         const dist = hyp(d.x - c.x, d.z - c.z);
@@ -716,10 +718,10 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       });
       if (best < 0) return null;
       const d = s.deer[best];
-      p.thought = 'Tracking deer.';
+      p.thought = snow ? 'Following tracks in the snow.' : d.state === 4 ? 'Stalking two stags locked in a fight.' : 'Tracking deer.';
       const t = newTask(s, kind, s.tileOf(d), d.x, d.z, d.id, true);
       // time to walk out there, plus time to stalk and chase
-      t.deadline = s.tick + 110 + Math.round(hyp(d.x - p.x, d.z - p.z) / 0.3);
+      t.deadline = s.tick + (snow ? 150 : 110) + Math.round(hyp(d.x - p.x, d.z - p.z) / 0.3);
       return t;
     }
     case 'fish': {
@@ -2339,7 +2341,8 @@ export function runTask(s: Sim, p: Person) {
           s.event('injury', `${p.name} was ${hurt}.`, [p.id], p.x, p.z, 2);
           if (p.health <= 0) return s.kill(p, 'hunting');
         }
-        const chance = 0.15 + p.skills[SK.hunt] * 0.022 + (s.has(p, 'brave') ? 0.05 : 0);
+        // a stag with his antlers locked in another's, or roaring for the rut, makes an easier mark
+        const chance = 0.15 + p.skills[SK.hunt] * 0.022 + (s.has(p, 'brave') ? 0.05 : 0) + (d.state === 4 ? 0.1 : d.state === 3 ? 0.04 : 0);
         flash(p, FLASH.Thrust);
         if (r.next() < chance) {
           d.alive = false;
