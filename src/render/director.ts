@@ -129,6 +129,13 @@ export class Director {
       const caption = wolf.state === 2 ? 'A wolf pack runs down a deer.' : wolf.state === 3 ? 'Wolves feed at a kill.' : 'The wolves howl.';
       return take({ key: 'wolves', personId: -1, x: wolf.x, z: wolf.z, zoom: 11, until: now + 8000, caption, why: 'wolves' });
     }
+    // a beaver at work, a fox mousing or a sounder rooting
+    const beast = band.beasts.visible.find((v) => (v.kind === 2 && (v.state === 3 || v.state === 2)) || (v.kind === 1 && (v.state === 3 || v.state === 5)) || (v.kind === 0 && v.state === 3));
+    if (beast && !recently('beasts', 90000)) {
+      const caption = beast.kind === 2 ? (beast.state === 3 ? 'A beaver gnaws through a birch by the water.' : 'A beaver swims out from its lodge.')
+        : beast.kind === 1 ? (beast.state === 5 ? 'A fox takes a hare from a snare.' : 'A fox listens for mice in the grass.') : 'Wild boar root through the woods.';
+      return take({ key: 'beasts', personId: -1, x: beast.x, z: beast.z, zoom: 9, until: now + 8000, caption, why: 'beasts' });
+    }
     const deer = band.visibleDeer;
     if (deer.length && !recently('deer', 60000)) {
       const d = deer[(this.shots * 13) % deer.length];

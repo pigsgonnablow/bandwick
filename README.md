@@ -138,6 +138,23 @@ a hunt, nosing about when they stop, lying across the doorway while they sleep. 
 further off and holds them at bay (a better kill), and helps fend off an attack. Wolves and dogs leave
 prints in the snow too.
 
+Wild boar keep to the woods in sounders: a sow or two with their young, striped piglets born in early
+spring. They root through the leaf litter, lie up at midday and, in autumn, go to the oaks for the
+acorns, sometimes clearing a tree before the band's foragers get there. A boar runs from people, but
+one cornered (or a sow with piglets) may charge, and a tusk leaves a bad gash. A good hunter who keeps
+crossing them out after deer may work out how to take one on the braced spear (a discovery): a lot of
+meat, and a real risk of being gored, less with a dog along.
+
+Foxes live in pairs, each with an earth in the open country, and raise cubs in spring. By day they lie
+curled up in the sun; at dusk they trot out to mouse in the long grass, listening and then pouncing.
+A fox that finds a hare caught in a snare near its earth overnight takes it, and the band notices.
+Foxes keep away from camps that keep dogs. Boar and foxes leave prints in the snow.
+
+Beavers live in lodges of sticks and mud on rivers and lakes, with a dam they build up across the
+river nearby. They come out at dusk and dawn to swim, slapping their tails when someone comes near,
+and go ashore to gnaw through the birches along the bank. A felled birch lies where it fell, its wood
+free for anyone who comes to haul it home. In winter, under the ice, they stay in the lodge.
+
 **Crafting.** Everything made by the fire is one job with a list of recipes (`RECIPES` in
 `src/sim/band.ts`): cordage, the hand chopper and the stone axe so far. Each morning the plan says
 what is wanted, in a fixed order: cordage a building site is waiting on, then tools the day's work is
@@ -266,11 +283,11 @@ If the simulation ever hits a bug it stops and says so, with the seed and tick, 
 
 ## Layout
 - `src/sim/` — world generation and the band simulation (deterministic: seeded PRNG, no browser-dependent math)
-  - `sim.ts` people, life and death, the camp planner, deer; `ai.ts` decisions and tasks; `know.ts` the discoveries; `path.ts` pathfinding
+  - `sim.ts` people, life and death, the camp planner, deer; `beasts.ts` wild boar, foxes and beavers; `ai.ts` decisions and tasks; `know.ts` the discoveries; `path.ts` pathfinding
 - `src/render/` — three.js renderer: terrain, water shader, instanced props, lighting, seasons, camera
 - `src/ui/` — Preact interface (`InfoWindows.tsx` is the floating inspector, `Chronicle.tsx` the history browser)
 - `src/saves.ts` — save storage (IndexedDB, gzip, export/import)
 - `blender/build_assets.py` — every tree, bush, reed, grass tuft, rock, outcrop, stump, log pile and grave
-- `blender/build_band.py` — villagers (jointed: thighs/shins, upper arms/forearms), their walk and run cycles and every other animation clip, deer (stags with antlers), carried items, hearth, lean-to, two kinds of hut, storehouse, drying rack, the dugout the first band lands in
+- `blender/build_band.py` — villagers (jointed: thighs/shins, upper arms/forearms), their walk and run cycles and every other animation clip, deer (stags with antlers), wolves, dogs, foxes, wild boar, beavers (and their lodge and dam), carried items, hearth, lean-to, two kinds of hut, storehouse, drying rack, the dugout the first band lands in
 - `test/` — the test suite: `unit/`, `integration/`, `regression/` (Vitest)
 - `tools/` — headless tests (generation, survival, invariants, traces) and Playwright browser checks

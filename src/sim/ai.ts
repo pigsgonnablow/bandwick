@@ -2,7 +2,7 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill } from './band';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
@@ -717,6 +717,23 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
           best = i;
         }
       });
+      // a band that has learned to hunt the wild boar goes after a sounder too, for the meat on them
+      let boar: Beast | undefined;
+      if (s.knows('boar')) {
+        let bd = Math.min(40 + (dog ? 12 : 0), best >= 0 ? bestD * 1.25 : Infinity);
+        for (const b of s.beasts) {
+          if (!b.alive || b.kind !== BEAST.Boar) continue;
+          const dist = hyp(b.x - c.x, b.z - c.z);
+          if (dist < bd && !s.people.some((q) => q !== p && q.alive && q.task?.kind === 'hunt' && q.task.ref === b.id)) { bd = dist; boar = b; }
+        }
+      }
+      if (boar) {
+        p.thought = dog ? 'Taking the dog after the wild boar.' : 'Tracking wild boar through the woods.';
+        const t = newTask(s, kind, s.tileOf(boar), boar.x, boar.z, boar.id, true);
+        t.boar = true;
+        t.deadline = s.tick + 120 + (dog ? 30 : 0) + Math.round(hyp(boar.x - p.x, boar.z - p.z) / 0.3);
+        return t;
+      }
       if (best < 0) return null;
       const d = s.deer[best];
       p.thought = dog ? 'Following the dog onto a scent.' : snow ? 'Following tracks in the snow.' : d.state === 4 ? 'Stalking two stags locked in a fight.' : 'Tracking deer.';
@@ -2309,6 +2326,7 @@ export function runTask(s: Sim, p: Person) {
       return;
     }
     case 'hunt': {
+      if (t.boar && t.stage === 0) return huntBoar(s, p, t);
       const d = s.deer.find((q) => q.id === t.ref);
       if (t.stage === 0) {
         if (!d || !d.alive) return finish(s, p);
@@ -2374,6 +2392,7 @@ export function runTask(s: Sim, p: Person) {
           train(p, 'hunt.kill');
           s.practise(p, 'hunt');
           if (s.nearestWolf(p.x, p.z).dist < 16) s.practise(p, 'wolves');
+          if (boarNear(s, p, 22)) s.practise(p, 'boar');
           if (p.kills === 1) s.remember(p, 'first_kill', 18, 2, -1, 'Brought down their first deer.');
           if (s.stats.kills === 1) s.event('hunt', `${p.name} brought down the band's first deer at ${s.camp.name}.`, [p.id], p.x, p.z, 3);
           p.carry = CARRY.Meat;
@@ -2384,6 +2403,7 @@ export function runTask(s: Sim, p: Person) {
           train(p, 'hunt.miss');
           s.practise(p, 'hunt', 0.2);
           if (s.nearestWolf(p.x, p.z).dist < 16) s.practise(p, 'wolves', 0.5);
+          if (boarNear(s, p, 22)) s.practise(p, 'boar', 0.5);
           p.thought = 'Missed. Following the herd.';
           p.path = null;
         }
@@ -2733,3 +2753,71 @@ export function completeBuilding(s: Sim, b: Building, p: Person) {
 
 // keep tree ids referenced so bundlers don't drop the import used by tools
 void treeId;
+
+/** Whether a wild boar is about within `r` tiles (a hunter who keeps coming on their sign starts to think of them). */
+function boarNear(s: Sim, p: Person, r: number) {
+  return s.beasts.some((b) => b.alive && b.kind === BEAST.Boar && Math.abs(b.x - p.x) < r && Math.abs(b.z - p.z) < r);
+}
+
+/**
+ * The boar hunt: after the sounder through the woods, then in close with the spear. A boar is tougher to bring
+ * down than a deer and fights back: a cornered one can charge and gore its hunter (a dog bays it and holds it).
+ */
+function huntBoar(s: Sim, p: Person, t: Task) {
+  const r = s.rAi, c = s.camp;
+  const b = s.beasts.find((q) => q.id === t.ref);
+  if (!b || !b.alive) return finish(s, p);
+  if (s.tick > (t.deadline ?? t.started + 120)) {
+    p.thought = 'The boar got away into the thickets.';
+    return finish(s, p);
+  }
+  const dist = hyp(b.x - p.x, b.z - p.z);
+  if (dist > 2.4) {
+    if (s.tick % 10 === 0 && s.tileOf(b) !== t.goal) {
+      t.goal = s.tileOf(b);
+      p.path = null;
+    }
+    const res = go(s, p, t);
+    if (res === 'fail') return finish(s, p);
+    p.act = ACT.Hunt;
+    return;
+  }
+  p.act = ACT.Hunt;
+  face(p, b.x, b.z);
+  if (t.timer > 0) {
+    t.timer--;
+    return;
+  }
+  t.timer = 5;
+  const dog = s.hasDog(p);
+  // the boar turns on its hunter
+  if (!b.young && r.chance(dog ? 0.012 : 0.03)) {
+    p.health -= 34;
+    s.remember(p, 'injured', -18, 1, -1, 'Gored by a wild boar.');
+    s.event('injury', `${p.name} was gored by a wild boar.`, [p.id], p.x, p.z, 2);
+    if (p.health <= 0) return s.kill(p, 'hunting');
+  }
+  const chance = 0.12 + p.skills[SK.hunt] * 0.02 + (s.has(p, 'brave') ? 0.06 : 0) + (dog ? 0.1 : 0) + (b.young ? 0.15 : 0);
+  flash(p, FLASH.Thrust);
+  if (r.next() < chance) {
+    b.alive = false;
+    b.killed = true;
+    p.kills++;
+    s.stats.kills++;
+    s.stats.boarKills = (s.stats.boarKills ?? 0) + 1;
+    train(p, 'hunt.kill');
+    s.practise(p, 'hunt');
+    if (s.nearestWolf(p.x, p.z).dist < 16) s.practise(p, 'wolves');
+    if (s.stats.boarKills === 1) s.event('hunt', `${p.name} brought down the band's first wild boar at ${c.name}.`, [p.id], p.x, p.z, 3);
+    p.carry = CARRY.Meat;
+    p.carryAmt = b.young ? 3 : 10;
+    goStore(s, p, t, 1);
+    p.thought = 'Carrying the boar home.';
+  } else {
+    train(p, 'hunt.miss');
+    s.practise(p, 'hunt', 0.2);
+    if (s.nearestWolf(p.x, p.z).dist < 16) s.practise(p, 'wolves', 0.5);
+    p.thought = 'Missed. After the boar into the brush.';
+    p.path = null;
+  }
+}
