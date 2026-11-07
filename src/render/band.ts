@@ -5,6 +5,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { ACT, CARRY, FLASH, TASK_KINDS, POT_HOLDS } from '../sim/band';
 import { SHAKE } from './props';
 import type { Frame } from '../sim/runner';
+import { BASE_TPS } from '../sim/runner';
+import { HareLayer } from './hares';
 import { WorldData, WATER, STEP } from '../sim/types';
 import { addCommon } from './shaderlib';
 import { U } from './env';
@@ -20,6 +22,9 @@ const AXE = 99, CHOPPER = 98;
 const STICK = 97, SNARE = 96, FISHTRAP = 95;
 /** A gathering basket: swung empty on the way out, and heaped with berries on the way home. */
 const BASKET = 94, BASKET_FULL = 93;
+/** A hare from the snares, carried home dangling from the fist on the trap round. */
+const HARE = 92;
+const TRAP_TASK = TASK_KINDS.indexOf('trap') + 1;
 /** How walls that are not wood colour a building that has no model of its own for them (multiplied over its own colours). */
 const WALL_TINT: Record<string, [number, number, number]> = { daub: [1.0, 0.86, 0.68], stone: [0.8, 0.82, 0.86] };
 /** A flying chip of wood or a drop of water. */
@@ -215,6 +220,8 @@ export class BandLayer {
   private deer = new Map<number, DeerShown>();
   private villagers: THREE.InstancedMesh;
   private deerMesh: THREE.InstancedMesh;
+  /** a few of the hares the simulation counts on the land, hopping about near the camera */
+  hares: HareLayer;
   private carryMeshes = new Map<number, THREE.InstancedMesh>();
   private buildingMeshes = new Map<string, THREE.InstancedMesh>();
   private flames: THREE.InstancedMesh;
@@ -248,12 +255,13 @@ export class BandLayer {
     this.group.name = 'band';
     this.villagers = this.makeVillagers(geoms);
     this.deerMesh = this.makeDeer(geoms);
-    this.group.add(this.villagers, this.deerMesh);
+    this.hares = new HareLayer(world.size, world.terrain, (x, z) => this.groundAt(x, z), geoms);
+    this.group.add(this.villagers, this.deerMesh, this.hares.mesh);
     // carried things
     const carryNames: [number, string][] = [
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
       [CARRY.Spear, 'spear'], [CARRY.Body, 'body'], [CARRY.Baby, 'baby'], [AXE, 'axe'], [CHOPPER, 'chopper'],
-      [STICK, 'stick'], [SNARE, 'snare'], [FISHTRAP, 'fishtrap'], [BASKET, 'basket'], [BASKET_FULL, 'basketFull'],
+      [STICK, 'stick'], [SNARE, 'snare'], [FISHTRAP, 'fishtrap'], [BASKET, 'basket'], [BASKET_FULL, 'basketFull'], [HARE, 'hare'],
       // cut grass in a bundle, clay in a hide, a stone on the shoulder
       [CARRY.Fiber, 'fiber'], [CARRY.Mud, 'mud'], [CARRY.Stone, 'stone'], [CARRY.Roots, 'roots'], [CARRY.Nuts, 'nuts'], [CARRY.Herbs, 'herbs'],
       [CARRY.Eggs, 'eggs'], [CARRY.Honey, 'honey'], [CARRY.Mushrooms, 'mushrooms'],
@@ -774,6 +782,7 @@ export class BandLayer {
 
   onFrame(f: Frame, tps: number, now: number) {
     this.tpsNow = tps;
+    if (f.game) this.hares.setGame(f.game);
     // where everyone is drawn right now becomes the start of the next glide
     // (this must be measured before the frame clock is reset)
     const a = this.alpha(now);
@@ -1055,13 +1064,14 @@ export class BandLayer {
       // with free hands on the move, a digging stick is held low like a spear and a trap swings like a basket
       const loose = carry === CARRY.None && !s.gesture && (s.act === ACT.Walk || s.act === ACT.Run || s.act === ACT.Idle);
       const toolCarry = loose ? (s.tool === 3 ? STICK : s.tool === 4 ? SNARE : s.tool === 5 ? FISHTRAP : s.tool === 6 ? BASKET : 0) : 0;
-      // berries picked into a basket come home in it
-      const shown = carry === CARRY.Berries && s.tool === 6 ? BASKET_FULL : carry;
+      // berries picked into a basket come home in it, and the catch from the snares as the hares themselves
+      const snared = carry === CARRY.Meat && s.task === TRAP_TASK;
+      const shown = carry === CARRY.Berries && s.tool === 6 ? BASKET_FULL : snared ? HARE : carry;
       const spearAt = () => {
         const t = U.uTime.value + (look % 997) * 0.37, ph = s.phase % 1;
         return spearInHand(spearHold(s.prevAct, t, ph, s.run), spearHold(s.shownAct, t, ph, s.run), smooth(0, 1, blend), elder * 0.18, s.gesture, gpr, gw);
       };
-      anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, toolCarry === STICK ? CARRY.Spear : toolCarry ? CARRY.Berries : carry);
+      anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, toolCarry === STICK ? CARRY.Spear : toolCarry || snared ? CARRY.Berries : carry);
       col.set(CLOTH[(look >>> 8) % CLOTH.length]).convertSRGBToLinear();
       const bc = this.colorMode ? this.bandColors.get(s.band) : undefined;
       if (bc) col.lerp(bc.color, 0.7);
@@ -1278,6 +1288,10 @@ export class BandLayer {
     this.deerMesh.instanceMatrix.needsUpdate = true;
     dAnim.needsUpdate = true;
     dAnim2.needsUpdate = true;
+
+    // hares keep the game's pace: still while it is paused, quicker (up to a point) when it runs fast
+    const paced = now - this.frameAt > 1200 ? 0 : dt * Math.min(4, Math.max(0.5, this.tpsNow / BASE_TPS));
+    this.hares.update(paced, camTarget, this.viewZoom, this.visible);
 
     this.drawBuildings(night, camTarget);
     this.drawAuras(night);
@@ -1585,6 +1599,7 @@ function carryOffset(kind: number) {
     case CARRY.Berries: p.set(0.075, 0.16, 0.04); break;
     case CARRY.Fiber: p.set(0.078, 0.15, 0.035); e.set(0.15, 0, 0); break; // gripped at the tie, heads up
     case CARRY.Mud: p.set(0.076, 0.15, 0.035); break; // hanging from the twist of the hide
+    case HARE: p.set(0.076, 0.15, 0.035); break; // dangling from the noose's cord
     case CARRY.Roots: p.set(0.076, 0.15, 0.035); break; // held by the tied stems
     case CARRY.Nuts: p.set(0.076, 0.15, 0.035); break; // a hide bag, by its neck
     case CARRY.Herbs: p.set(0.078, 0.15, 0.035); e.set(0.15, 0, 0); break; // a bunch, stems in the fist

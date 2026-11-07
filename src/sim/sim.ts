@@ -258,6 +258,8 @@ export class Sim {
   /** small game (hares) on each grass and forest tile, and what the land holds when left alone */
   game: Float32Array;
   gameCap: Float32Array;
+  /** bumped whenever the hares on the land change (for the renderer, which shows a few of them) */
+  gameVersion = 1;
   fishingSpots: number[] = [];
   /** dry land where mud can be dug: riverbank clay, and the banks of rivers and lakes */
   mudSpots: number[] = [];
@@ -1705,6 +1707,7 @@ export class Sim {
       const cap = this.gameCap[i];
       if (cap > 0 && this.game[i] < cap) this.game[i] = Math.min(cap, this.game[i] + cap / 25);
     }
+    this.gameVersion++;
   }
   /** "2 stone axes (1 well worn), 1 hand chopper". */
   describeTools(list: Item[]) {
@@ -3256,6 +3259,12 @@ export class Sim {
       out[o + 4] = d.fz;
       out[o + 5] = d.state + (d.fawn ? 10 : 0);
     });
+    return out;
+  }
+  /** The hares on each tile, for the renderer: 0 where no hares live, else 1 + twenty times how many there are. */
+  packGame(): Uint8Array {
+    const out = new Uint8Array(this.game.length);
+    for (let i = 0; i < out.length; i++) if (this.gameCap[i] > 0) out[i] = 1 + Math.min(254, Math.round(this.game[i] * 20));
     return out;
   }
   packBuildings() {
