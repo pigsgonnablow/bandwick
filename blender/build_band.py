@@ -7,6 +7,7 @@ Conventions (read by src/render/band.ts):
       Vertex colours are REGION CODES, not final colours: red = clothing, green = skin,
       blue = hair, black = leather/shoes. The game tints each person individually.
   deer__{body,head,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
+  finch__{body,wingL,wingR}, goose__{body,wingL,wingR}             birds, wings spread from the shoulder; beaten, held out or folded in the shader.
   fish__{body,tail}                                                a brown trout in two parts, bent in the shader as it swims and leaps.
   hare__{body,head,ears,fore,hind}                                 a brown hare in parts, posed in the shader (hopping, sitting up, nibbling).
   carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,basket,basketFull,hare} attached to a person's hands or shoulder.
@@ -847,6 +848,84 @@ fin(q, [(0, 0.040, 0.0035), (0, 0.058, 0.014), (0, 0.054, 0.0), (0, 0.058, -0.01
 fin(q, [(0, 0.020, 0.0085), (0, 0.030, 0.0065), (0, 0.028, 0.0110)])  # adipose fin
 fin(q, [(0, 0.018, -0.0090), (0, 0.030, -0.0060), (0, 0.026, -0.0130)])  # anal fin
 q.finish("fish__tail")
+
+# ---------------------------------------------------------------- birds
+# Two birds, each in three parts the game poses in the shader: the body (head, beak, tail, feet), and the left and
+# right wings, modelled spread flat from the shoulder so the game can beat them, hold them out to glide, or fold
+# them back along the body. Origin at the feet for the finch, at the middle of the body for the goose (it is only
+# ever seen flying). Both face -y.
+br = random.Random(41)
+
+
+def wing(q, side, root, span, chord, colors, tip_back=0.4, droop=0.0):
+    """A spread wing: a tapered blade from the shoulder out along x, its trailing edge in feather steps.
+    `colors`: one per step of the blade, from the root out."""
+    rx, ry, rz = root
+    n = 4
+    for k in range(n):
+        u0, u1 = k / n, (k + 1) / n
+        x0, x1 = rx + side * span * u0, rx + side * span * u1
+        c0, c1 = chord * (1 - 0.55 * u0 ** 1.5), chord * (1 - 0.55 * u1 ** 1.5)
+        b0, b1 = tip_back * chord * u0 ** 2, tip_back * chord * u1 ** 2
+        z0, z1 = rz - droop * u0, rz - droop * u1
+        col = colors[k]
+        pts = [(x0, ry - c0 * 0.35 + b0, z0), (x1, ry - c1 * 0.35 + b1, z1), (x1, ry + c1 * 0.65 + b1, z1), (x0, ry + c0 * 0.65 + b0, z0)]
+        t = 0.0012
+        vs = [Vector(p) + Vector((0, 0, t)) for p in pts] + [Vector(p) - Vector((0, 0, t)) for p in pts]
+        faces = [(0, 1, 2, 3), (7, 6, 5, 4), (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)]
+        if side < 0:
+            faces = [f[::-1] for f in faces]
+        solid(q, vs, faces, col, raw=False)
+
+
+# a finch, ~0.05 long: brown back, pinkish-buff breast, blue-grey cap, dark wings with a white bar, a white-edged tail
+FINCH_BACK = (126, 94, 64)
+FINCH_BREAST = (198, 140, 110)
+FINCH_CAP = (106, 116, 132)
+FINCH_WING = (58, 50, 44)
+FINCH_BAR = (232, 228, 214)
+FINCH_BEAK = (160, 150, 128)
+q = Part()
+ellip(q, (0, 0.002, 0.014), (0.0095, 0.0165, 0.0095), FINCH_BACK)
+ellip(q, (0, -0.004, 0.011), (0.0085, 0.012, 0.0080), FINCH_BREAST)
+ellip(q, (0, -0.016, 0.0205), (0.0072, 0.0075, 0.0070), FINCH_CAP)
+ellip(q, (0, -0.0185, 0.0175), (0.0058, 0.0050, 0.0042), FINCH_BREAST)
+q.cone(5, 0.0026, 0.0, 0.0065, FINCH_BEAK, br, 0.0)
+for v in [v for v in q.bm.verts][-6:]:
+    v.co = Matrix.Rotation(math.pi / 2, 3, "X") @ v.co + Vector((0, -0.0215, 0.0195))
+for ex in (-1, 1):
+    q.box((ex * 0.0058, -0.0195, 0.0225), (0.0012, 0.002, 0.002), HARE_BLACK, br, 0.0)  # eye
+    q.cyl(3, 0.0008, 0.0008, (ex * 0.003, 0.0, 0.006), (ex * 0.003, -0.001, 0.0), HARE_BLACK, br, 0.0)  # leg
+q.box((0, 0.024, 0.0135), (0.0075, 0.018, 0.0018), FINCH_WING, br, 0.03, rot=Matrix.Rotation(0.25, 3, "X"), taper=1.0)
+q.box((0, 0.031, 0.0118), (0.0080, 0.006, 0.0016), FINCH_BAR, br, 0.0, rot=Matrix.Rotation(0.25, 3, "X"))
+q.finish("finch__body")
+for side, name in ((-1, "L"), (1, "R")):
+    q = Part()
+    wing(q, side, (side * 0.006, -0.002, 0.017), 0.028, 0.013, (FINCH_BACK, FINCH_BAR, FINCH_WING, FINCH_WING), tip_back=0.5)
+    q.finish(f"finch__wing{name}")
+
+# a greylag goose, ~0.17 long: grey-brown with paler barring, a long neck, orange bill, white under the tail
+GOOSE = (126, 118, 104)
+GOOSE_DARK = (88, 82, 74)
+GOOSE_PALE = (200, 196, 184)
+GOOSE_BILL = (226, 132, 64)
+q = Part()
+ellip(q, (0, 0.010, 0.0), (0.020, 0.044, 0.018), GOOSE)
+ellip(q, (0, 0.012, -0.007), (0.017, 0.036, 0.012), GOOSE_PALE)
+ellip(q, (0, 0.054, 0.002), (0.010, 0.012, 0.007), (236, 232, 224))  # white under the tail
+q.box((0, 0.062, 0.004), (0.016, 0.014, 0.003), GOOSE_DARK, br, 0.03)
+sweep(q, [((0, -0.028, 0.003), 0.0085, 0.0095), ((0, -0.048, 0.006), 0.0060, 0.0065), ((0, -0.066, 0.008), 0.0055, 0.0058)], 6,
+      lambda c: GOOSE_DARK if c.y < -0.04 else GOOSE, caps=(False, False))
+ellip(q, (0, -0.072, 0.009), (0.0068, 0.0095, 0.0068), GOOSE_DARK)
+ellip(q, (0, -0.085, 0.007), (0.0030, 0.0075, 0.0030), GOOSE_BILL)
+for ex in (-1, 1):
+    q.box((ex * 0.0055, -0.074, 0.0115), (0.0012, 0.0022, 0.0022), HARE_BLACK, br, 0.0)
+    ellip(q, (ex * 0.006, 0.046, -0.010), (0.003, 0.008, 0.002), GOOSE_BILL)  # feet tucked back
+q.finish("goose__body")
+for side, name in ((-1, "L"), (1, "R")):
+    q = Part()
+    wing(q, side, (side * 0.012, -0.004, 0.006), 0.085, 0.034, (GOOSE, GOOSE, GOOSE, GOOSE_DARK), tip_back=0.6, droop=0.004)
+    q.finish(f"goose__wing{name}")
 
 # ---------------------------------------------------------------- carried items (in hand/shoulder space)
 BARK = (110, 80, 54)

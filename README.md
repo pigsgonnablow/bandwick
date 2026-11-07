@@ -116,6 +116,10 @@ Fish show too: trout glimpsed under the surface near the camera, scattering from
 or a spear going in, and rises dimpling the water with now and then a fish leaping clear, all more
 often where the water is full and less where it has been fished out. Lakes and rivers go still under
 the winter ice; the sea does not.
+Birds too: small flocks of finches feed on open grass near the camera, go up together when anyone
+comes close and come down again a few tiles off, and roost out of sight at night. Skeins of geese
+pass high over, northward early in spring and southward in autumn. A pair of birds flutters round
+a tree while someone robs their nest, and bees boil out of a wild hive being smoked.
 
 **Crafting.** Everything made by the fire is one job with a list of recipes (`RECIPES` in
 `src/sim/band.ts`): cordage, the hand chopper and the stone axe so far. Each morning the plan says
