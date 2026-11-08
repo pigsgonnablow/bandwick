@@ -489,6 +489,21 @@ function fell(s: Sim, k: number) {
   s.removeProp(k);
 }
 
+/** A new range for a sounder: woods well away from every camp and from the other sounders, if there is any. */
+function moveRange(s: Sim, den: Den) {
+  const r = s.rBeast, N = s.N, camps = s.liveCamps();
+  for (let tries = 0; tries < 400; tries++) {
+    const i = r.int(0, N * N);
+    const x = (i % N) + 0.5, z = ((i / N) | 0) + 0.5;
+    if (s.world.water[i] !== WATER.None || s.world.terrain[i] !== T.Forest || !s.grid.walkable(i)) continue;
+    if (camps.some((c) => hyp(x - c.x, z - c.z) < 20)) continue;
+    if (s.dens.some((d) => d !== den && d.kind === BEAST.Boar && hyp(d.x - x, d.z - z) < 16)) continue;
+    den.x = den.tx = x;
+    den.z = den.tz = z;
+    return;
+  }
+}
+
 // ------------------------------------------------------------------ each morning
 export function beastsDaily(s: Sim, dayOfYear: number) {
   const r = s.rBeast;
@@ -522,11 +537,15 @@ export function beastsDaily(s: Sim, dayOfYear: number) {
     }
     // a hard winter takes the odd one; an empty range is found again in time (not close to a camp)
     if (seasonOf(s.tick) === 3 && group.length > 2 && r.chance(0.006)) group[r.int(0, group.length)].alive = false;
+    // (a sounder's range that people have settled close to is taken up again further off, in the woods)
+    if (dayOfYear === 14 && !group.length && den.kind === BEAST.Boar && s.liveCamps().some((c) => hyp(c.x - den.x, c.z - den.z) < 18)) moveRange(s, den);
     if (dayOfYear === 14 && !group.length && r.chance(0.3) && !s.liveCamps().some((c) => hyp(c.x - den.x, c.z - den.z) < 18)) {
       for (let i = 0; i < (den.kind === BEAST.Boar ? 3 : 2); i++) spawnBeast(s, den, den.x + r.range(-0.5, 0.5), den.z + r.range(-0.5, 0.5), false);
     }
     // one left alone at an earth or a lodge (the rest trapped or dead) finds a new mate in the spring
     if (dayOfYear === 2 && group.length === 1 && den.kind !== BEAST.Boar && r.chance(0.8)) spawnBeast(s, den, den.x, den.z, false);
+    // a sow left with too few to breed is joined by a boar from elsewhere in the spring
+    if (den.kind === BEAST.Boar && dayOfYear === 2 && group.length > 0 && grown.length < 2 && r.chance(0.8)) spawnBeast(s, den, group[0].x, group[0].z, false);
     // a camp set down close by drives a sounder or a fox further off
     if (den.kind !== BEAST.Beaver) {
       const near = s.liveCamps().find((c) => hyp(c.x - den.x, c.z - den.z) < (den.kind === BEAST.Boar ? 10 : 7));

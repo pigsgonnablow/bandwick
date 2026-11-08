@@ -724,8 +724,11 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       let boar: Beast | undefined;
       if (s.knows('boar')) {
         let bd = Math.min(40 + (dog ? 12 : 0), best >= 0 ? bestD * 1.25 : Infinity);
+        // a sounder thinned to a few is let be, to grow again
+        const size = new Map<number, number>();
+        for (const b of s.beasts) if (b.alive && b.kind === BEAST.Boar) size.set(b.den, (size.get(b.den) ?? 0) + 1);
         for (const b of s.beasts) {
-          if (!b.alive || b.kind !== BEAST.Boar) continue;
+          if (!b.alive || b.kind !== BEAST.Boar || (size.get(b.den) ?? 0) <= 3) continue;
           const dist = hyp(b.x - c.x, b.z - c.z);
           if (dist < bd && !s.people.some((q) => q !== p && q.alive && q.task?.kind === 'hunt' && q.task.ref === b.id)) { bd = dist; boar = b; }
         }

@@ -143,7 +143,9 @@ spring. They root through the leaf litter, lie up at midday and, in autumn, go t
 acorns, sometimes clearing a tree before the band's foragers get there. A boar runs from people, but
 one cornered (or a sow with piglets) may charge, and a tusk leaves a bad gash. A good hunter who keeps
 crossing them out after deer may work out how to take one on the braced spear (a discovery): a lot of
-meat, and a real risk of being gored, less with a dog along.
+meat, and a real risk of being gored, less with a dog along. Hunters leave a sounder that is down to
+three or fewer alone, a lone sow is joined by a boar in spring, and a sounder hunted out near a camp
+takes up a new range deeper in the woods, so boar last through the decades.
 
 Foxes live in pairs, each with an earth in the open country, and raise cubs in spring. By day they lie
 curled up in the sun; at dusk they trot out to mouse in the long grass, listening and then pouncing.
