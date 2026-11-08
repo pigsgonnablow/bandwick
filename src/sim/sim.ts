@@ -2282,9 +2282,9 @@ export class Sim {
         this.considerMerge(c);
         continue;
       }
-      // a winter camp whose fire has been cold two days running, with no wood to light it, gives up and goes to
-      // a neighbour's fire rather than freeze
-      const cold = isWinter(this.tick) && this.hearth(c).fuel <= 0 && c.stock.wood < 1;
+      // a winter camp whose fire is dying with no wood left to feed it, a second morning running, gives up and goes
+      // to a neighbour's fire rather than freeze
+      const cold = isWinter(this.tick) && this.hearth(c).fuel < 3 && c.stock.wood < 2;
       c.coldDays = cold ? (c.coldDays ?? 0) + 1 : 0;
       if (c.coldDays >= 2) {
         this.camp = c;
