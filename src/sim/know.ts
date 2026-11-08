@@ -109,7 +109,7 @@ export interface Discovery {
 export const DISCOVERIES: Discovery[] = [
   {
     // (before huts there is little building to learn from: a hut is the idea of someone who knows timber)
-    key: 'huts', label: 'Huts', needs: [], requires: [skill(SK.wood, 12), skill(SK.weave, 8)],
+    key: 'huts', label: 'Huts', needs: [], requires: [skill(SK.wood, 11), skill(SK.weave, 8)],
     practice: { leanto: 2, night_out: 1 }, odds: 12,
     found: 'worked out how to raise a proper hut, walled and roofed against the cold',
     taught: 'raise huts', memory: 'Worked out how to build a hut.',
@@ -127,7 +127,7 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'roof the woodpile', memory: 'Thought of a roof to keep the firewood dry.',
   },
   {
-    key: 'axe', label: 'Hafted axe', needs: [], requires: [skill(SK.wood, ELITE), skill(SK.tool, ABLE)],
+    key: 'axe', label: 'Hafted axe', needs: [], requires: [skill(SK.wood, 14), skill(SK.tool, ABLE)],
     practice: { fell_chopper: 1 }, odds: 4,
     found: 'lashed a stone head to a wooden haft and made the first axe, heavy enough for the big trees',
     taught: 'make stone axes', memory: 'Made the first stone axe.',

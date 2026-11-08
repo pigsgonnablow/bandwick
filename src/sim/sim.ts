@@ -193,6 +193,8 @@ export interface Camp {
   leanWinters?: number;
   /** the day someone last set out on the round of the band's traps */
   trapRound?: number;
+  /** winter days running the band's fire has been out with no wood to light it */
+  coldDays?: number;
   /** the day an elder last told a story by the band's fire */
   storyNight?: number;
   /** the day of this winter's midwinter feast, if the stores allow one (absent: none) */
@@ -2278,6 +2280,15 @@ export class Sim {
       if (!adults || (adults < 2 && foodTotal(c.stock) < ms.length)) {
         this.camp = c;
         this.considerMerge(c);
+        continue;
+      }
+      // a winter camp whose fire has been cold two days running, with no wood to light it, gives up and goes to
+      // a neighbour's fire rather than freeze
+      const cold = isWinter(this.tick) && this.hearth(c).fuel <= 0 && c.stock.wood < 1;
+      c.coldDays = cold ? (c.coldDays ?? 0) + 1 : 0;
+      if (c.coldDays >= 2) {
+        this.camp = c;
+        if (this.considerMerge(c, true)) continue;
       }
     }
     const season = seasonOf(this.tick);
@@ -2473,11 +2484,12 @@ export class Sim {
     return true;
   }
 
-  private considerMerge(c: Camp) {
+  private considerMerge(c: Camp, cold = false) {
     const ms = this.members(c);
     const adults = ms.filter((p) => this.age(p) >= 16);
-    if (adults.length >= 2 && ms.length > 3) return false;
-    const to = this.liveCamps().filter((o) => o !== c).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
+    if (!cold && adults.length >= 2 && ms.length > 3) return false;
+    // (a band whose fire has gone cold goes only to a neighbour with a fire and the wood to keep it)
+    const to = this.liveCamps().filter((o) => o !== c && (!cold || (o.stock.wood >= 30 && hyp(o.x - c.x, o.z - c.z) < 60))).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
     if (!to || !ms.length) return false;
     this.join(ms, to);
     // their tools go on the pile there, and their traps are taken up and go too
@@ -2489,8 +2501,9 @@ export class Sim {
     c.gone = this.tick;
     this.dropSites(c);
     this.hearth(c).fuel = 0;
-    for (const p of ms) this.remember(p, 'moved_camp', -8, 2, -1, `Left ${c.name}, too few to go on, for ${to.name}.`);
-    this.event('merge', `${ms.length === 1 ? `${ms[0].name}, the last of the people of ${c.name},` : `The last ${num(ms.length)} of the people of ${c.name}`} went to live at ${to.name}.`,
+    for (const p of ms) this.remember(p, 'moved_camp', -8, 2, -1, cold ? `Left ${c.name} in the dead of winter, with no wood for the fire, for the fire at ${to.name}.` : `Left ${c.name}, too few to go on, for ${to.name}.`);
+    if (cold) this.event('merge', `The people of ${c.name}, their wood gone and their fire cold, went through the snow to live at ${to.name}.`, ms.map((p) => p.id), c.x, c.z, 4);
+    else this.event('merge', `${ms.length === 1 ? `${ms[0].name}, the last of the people of ${c.name},` : `The last ${num(ms.length)} of the people of ${c.name}`} went to live at ${to.name}.`,
       ms.map((p) => p.id), c.x, c.z, 4);
     if (learned.length) {
       const what = learned.map((k) => DISCOVERY.get(k)!.taught);
