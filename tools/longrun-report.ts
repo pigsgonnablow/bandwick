@@ -54,6 +54,21 @@ for (let s = 0; s < maxY; s += span) {
   console.log(`      adults' daytime: ${Object.entries(tasks).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${pct(v)}`).join(', ')}`);
 }
 
+// how the hard years went, against the rest (after the first three years)
+{
+  const all = recs.flatMap((r) => r.yearly.slice(3)).filter((y: any) => y.pop > 0 && y.lean !== undefined);
+  const row = (name: string, ys: any[]) => {
+    const d = ys.map((y) => Object.entries(y.deaths as Record<string, number>).filter(([k]) => k === 'starvation' || k === 'cold').reduce((a, [, v]) => a + v, 0));
+    console.log(`  ${name.padEnd(14)} ${String(ys.length).padStart(3)} world-years: rationing ${pct(avg(ys.map((y) => y.rationedBands / Math.max(1, y.bands))))} of bands, hungry ${pct(avg(ys.map((y) => y.hungry)))}, peckish ${pct(avg(ys.map((y) => y.peckish)))}, winter low ${f1(med(ys.map((y) => y.winterLow).filter((x) => x !== null)))} days, hunger+cold deaths ${f1(avg(d) * 100)} per 100 world-years`);
+  };
+  if (all.length) {
+    console.log('\nhard years and the rest (from year 3)');
+    row('lean year', all.filter((y: any) => y.lean));
+    row('bitter winter', all.filter((y: any) => y.bitter && !y.lean));
+    row('plenty', all.filter((y: any) => y.plenty));
+    row('ordinary', all.filter((y: any) => !y.lean && !y.bitter && !y.plenty));
+  }
+}
 console.log('\ndiscoveries: worlds that found it (any band), median and range of the year it was first found');
 const keys = new Set<string>(recs.flatMap((r) => Object.keys(r.found)));
 for (const k of [...keys].sort((a, b) => med(recs.map((r) => r.found[a] ?? 99)) - med(recs.map((r) => r.found[b] ?? 99)))) {

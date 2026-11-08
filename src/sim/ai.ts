@@ -1886,7 +1886,7 @@ export function runTask(s: Sim, p: Person) {
           finish(s, p);
           return;
         }
-        const got = t.kind === 'eggs' ? 1 + skill * 0.03 : t.kind === 'honey' ? 2 + skill * 0.04 : 2.5 + skill * 0.05;
+        const got = t.kind === 'eggs' ? 1 + skill * 0.03 : t.kind === 'honey' ? 2 + skill * 0.04 : (2.5 + skill * 0.05) * s.leanCrop();
         p.carry = g.carry;
         p.carryAmt = Math.min(gleanLoad(p, t.kind), p.carryAmt + got);
         train(p, t.kind);
@@ -1926,7 +1926,7 @@ export function runTask(s: Sim, p: Person) {
         face(p, s.propX[t.ref], s.propZ[t.ref]);
         if (--t.timer > 0) return;
         // an old oak drops more than one just come to bearing
-        const got = (treeStage(s.propType[t.ref]) >= 3 ? 5 : 3.5) + p.skills[SK.forage] * 0.06;
+        const got = ((treeStage(s.propType[t.ref]) >= 3 ? 5 : 3.5) + p.skills[SK.forage] * 0.06) * s.leanCrop();
         s.nutsTaken.set(t.ref, s.tick + TICKS_PER_DAY * 40);
         s.reserved.delete(t.ref);
         p.carry = CARRY.Nuts;
@@ -1974,7 +1974,7 @@ export function runTask(s: Sim, p: Person) {
         face(p, s.propX[t.ref], s.propZ[t.ref]);
         if (--t.timer > 0) return;
         // a clump gives up its roots once a year; they grow again from what is left in the ground
-        const got = (isReeds(s.propType[t.ref]) ? 3.5 : 2.5) + p.skills[SK.forage] * 0.06;
+        const got = ((isReeds(s.propType[t.ref]) ? 3.5 : 2.5) + p.skills[SK.forage] * 0.06) * s.leanCrop();
         s.rootsTaken.set(t.ref, s.tick + TICKS_PER_DAY * 40);
         s.reserved.delete(t.ref);
         p.carry = CARRY.Roots;
@@ -2419,7 +2419,9 @@ export function runTask(s: Sim, p: Person) {
         const chance = 0.42 + p.skills[SK.fish] * 0.028 + (s.fish[w] / Math.max(1, s.fishCap[w])) * 0.18 - (seasonOf(s.tick) === 3 ? 0.12 : 0);
         flash(p, FLASH.Stab);
         if (r.next() < chance) {
-          const got = Math.min(s.fish[w], Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (seasonOf(s.tick) === 3 ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1)));
+          // (water fished down, or in a lean year, gives smaller catches: fewer fish, and smaller)
+          const stocked = s.fish[w] / Math.max(1, s.fishCap[w]);
+          const got = Math.min(s.fish[w], Math.max(1, Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (0.35 + 0.65 * stocked) * (seasonOf(s.tick) === 3 ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1))));
           s.fish[w] -= got;
           s.fishVersion++;
           train(p, 'fish.catch');

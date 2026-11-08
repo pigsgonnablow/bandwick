@@ -95,6 +95,7 @@ const closeYear = (y: number) => {
     homes: sim.buildings.filter((b) => b.built && (b.kind === 'hut' || b.kind === 'leanto')).length,
     buildings: sim.buildings.filter((b) => b.built).reduce((o: Record<string, number>, b) => ((o[b.kind] = (o[b.kind] ?? 0) + 1), o), {}),
     famine: camps.filter((c) => c.famine).length,
+    lean: sim.blightYear === y, plenty: sim.plentyYear === y, bitter: sim.events.some((e) => yearOf(e.tick) === y && e.kind === 'winter' && e.text.includes('bitter')),
     // wild boar, foxes and beavers, where the world has them
     beasts: ((sim as any).beasts ?? []).filter((b: any) => b.alive).reduce((o: number[], b: any) => ((o[b.kind] = (o[b.kind] ?? 0) + 1), o), [0, 0, 0]),
     boarKills: ((sim.stats as any).boarKills ?? 0) - lastBoar,
