@@ -717,12 +717,12 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const snow = snowLies(s.tick), dog = s.hasDog(p);
       // and a dog picks up a scent where a hunter alone would see nothing
       let best = -1, bestD = (snow ? 72 : 56) + (dog ? 16 : 0);
-      // a herd down to its last two is let be, unless the band is going hungry
+      // a herd down to its last three is let be to breed again, unless the band is going hungry
       const herds = new Map<number, number>();
       for (const d of s.deer) if (d.alive) herds.set(d.herd, (herds.get(d.herd) ?? 0) + 1);
       const spare = (c.jobs.food ?? 0) < 0.8;
       s.deer.forEach((d, i) => {
-        if (!d.alive || (spare && (herds.get(d.herd) ?? 0) < 3)) return;
+        if (!d.alive || (spare && (herds.get(d.herd) ?? 0) < 4)) return;
         const dist = hyp(d.x - c.x, d.z - c.z);
         if (dist < bestD && !s.people.some((q) => q !== p && q.alive && q.task?.kind === 'hunt' && q.task.ref === d.id)) {
           bestD = dist;

@@ -124,7 +124,8 @@ The deer keep the seasons. In the autumn rut the stags stop to roar, neck out an
 breath steaming, and a stag with a rival close by squares up to him: they lock antlers, shove to and
 fro and crash together until one gives way. A roaring or fighting stag hardly notices people, and is
 an easier kill. In winter the herds keep to the woods, and the snow slows a running deer; hunters
-follow fresh tracks to herds further out (the hoofprints show in the snow, filling in over time).
+follow fresh tracks to herds further out (the hoofprints show in the snow, filling in over time). Hunters
+leave a herd that is down to three or fewer to breed again, unless the band is going hungry.
 Wolves roam the wilds in a pack or two, well away from people. A hungry pack picks out the nearest
 deer and runs it down, fanning out round it (more easily in deep snow), then feeds at the kill and
 needs nothing more for a couple of weeks; deer bolt from a wolf on the hunt as they do from people.
