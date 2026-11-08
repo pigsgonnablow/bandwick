@@ -2,7 +2,8 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST } from './band';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR } from './band';
+import { denFor, deadfallSpot } from './beasts';
 import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
@@ -702,6 +703,8 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       if (k < 0) return setup(s, p, 'fell');
       s.reserved.set(k, p.id);
       p.thought = 'Hauling logs back to camp.';
+      // a trunk the beavers brought down: the gnawing on it sets a trapper thinking
+      if (s.propNote.get(k)?.startsWith('A birch felled by beavers')) s.practise(p, 'fur', 0.5);
       return newTask(s, kind, s.propTile[k], s.propX[k] + 0.25, s.propZ[k] + 0.2, k);
     }
     case 'hunt': {
@@ -1058,7 +1061,7 @@ export function deposit(s: Sim, p: Person) {
     }
   }
   // the teeth of a deer brought home, and now and then a shell from the shallows, are kept for ornaments
-  if (kind === 'meat' && p.task?.kind === 'hunt' && a >= 4 && st.trinkets < TRINKETS_KEPT) st.trinkets = Math.min(TRINKETS_KEPT, st.trinkets + TEETH_PER_DEER);
+  if (kind === 'meat' && p.task?.kind === 'hunt' && a >= 4 && st.trinkets < TRINKETS_KEPT) st.trinkets = Math.min(TRINKETS_KEPT, st.trinkets + TEETH_PER_DEER + (p.task.boar ? TUSKS_PER_BOAR : 0));
   if (kind === 'fish' && p.task?.kind === 'fish' && st.trinkets < TRINKETS_KEPT && s.rAi.chance(0.12)) st.trinkets += 1;
   // a load brought home in a hide bag is a use of it
   if (p.worn?.shoulder !== undefined && (kind === 'berries' || kind === 'roots' || kind === 'nuts' || kind === 'herbs' || kind === 'eggs' || kind === 'mushrooms')) {
@@ -1136,9 +1139,10 @@ function trapRoute(s: Sim): number[] {
   for (const it of mine) {
     const w = it.tile ?? -1;
     if (w >= 0) {
-      const stand = it.kind === 'snare' ? w : bankOf(w);
+      const stand = it.kind === 'fishtrap' ? bankOf(w) : w;
       if (stand < 0 || bad(stand)) continue;
-      const spent = !it.catch && (it.kind === 'snare' ? s.game[w] < 1 : s.fish[w] < 1.5 || (frozen && s.world.water[w] !== WATER.Sea));
+      // a deadfall at an earth or a lodge with only one beast (or none) left is taken up: there is a pair to leave
+      const spent = !it.catch && (it.kind === 'snare' ? s.game[w] < 1 : it.kind === 'deadfall' ? !denFor(s, w) : s.fish[w] < 1.5 || (frozen && s.world.water[w] !== WATER.Sea));
       checks.push([it.id, stand, spent ? -3 : -1]);
       if (spent) toSet.push(it);
     } else if (w === -1) toSet.push(it);
@@ -1160,6 +1164,8 @@ function trapRoute(s: Sim): number[] {
           const sc = (s.game[i] / s.gameCap[i]) * 3 - d * 0.15;
           if (sc > bestS) { bestS = sc; best = i; bestStand = i; }
         }
+    } else if (it.kind === 'deadfall') {
+      best = bestStand = deadfallSpot(s, c.x, c.z, taken, bad);
     } else {
       for (const spot of s.fishingSpots) {
         if (!near(spot, 14) || bad(spot)) continue;
@@ -2131,17 +2137,30 @@ export function runTask(s: Sim, p: Person) {
             if (it.tile === -2) {
               it.tile = action;
               it.catch = 0;
-              p.thought = it.kind === 'snare' ? 'Set a snare across a hare run.' : 'Set a fish trap in the shallows.';
+              p.thought = it.kind === 'snare' ? 'Set a snare across a hare run.' : it.kind === 'deadfall' ? 'Propped a log on the trigger and baited it, by the earth.' : 'Set a fish trap in the shallows.';
             }
           } else if ((it.tile ?? -1) >= 0) {
             const got = it.catch ?? 0;
             if (got > 0) {
-              if (it.kind === 'snare') t.amount += got;
+              if (it.kind === 'deadfall') {
+                t.furs = (t.furs ?? 0) + 1;
+                if (it.pelt === BEAST.Beaver) t.amount += BEAVER_MEAT;
+              } else if (it.kind === 'snare') t.amount += got;
               else t.fish = (t.fish ?? 0) + got;
               train(p, 'trap.catch');
             }
+            const pelt = it.pelt;
             it.catch = 0;
-            p.thought = got > 0 ? (it.kind === 'snare' ? 'A hare in the snare.' : `${got} fish in the trap.`) : it.kind === 'snare' ? 'Nothing in this snare.' : 'The trap is empty.';
+            it.pelt = undefined;
+            p.thought = got > 0
+              ? (it.kind === 'deadfall' ? (pelt === BEAST.Beaver ? 'A beaver under the log: a thick pelt, and meat.' : 'A fox under the log: a good pelt.') : it.kind === 'snare' ? 'A hare in the snare.' : `${got} fish in the trap.`)
+              : it.kind === 'snare' ? 'Nothing in this snare.' : it.kind === 'deadfall' ? 'The deadfall still stands.' : 'The trap is empty.';
+            // fox prints all round an empty noose, and a few tufts of hare fur: the trapper knows who has been
+            if (it.robbed) {
+              it.robbed = false;
+              p.thought = 'Fox prints round the snare, and only a tuft of fur left in the noose.';
+              s.practise(p, 'fur', 1);
+            }
             // nothing left to catch here: take it up, to set somewhere better
             if (action === -3) it.tile = -2;
           }
@@ -2149,18 +2168,18 @@ export function runTask(s: Sim, p: Person) {
         t.step = (t.step ?? 0) + 1;
         if (t.step * 3 < route.length) return aim();
         untakeTraps(s, t);
-        const meat = t.amount, fish = t.fish ?? 0;
-        if (meat + fish <= 0) {
+        const meat = t.amount, fish = t.fish ?? 0, furs = t.furs ?? 0;
+        if (meat + fish + furs <= 0) {
           p.thought = 'Nothing in the traps today.';
           return finish(s, p);
         }
         s.book('trapped', meat + fish);
-        p.carry = meat > 0 ? CARRY.Meat : CARRY.Fish;
+        p.carry = meat > 0 ? CARRY.Meat : fish > 0 ? CARRY.Fish : CARRY.None;
         p.carryAmt = meat > 0 ? meat : fish;
         if (meat <= 0) t.fish = 0;
         t.amount = 0;
         goStore(s, p, t, 2);
-        p.thought = meat > 0 ? 'Carrying the catch from the snares home.' : 'Carrying fish from the traps home.';
+        p.thought = meat > 0 ? 'Carrying the catch from the snares home.' : fish > 0 ? 'Carrying fish from the traps home.' : 'Carrying the pelts home to scrape.';
       }
       if (moving(go(s, p, t))) return;
       deposit(s, p);
@@ -2169,6 +2188,14 @@ export function runTask(s: Sim, p: Person) {
         c.stock.fish += t.fish!;
         s.book('gathered.fish', t.fish!);
         t.fish = 0;
+      }
+      // and the pelts, skinned and pegged out to scrape
+      if ((t.furs ?? 0) > 0) {
+        const n = Math.min(t.furs!, Math.max(0, FURS_KEPT - c.stock.furs));
+        c.stock.furs += n;
+        s.book('gathered.furs', n);
+        for (let k = 0; k < t.furs!; k++) train(p, 'skin');
+        t.furs = 0;
       }
       finish(s, p);
       return;

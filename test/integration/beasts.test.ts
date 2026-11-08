@@ -1,6 +1,6 @@
 // Wild boar, foxes and beavers: where they live, what they do to the land, and the band's dealings with them.
 import { describe, it, expect } from 'vitest';
-import { BEAST, CARRY, Person, Task } from '../../src/sim/band';
+import { BEAST, CARRY, Item, Person, Task } from '../../src/sim/band';
 import { TICKS_PER_DAY, TICKS_PER_SEASON, seasonOf } from '../../src/sim/time';
 import { WATER } from '../../src/sim/types';
 import { runTask } from '../../src/sim/ai';
@@ -63,11 +63,13 @@ describe('foxes', () => {
         if (s.world.water[i] === WATER.None && s.grid.walkable(i)) { tile = i; break; }
       }
     // (a snare of some band long gone, so nobody comes round to empty it first)
-    const snare = { id: s.newId(), kind: 'snare' as const, band: 999, holder: -1, wear: 0, made: s.tick, maker: -1, tile, catch: 2 };
+    const snare: Item = { id: s.newId(), kind: 'snare', band: 999, holder: -1, wear: 0, made: s.tick, maker: -1, tile, catch: 2 };
     s.items.push(snare);
     const end = s.tick + 4 * TICKS_PER_DAY;
     while (s.tick < end && snare.catch) s.step();
     expect(snare.catch).toBe(0);
+    // and the prints round the empty noose are there for the trapper to find
+    expect(snare.robbed).toBe(true);
     expect(s.camp.ledger?.total['robbed.snares']).toBe(1);
   });
 });

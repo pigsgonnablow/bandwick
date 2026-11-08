@@ -45,7 +45,7 @@ describe('acorns', () => {
     st.berries = 100;
     (s as unknown as { spoilNow(x: typeof st): void }).spoilNow(st);
     expect(100 - st.nuts).toBeLessThan((100 - st.berries) / 5);
-    expect(foodTotal({ ...st, berries: 0, fish: 0, meat: 0, roots: 0, preserved: 0 })).toBeCloseTo(st.nuts, 5);
+    expect(foodTotal({ ...st, berries: 0, fish: 0, meat: 0, roots: 0, preserved: 0, eggs: 0, honey: 0, mushrooms: 0 })).toBeCloseTo(st.nuts, 5);
   });
 
   it('are not something a band thinks of gathering before it knows them', () => {

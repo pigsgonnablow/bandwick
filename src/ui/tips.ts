@@ -118,6 +118,7 @@ export const CARD_TIPS: Record<string, string> = {
   Dried: 'Dried: meat and fish dried on the rack, in meals. Keeps for most of a year.',
   'Dried food': 'Dried food: meat and fish dried on the rack, in meals. Keeps for most of a year.',
   Hides: 'Hides: deer hides, kept for cloaks and other clothes.',
+  Pelts: 'Pelts: fox and beaver furs from the deadfalls, kept to sew into fur cloaks.',
   'Worn by': 'Worn by: who has it on. Clothes go to whoever needs them most when they are made.',
   'In the hands of': 'In the hands of: who is using it. It goes back on the pile when they are done.',
   Lies: 'Lies: on the stockpile, for anyone in the band to take.',

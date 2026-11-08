@@ -19,9 +19,10 @@ describe('garments', () => {
   it('are each worn in one of the places on the body', () => {
     for (const k of KINDS) expect(SLOTS, k).toContain(GARMENTS[k].slot);
     expect(new Set(SLOTS).size).toBe(SLOTS.length);
-    // two things only share a place when one is the poor cousin of the other
+    // two things only share a place when one is the poor cousin of the other (a reed cape for a hide
+    // cloak, a hide cloak for a fur one)
     const body = KINDS.filter((k) => GARMENTS[k].slot === 'body').sort();
-    expect(body).toEqual(['cape', 'cloak']);
+    expect(body).toEqual(['cape', 'cloak', 'furcloak']);
     for (const slot of SLOTS) if (slot !== 'body' && slot !== 'neck') expect(KINDS.filter((k) => GARMENTS[k].slot === slot).length, slot).toBe(1);
     expect(GARMENTS.necklace).toMatchObject({ slot: 'neck', warm: 0, first: 'given' });
   });
@@ -51,16 +52,17 @@ describe('garments', () => {
     for (const k of ['hat', 'mittens', 'shoes', 'bag'] as const) expect(RECIPES[k].uses.hides!).toBeLessThan(HIDES_PER_CLOAK);
   });
 
-  it('keep off the cold in a sensible order, a cloak the most and a bag not at all', () => {
+  it('keep off the cold in a sensible order, a fur cloak the most, then a hide cloak, and a bag not at all', () => {
     expect(GARMENTS.cloak.warm).toBe(CLOAK_WARM);
+    expect(GARMENTS.furcloak.warm).toBeGreaterThan(GARMENTS.cloak.warm);
     for (const k of KINDS) {
       expect(GARMENTS[k].warm).toBeGreaterThanOrEqual(0);
-      expect(GARMENTS[k].warm).toBeLessThanOrEqual(GARMENTS.cloak.warm);
+      if (k !== 'furcloak') expect(GARMENTS[k].warm).toBeLessThanOrEqual(GARMENTS.cloak.warm);
     }
     expect(GARMENTS.bag.warm).toBe(0);
     expect(GARMENTS.hat.warm).toBeGreaterThan(GARMENTS.mittens.warm);
-    // everything at once still lets some cold through
-    const through = KINDS.filter((k) => k !== 'cape').reduce((t, k) => t * (1 - GARMENTS[k].warm), 1);
+    // everything at once (the warmest thing for the body) still lets some cold through
+    const through = KINDS.filter((k) => k !== 'cape' && k !== 'cloak').reduce((t, k) => t * (1 - GARMENTS[k].warm), 1);
     expect(through).toBeGreaterThan(0.3);
   });
 

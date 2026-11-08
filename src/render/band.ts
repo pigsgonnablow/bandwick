@@ -204,9 +204,10 @@ interface Shown {
   swing: number; splashed: boolean;
 }
 
-/** The villager shader's style bits for what someone wears: cloak 32, hat 64, reed cape 128, bag 256. */
+/** The villager shader's style bits for what someone wears: cloak 32, hat 64, reed cape 128, bag 256, fur cloak 512 (in place of the hide one). */
 export function dressStyle(dress: number) {
-  return (dress & 1 ? 32 : 0) + (dress & 2 ? 64 : 0) + (dress & 8 ? 128 : 0) + (dress & 16 ? 256 : 0);
+  const fur = dress & 256;
+  return (dress & 1 && !fur ? 32 : 0) + (dress & 2 ? 64 : 0) + (dress & 8 ? 128 : 0) + (dress & 16 ? 256 : 0) + (fur ? 512 : 0);
 }
 
 /** Where the opening scene has someone, in place of where the simulation has them. */
@@ -355,7 +356,7 @@ export class BandLayer {
         this.pileMeshes.set(key, m);
         this.group.add(m);
       }
-      for (const key of ['snare', 'snareFull', 'fishtrap', 'fishtrapFull']) {
+      for (const key of ['snare', 'snareFull', 'fishtrap', 'fishtrapFull', 'deadfall', 'deadfallFull', 'deadfallBeaver']) {
         const g = geoms.get(`trap__${key}`);
         if (!g) continue;
         const m = new THREE.InstancedMesh(g, pm, 32);
@@ -496,6 +497,8 @@ export class BandLayer {
       ['cloak', 15, JT.hip, none],
       // a fur hat goes with the head; a reed cape hangs like the cloak; a hide bag hangs at the hip from its strap
       ['hat', 16, JT.neck, none], ['cape', 17, JT.hip, none], ['bag', 18, JT.hip, none],
+      // a fur cloak hangs like the hide one; its pelts are painted in their own colours, not the wearer's
+      ['furcloak', 19, JT.hip, none],
     ];
     const list: THREE.BufferGeometry[] = [];
     for (const [name, id, p1, p2] of parts) {
@@ -540,6 +543,7 @@ export class BandLayer {
           varying vec3 vSkin;
           varying vec3 vHair;
           varying float vDead;
+          varying float vReal;
           ${POSE_GLSL}`)
         .replace('#include <beginnormal_vertex>', `
           vec3 posed; mat3 poseR;
@@ -551,18 +555,22 @@ export class BandLayer {
         .replace('#include <begin_vertex>', `
           vec3 transformed = posed;
           vCloth = iCloth; vSkin = iSkin; vHair = iHair;
-          vDead = step(10.5, iAnim.x) * step(iAnim.x, 11.5);`);
+          vDead = step(10.5, iAnim.x) * step(iAnim.x, 11.5);
+          vReal = step(18.5, aPart);`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
           varying vec3 vCloth;
           varying vec3 vSkin;
           varying vec3 vHair;
-          varying float vDead;`)
+          varying float vDead;
+          varying float vReal;`)
         .replace('#include <color_fragment>', `#include <color_fragment>
           {
             vec3 code = diffuseColor.rgb;
             float rest = clamp(1.0 - code.r - code.g - code.b, 0.0, 1.0);
             vec3 col = code.r * vCloth + code.g * vSkin + code.b * vHair + rest * vec3(0.12, 0.085, 0.06);
+            // (the fur cloak carries its real colours)
+            col = mix(col, code, vReal);
             col = mix(col, vec3(dot(col, vec3(0.3, 0.5, 0.2))) * vec3(0.85, 0.88, 0.95), vDead * 0.7);
             col *= mix(vec3(1.0), vec3(0.92, 0.95, 1.0), uSnow * 0.2);
             diffuseColor.rgb = col;
@@ -1638,13 +1646,13 @@ export class BandLayer {
     this.traps = t;
   }
 
-  /** Snares stand at the foot of the bushes, off the middle of their tile; fish traps lie half sunk in the shallows. */
+  /** Snares stand at the foot of the bushes, off the middle of their tile, as do deadfalls by the earths; fish traps lie half sunk in the shallows. */
   private drawTraps() {
     const counts = new Map<string, number>();
     // a little over life size, so a set line still reads from the usual height
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), size = new THREE.Vector3(1.3, 1.3, 1.3);
     for (const t of this.traps) {
-      const key = (t.kind === 0 ? 'snare' : 'fishtrap') + (t.caught ? 'Full' : '');
+      const key = (t.kind === 0 ? 'snare' : t.kind === 2 ? 'deadfall' : 'fishtrap') + (t.caught ? (t.beaver ? 'Beaver' : 'Full') : '');
       let m = this.trapMeshes.get(key);
       if (!m) continue;
       const k = counts.get(key) ?? 0;
@@ -2017,9 +2025,9 @@ void poseVertex(vec3 pos, out vec3 v, out mat3 R) {
   bool arm = part > 1.5 && part < 3.5 || part > 7.5 && part < 9.5;
   bool headish = part > 0.5 && part < 1.5 || part > 5.5 && part < 7.5 || part > 11.5 && part < 14.5 || part > 15.5 && part < 16.5;
   // only one hair style is shown (parts 6, 7, 12, 13 are styles 0-3), the beard only on the bearded,
-  // and the cloak (part 15), hat (16), reed cape (17) and bag (18) only on those who have them (style bits 32, 64, 128, 256)
+  // and the cloak (part 15), hat (16), reed cape (17), bag (18) and fur cloak (19) only on those who have them (style bits 32, 64, 128, 256, 512)
   float hairPart = part > 5.5 && part < 7.5 ? part - 6.0 : part > 11.5 && part < 13.5 ? part - 10.0 : -1.0;
-  if ((hairPart > -0.5 && abs(hairPart - hairStyle) > 0.5) || (part > 13.5 && part < 14.5 && mod(style, 32.0) < 15.5) || (part > 14.5 && part < 15.5 && mod(style, 64.0) < 31.5) || (part > 15.5 && part < 16.5 && mod(style, 128.0) < 63.5) || (part > 16.5 && part < 17.5 && mod(style, 256.0) < 127.5) || (part > 17.5 && style < 255.5)) { v = vec3(0.0, -1.0, 0.0); R = mat3(0.0); return; }
+  if ((hairPart > -0.5 && abs(hairPart - hairStyle) > 0.5) || (part > 13.5 && part < 14.5 && mod(style, 32.0) < 15.5) || (part > 14.5 && part < 15.5 && mod(style, 64.0) < 31.5) || (part > 15.5 && part < 16.5 && mod(style, 128.0) < 63.5) || (part > 16.5 && part < 17.5 && mod(style, 256.0) < 127.5) || (part > 17.5 && part < 18.5 && mod(style, 512.0) < 255.5) || (part > 18.5 && style < 511.5)) { v = vec3(0.0, -1.0, 0.0); R = mat3(0.0); return; }
   // lower joint first (knee, elbow), then the limb it hangs from
   if (part > 9.5 && part < 11.5) turn(v, R, rx(left ? p.knL : p.knR), aPivot2);
   else if (part > 7.5 && part < 9.5) turn(v, R, rx(left ? p.elL : p.elR), aPivot2);

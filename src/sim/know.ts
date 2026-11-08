@@ -31,6 +31,7 @@ export type Practice =
   | 'dig_stick' // a trip's digging done with a digging stick
   | 'wolves' // a hunt with a wolf pack close by, or an evening hearing them howl round camp
   | 'boar' // a hunt with a sounder of wild boar rooting close by
+  | 'fur' // a fox's raid found at a snare, a fox or beaver watched at dusk, wood a beaver felled carried home
 
 /**
  * What someone has to be before they can have an idea. Only skill levels for now; a new kind of
@@ -282,6 +283,14 @@ export const DISCOVERIES: Discovery[] = [
     practice: { boar: 1 }, odds: 14,
     found: 'learned to follow a sounder of wild boar into the thickets and take one on the braced spear',
     taught: 'hunt the wild boar', memory: 'Brought down the first wild boar.',
+  },
+  {
+    // (a trapper who keeps finding a fox has emptied the snares, or who has watched the beavers at work on
+    // the bank, thinks of a trap heavy enough for them; a good hideworker sees what the pelts would make)
+    key: 'furs', label: 'Trapping for fur', needs: ['snares'], requires: [skill(SK.hunt, 10), skill(SK.hide, 8)],
+    practice: { fur: 1 }, odds: 12,
+    found: 'propped a log on a notched stick trigger at a fox earth, and took the fox in it: the first pelt, soft enough to sew into a cloak',
+    taught: 'trap foxes and beavers for their fur', memory: 'Took the first fox in a deadfall, for its pelt.',
   },
   {
     // (hidework is learned at the drying rack, so it can't be what leads to it)

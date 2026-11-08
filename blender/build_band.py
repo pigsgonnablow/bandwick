@@ -1525,6 +1525,78 @@ noose(q, (0, 0, -0.026), 0.006, segs=5)
 hare(q, (0, 0, -0.066), hang=True)
 q.finish("carry__hare")
 
+FOX_RED = (190, 92, 40)
+FOX_WHITE = (236, 228, 214)
+FOX_DARK = (44, 32, 26)
+BEAVER_FUR = (104, 70, 44)
+BEAVER_TAIL = (52, 44, 40)
+STONE_GREY = (128, 124, 116)
+BAIT = (150, 58, 48)
+
+
+def deadfall(q, caught):
+    """A deadfall at a fox earth: a heavy log, one end on the ground and the other propped up on a
+    figure-four of notched sticks (upright, slanted lever, bait stick with a scrap of meat under the log),
+    a couple of stones on it for weight and two pairs of stakes either side so it drops straight. Sprung,
+    the log lies flat, the trigger sticks are knocked flat, and the catch shows from under it (a fox's
+    brush and hind feet, or a beaver's flat tail). Origin at the middle, the log along x."""
+    rr = random.Random(77 + (len(caught or "") * 13))
+    lo, hi = Vector((-0.125, 0.0, 0.017)), Vector((0.115, 0.0, 0.074 if not caught else 0.030))
+    d = (hi - lo).normalized()
+    # the log, with its bark, a ring of cut wood at each end, and two stubs of lopped branches
+    q.cyl(7, 0.018, 0.016, lo, hi, WOOD_DARK, rr, 0.05)
+    for e, n in ((lo, -d), (hi, d)):
+        q.cyl(7, 0.0165, 0.0155, e, e + n * 0.002, (176, 146, 100), rr, 0.03)
+    for t, a in ((0.3, 0.6), (0.7, -0.8)):
+        p = lo + (hi - lo) * t
+        q.cyl(4, 0.004, 0.003, p, p + Vector((0.006, math.sin(a) * 0.022, 0.016)), WOOD_DARK, rr, 0.04)
+    # stones laid on it for weight
+    for t, s_ in ((0.42, 0.016), (0.62, 0.013)):
+        p = lo + (hi - lo) * t + Vector((0, 0, 0.022))
+        q.blob(p, (s_, s_ * 0.85, s_ * 0.6), STONE_GREY, rr, 0.08, noise=0.25)
+    # the guide stakes, either side of the log, that keep it falling true
+    for x in (0.045, 0.100):
+        for y in (-0.026, 0.026):
+            q.cyl(4, 0.0035, 0.0025, (x, y, -0.006), (x + rr.uniform(-0.004, 0.004), y * 1.1, 0.105), WOOD, rr, 0.05)
+    if not caught:
+        # the figure-four: an upright, the lever from its notched top to under the log, the bait stick across
+        up_b, up_t = Vector((0.080, 0.0, 0.0)), Vector((0.080, 0.0, 0.052))
+        q.cyl(4, 0.0026, 0.0024, up_b, up_t, WOOD, rr, 0.04)
+        q.cyl(4, 0.0024, 0.0022, (0.052, 0.002, 0.034), (0.118, 0.002, 0.066), WOOD, rr, 0.04)
+        q.cyl(4, 0.0022, 0.0020, (0.112, -0.002, 0.012), (0.034, -0.002, 0.020), WOOD, rr, 0.04)
+        q.blob((0.040, -0.002, 0.014), (0.008, 0.006, 0.005), BAIT, rr, 0.06)  # the bait
+        q.cyl(3, 0.0012, 0.0012, (0.040, -0.002, 0.018), (0.052, 0.002, 0.034), CORD, rr, 0.0, cap=False)
+    else:
+        # the trigger sticks knocked flat round the log's end
+        for a_, b_ in (((0.090, 0.040, 0.003), (0.130, 0.010, 0.003)), ((0.060, -0.042, 0.003), (0.120, -0.036, 0.004)),
+                       ((0.020, 0.036, 0.002), (0.074, 0.050, 0.003))):
+            q.cyl(4, 0.0022, 0.0020, a_, b_, WOOD, rr, 0.04)
+        if caught == "fox":
+            # a russet back under the log, the brush out on one side with its white tip, the black hind feet
+            q.blob((0.050, 0.004, 0.012), (0.050, 0.030, 0.014), FOX_RED, rr, 0.06)
+            sweep(q, [((0.020, 0.030, 0.010), 0.012, 0.011), ((0.000, 0.060, 0.010), 0.014, 0.012),
+                      ((-0.020, 0.090, 0.009), 0.012, 0.010), ((-0.030, 0.112, 0.008), 0.007, 0.007)],
+                  5, lambda c: FOX_RED, caps=(False, False))
+            q.blob((-0.034, 0.120, 0.008), (0.010, 0.012, 0.008), FOX_WHITE, rr, 0.04)
+            for y in (-0.012, 0.010):
+                q.cyl(4, 0.0040, 0.0030, (0.008, y - 0.020, 0.006), (-0.020, y - 0.040, 0.004), FOX_DARK, rr, 0.04)
+        else:
+            # a beaver's broad scaly tail out from under the log, and a webbed hind foot
+            q.blob((0.050, 0.0, 0.013), (0.050, 0.032, 0.015), BEAVER_FUR, rr, 0.06)
+            q.box((0.040, 0.066, 0.006), (0.030, 0.050, 0.006), BEAVER_TAIL, rr, 0.05, rot=Matrix.Rotation(0.2, 3, "Z"))
+            q.box((0.000, -0.036, 0.005), (0.016, 0.022, 0.004), BEAVER_TAIL, rr, 0.05, rot=Matrix.Rotation(-0.5, 3, "Z"))
+
+
+q = Part()
+deadfall(q, None)
+q.finish("trap__deadfall")
+q = Part()
+deadfall(q, "fox")
+q.finish("trap__deadfallFull")
+q = Part()
+deadfall(q, "beaver")
+q.finish("trap__deadfallBeaver")
+
 
 def fishtrap(q, full):
     """A woven fish trap: a long basket, wide at the mouth with a funnel turned in, tapering to a tied tail,
@@ -1837,6 +1909,46 @@ shell(q, top, bot, lambda i, k: CLOAK_CODE, lambda i, k: CLOAK_CODE, CLOAK_CODE,
 # the cord at the throat
 q.box((0, -0.026, 0.284), (0.012, 0.004, 0.004), DARK, raw=True)
 q.finish("villager__cloak")
+
+# a fur cloak: fox and beaver pelts sewn fur-out into a mantle, longer and thicker than the hide cloak, with a
+# collar of pale fox-belly fur and a fox's brush hanging down the back. Unlike the other worn things it is
+# painted in its own colours (the game shows it as painted, not in the wearer's colours).
+FUR_FOX = (184, 92, 44)
+FUR_FOX_DK = (150, 70, 34)
+FUR_BEAVER = (108, 74, 48)
+FUR_BEAVER_DK = (86, 58, 38)
+FUR_PALE_C = (226, 214, 190)
+FUR_INSIDE = (164, 128, 90)
+q = Part()
+rr = random.Random(91)
+CZ3 = [0.128, 0.150, 0.176, 0.204, 0.232, 0.256, 0.272, 0.284, 0.292]
+
+
+def fur_row(i, z, out):
+    row = cape_row(min(i, len(CZ) - 1), z, out + 0.005)
+    if i == 0:  # a hem of pelt edges, uneven
+        row = [(x, y, z_ - 0.010 * ((k * 5) % 3) / 2) for k, (x, y, z_) in enumerate(row)]
+    return row
+
+
+def pelt(i, k):
+    if i >= len(CZ3) - 3:
+        return FUR_PALE_C  # the collar
+    fox = ((i // 2) + (k // 3)) % 2 == 0
+    dark = (i + k) % 3 == 0
+    return (FUR_FOX_DK if dark else FUR_FOX) if fox else (FUR_BEAVER_DK if dark else FUR_BEAVER)
+
+
+top = [fur_row(i, z, 0.0) for i, z in enumerate(CZ3)]
+bot = [fur_row(i, z, -0.006) for i, z in enumerate(CZ3)]
+shell(q, top, bot, pelt, lambda i, k: FUR_INSIDE, FUR_FOX_DK, rr, 0.06)
+q.box((0, -0.030, 0.284), (0.012, 0.005, 0.005), (70, 52, 36), rr, 0.0)  # the thong at the throat
+# a fox's brush down the back from the collar, its white tip at the hem
+_, yb, _ = torso_at(0.20)
+sweep(q, [((0, yb + 0.022, 0.262), 0.007, 0.006), ((0, yb + 0.026, 0.220), 0.010, 0.008), ((0, yb + 0.026, 0.176), 0.010, 0.008),
+          ((0, yb + 0.022, 0.140), 0.007, 0.006)], 5, lambda c: FUR_FOX, caps=(True, False))
+q.blob((0, yb + 0.021, 0.132), (0.007, 0.006, 0.012), FUR_PALE_C, rr, 0.03)
+q.finish("villager__furcloak")
 
 # a fur hat: a cap of hide over the hair with a rolled fur brim. Shown only on those who wear one.
 HAT_CODE = (0, 0.42, 0.22)   # hide with the fur showing: part skin, part hair colour
@@ -2734,9 +2846,11 @@ item_copy("carry__axe", "item__axe")
 item_copy("carry__stick", "item__stick")
 item_copy("trap__snare", "item__snare")
 item_copy("trap__fishtrap", "item__fishtrap")
+item_copy("trap__deadfall", "item__deadfall")
 item_copy("carry__basket", "item__basket")
 item_copy("pile__pot", "item__pot")
 repaint(item_copy("villager__cloak", "item__cloak"), [(L_(CLOAK_CODE), HIDE_TAN), ((0, 0, 0), THONG)], 61)
+item_copy("villager__furcloak", "item__furcloak")
 repaint(item_copy("villager__hat", "item__hat"), [(HAT_CODE, HIDE_BROWN), (FUR_CODE, FUR_PALE)], 62)
 q = Part()  # the reed cape, as worn, in its real straw colours: the knotted rows lighter and darker
 rr = random.Random(63)

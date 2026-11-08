@@ -155,6 +155,20 @@ river nearby. They come out at dusk and dawn to swim, slapping their tails when 
 and go ashore to gnaw through the birches along the bank. A felled birch lies where it fell, its wood
 free for anyone who comes to haul it home. In winter, under the ice, they stay in the lodge.
 
+**Trapping for fur.** A band that has snares may go on to trap foxes and beavers for their pelts (a
+discovery). The idea comes to a good hunter who is also a fair hideworker, while finding fox prints round
+a robbed snare, watching a fox or the beavers at dusk, or hauling home a trunk the beavers felled. A
+deadfall is made by the fire from 3 wood: a heavy log propped on a figure-four of notched sticks, with
+stones on it and stakes either side. The plan wants one at each fox earth and beaver lodge within about
+20 tiles of camp that still has a pair or more living there, and they go out on the daily round of the
+traps. Overnight a deadfall may come down on a fox or a beaver (the young of the year are the ones that
+take the bait; beavers stay under the ice in winter). The trapper brings the pelt home, and a beaver's
+meat too, and takes the deadfall up once only one beast is left, so the earth or lodge can recover (a
+lone fox or beaver finds a new mate in spring). Two pelts and a cord make a fur cloak, the warmest thing
+a band can wear. It goes to whoever feels the cold most, and the hide cloak it replaces goes back on the
+pile. The first fox earths are dug within an evening's walk of camp. A boar brought home also gives its
+tusks, kept with the teeth for ornaments.
+
 **Crafting.** Everything made by the fire is one job with a list of recipes (`RECIPES` in
 `src/sim/band.ts`): cordage, the hand chopper and the stone axe so far. Each morning the plan says
 what is wanted, in a fixed order: cordage a building site is waiting on, then tools the day's work is
