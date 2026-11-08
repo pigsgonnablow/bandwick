@@ -305,11 +305,14 @@ export function decide(s: Sim, p: Person) {
       add('build', (j.build ?? 0) * drive * night * fit(p, SK.build) * crowd('build') * 1.05);
       add('preserve', (j.preserve ?? 0) * drive * night * fit(p, SK.hide) * crowd('preserve'));
     }
-    if ((j.fuel ?? 0) > 0.5 && c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', j.fuel * (dark ? 1.1 : 1));
+    // (feeding the fire is for whoever is about camp: someone out on the land would carry the wood off with them
+    // from the stores in thought, and the fire would wait hours for it)
+    const atCamp = away < 12;
+    if (atCamp && (j.fuel ?? 0) > 0.5 && c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', j.fuel * (dark ? 1.1 : 1));
     // from late afternoon, bank the fire with enough to see the night through (in the dark, ahead of sleep)
     // (someone bringing wood from far across the land doesn't stop those at camp from feeding it now)
     const fueling = s.fuelOnHand(c);
-    if ((dark || hour >= 15) && age >= 13 && !fueling && busyWith(s, 'fuel') < 2 && s.fireShort()) add('fuel', dark ? 2.0 : 1.0);
+    if (atCamp && (dark || hour >= 15) && age >= 13 && !fueling && busyWith(s, 'fuel') < 2 && s.fireShort()) add('fuel', dark ? 2.0 : 1.0);
     // a dying fire in the cold is everyone's problem: a few go for wood whatever the hour
     const fireLow = s.hearth().fuel < 2;
     // (even the weak: a cold hearth in a hungry winter is how a whole band dies)

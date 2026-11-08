@@ -149,8 +149,15 @@ and in the Chronicle. Older saves give each person's old crafting level to toolm
 
 **Fortune.** Most years are ordinary. Some are not: a sickness that runs through a camp, a feud
 that ends in a killing and an exile, wolves or a bear on someone out alone after dark, a drowning,
-a summer the berries fail, a murrain among the deer; or a year of plenty, a great hunt that brings
-down half a herd, someone hardy enough to see ninety, ten years without a single death. Over sixty
+a lean year (a late frost takes the berry flowers, the fish run thin and the acorns, roots, mushrooms
+and hares come to half), a murrain among the deer; or a year of plenty, a great hunt that brings
+down half a herd, someone hardy enough to see ninety, ten years without a single death. A bitter
+winter makes people hungrier as well as colder. Lean years and bitter winters are where bands go on
+short rations and sometimes lose people; the first band is spared a lean year in its first two
+summers. A band whose fire is dying in winter with no wood left goes to live at a neighbour's fire
+rather than freeze. Fished-down water gives smaller catches, and wolves only raise cubs where there
+are deer to feed them. `npx tsx tools/longrun.ts --seed N` records a world year by year, and
+`npx tsx tools/longrun-report.ts dir` sums many of them up. Over sixty
 years some worlds hold one small band hanging on and some hold four thriving ones; now and then the
 land is left empty until strangers come.
 
