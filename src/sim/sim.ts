@@ -33,6 +33,8 @@ export const CONES = 1;
 export const STAGE_WORD = ['sapling', 'young', 'mature', 'old'];
 /** Damp firewood (autumn and winter, no roof over the woodpile) burns this much faster. */
 export const DAMP_BURN = 1.2;
+/** The most wood a fire holds at once (more piled on would only burn away to no purpose). */
+export const FIRE_HOLDS = 12;
 /** How far a fire's warmth reaches, and with a windbreak behind it. */
 export const WARM_RADIUS = 2.6;
 /** the crafts beyond the everyday ones, and the discovery that gives the band a use for each (pottery has none yet) */
@@ -47,6 +49,13 @@ export const WINTER_CATCH = 0.5;
 export const RATION_BELOW = 0.7;
 /** in a bitter winter, a catch against an ordinary winter's, and how fast the fish come back */
 export const BITTER_CATCH = 0.6;
+/** how fast fished water fills up again: a share of what it holds when left alone, every six hours (a busy
+ *  camp's fishing places thin out, so a band that grows has to look to other food too) */
+export const FISH_REGROW = 0.01;
+/** the chance of a lean year, when a late frost takes the berry flowers and the fish run thin, and how
+ *  fast the fish come back that year */
+export const LEAN_YEAR = 0.08;
+export const LEAN_FISH = 0.5;
 /** The jobs whose `ref` is a prop (a tree, a bush, a stand of reeds, a pile of logs). */
 export const PROP_TASKS: TaskKind[] = ['eatwild', 'forage', 'reap', 'fell', 'deadwood', 'haul', 'roots', 'nuts', 'herbs', 'eggs', 'honey', 'mushrooms'];
 /** winters in a row a band has had to ration before it thinks of finding better land */
@@ -1190,7 +1199,7 @@ export class Sim {
     if (p.food < starveAt && !foodInHand && !graveDug && k !== 'eat' && k !== 'eatwild' && k !== 'fuel' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
     const woodRun = (k === 'fell' || k === 'haul' || k === 'deadwood') && this.hearth().fuel < 2;
     // (feeding the fire is how they get warm: nobody turns away from it to go and sit by it cold)
-    if (p.warmth < (woodRun ? 8 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel') return true;
+    if (p.warmth < (woodRun ? 5 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel') return true;
     // the fire keeper wakes in the night when the fire will not last till morning
     if (k === 'sleep' && isDark(this.tick) && this.fireShort() && !this.fuelOnHand(this.camp) && this.fireKeeper() === p) return true;
     // worn out on the way home with a load: the bed is at camp, where they're going anyway
@@ -1348,10 +1357,10 @@ export class Sim {
       for (const c of this.liveCamps()) if (c.feastDay === dayOf(this.tick)) for (const p of this.members(c)) if (p.task?.kind !== 'feast' && !delivering(p)) p.nextThink = this.tick;
     // fish recover slowly, and hardly at all in winter, when they go deep and lie still in the cold
     if (this.tick % (TICKS_PER_HOUR * 6) === 0) {
-      const slow = seasonOf(this.tick) === 3 ? WINTER_FISH * (this.bitterWinter() ? BITTER_CATCH : 1) : 1;
+      const slow = (seasonOf(this.tick) === 3 ? WINTER_FISH * (this.bitterWinter() ? BITTER_CATCH : 1) : 1) * (this.blightYear === yearOf(this.tick) ? LEAN_FISH : 1);
       for (let i = 0; i < this.fish.length; i++) {
         const c = this.fishCap[i];
-        if (c > 0 && this.fish[i] < c) this.fish[i] = Math.min(c, this.fish[i] + (0.06 * c * (1 - this.fish[i] / (c * 1.05)) + 0.02) * slow);
+        if (c > 0 && this.fish[i] < c) this.fish[i] = Math.min(c, this.fish[i] + (FISH_REGROW * c * (1 - this.fish[i] / (c * 1.05)) + 0.02) * slow);
       }
       this.fishVersion++;
     }
@@ -1387,7 +1396,7 @@ export class Sim {
   /** Whether the fire needs more wood to last the night, and there is wood to give it. */
   fireShort(c = this.camp) {
     const h = this.hearth(c);
-    return c.stock.wood >= 1 && h.fuel < 12 && h.fuel < this.fuelToMorning(c) + 0.5;
+    return c.stock.wood >= 1 && h.fuel < FIRE_HOLDS && h.fuel < this.fuelToMorning(c) + 0.5;
   }
 
   /**
@@ -1703,7 +1712,7 @@ export class Sim {
       if (it.kind === 'snare') {
         // hare tracks in the snow make the runs easy to find
         if (!it.catch && this.gameCap[w] > 0 && r.chance(0.32 * (this.game[w] / this.gameCap[w]) * (winter ? 1.4 : 1))) {
-          it.catch = 2;
+          it.catch = 3;
           this.game[w] = Math.max(0, this.game[w] - 1);
         }
       } else if (it.kind === 'fishtrap') {
@@ -2057,7 +2066,7 @@ export class Sim {
         // (a lone deer left over counts as hunted out: it has no one to breed with)
         const left = this.deer.filter((d) => d.alive && d.herd === h.id).length;
         if (left >= 2) continue;
-        if (this.camps.some((c) => !c.gone && hyp(h.hx - c.x, h.hz - c.z) <= 20) || !r.chance(0.3)) continue;
+        if (this.camps.some((c) => !c.gone && hyp(h.hx - c.x, h.hz - c.z) <= 10) || !r.chance(0.5)) continue;
         for (let k = left; k < 3; k++) this.spawnDeer(h, h.hx, h.hz, false);
       }
     }
@@ -2585,10 +2594,13 @@ export class Sim {
     // early summer: how the year's fruit and fish will be
     if (dayOfYear === 14) {
       const roll = this.rWild.next();
-      if (roll < 0.05) {
+      if (roll < LEAN_YEAR) {
         this.blightYear = year;
-        this.event('blight', 'The berry bushes are bare this summer: a late frost took the flowers.', [], here.x, here.z, 4);
-      } else if (roll < 0.13) {
+        // (and the fish are few: the water is fished down to what a poor year holds)
+        for (let i = 0; i < this.fish.length; i++) this.fish[i] = Math.min(this.fish[i], this.fishCap[i] * 0.6);
+        this.fishVersion++;
+        this.event('blight', 'A lean year: a late frost took the berry flowers, and the fish run thin.', [], here.x, here.z, 4);
+      } else if (roll < LEAN_YEAR + 0.08) {
         this.plentyYear = year;
         for (let i = 0; i < this.fish.length; i++) this.fish[i] = this.fishCap[i];
         this.fishVersion++;
@@ -2757,7 +2769,7 @@ export class Sim {
     c.rationing = s >= 2.5 && lasting < need * RATION_BELOW;
     if (c.rationing && winterNow) c.rationedIn = yearOf(this.tick);
     // kept burning through the night, the fire eats about 9 loads a winter day: lay in enough before the cold comes
-    const fuelNeed = (winterNow ? Math.max(14, daysToWinterEnd * 9) : s > 2.0 ? 110 : s > 1.4 ? 55 : 12) * (this.hasBuilt('woodshed') ? 1 : s > 1.6 ? DAMP_BURN : 1);
+    const fuelNeed = (winterNow ? Math.max(14, daysToWinterEnd * 9) : s > 2.0 ? 110 : s > 1.4 ? 80 : s > 0.7 ? 35 : 15) * (this.hasBuilt('woodshed') ? 1 : s > 1.6 ? DAMP_BURN : 1);
     const sites = mine.filter((b) => !b.built);
     // daub can't wait on frozen ground: a site still short of mud as winter comes is raised in wood
     if (s >= 2.75) for (const b of sites) this.fallBackToWood(b);
@@ -2820,7 +2832,8 @@ export class Sim {
       // (and clay for a pot)
       dig: (siteMud > c.stock.mud || (make === 'pot' && c.stock.mud < 2)) && !winterNow ? 0.75 : 0,
       // stone for walls, and a lump or two for knapping tools
-      quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < (RECIPES[make].uses.stone ?? 0) ? 0.5 : 0,
+      // (with nothing left to fell with, the stone for a new chopper is as urgent as the knapping)
+      quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < (RECIPES[make].uses.stone ?? 0) ? (unarmed ? 0.95 : 0.5) : 0,
       bury: this.people.some((p) => !p.alive && !p.buried && p.band === c.id) ? 1 : 0,
     };
     c.plan = [];
@@ -3544,8 +3557,11 @@ export class Sim {
     for (const k of this.packs) {
       const pack = this.wolves.filter((w) => w.alive && w.pack === k.id);
       const grown = pack.filter((w) => !w.pup);
-      // cubs in late spring, grown by the autumn; a hard winter takes the odd wolf
-      if (dayOfYear === 8 && grown.length >= 2 && pack.length < 5) {
+      // cubs in late spring, grown by the autumn, but only where there are deer enough to raise them on; a hard
+      // winter takes the odd wolf, and a pack whose range has been hunted out of deer starves down
+      const prey = dayOfYear === 8 || seasonOf(this.tick) === 3 ? this.deer.filter((d) => d.alive && hyp(d.x - k.hx, d.z - k.hz) < 32).length : 0;
+      if (seasonOf(this.tick) === 3 && pack.length && prey < 3 && r.chance(0.03)) pack[r.int(0, pack.length)].alive = false;
+      if (dayOfYear === 8 && grown.length >= 2 && pack.length < 5 && prey >= 4) {
         const n = r.int(1, 3);
         for (let i = 0; i < n && pack.length + i < 6; i++) this.spawnWolf(k, k.hx + r.range(-0.6, 0.6), k.hz + r.range(-0.6, 0.6), true);
       }

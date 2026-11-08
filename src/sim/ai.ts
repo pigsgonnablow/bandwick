@@ -1,7 +1,7 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
-import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS } from './sim';
+import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
@@ -212,7 +212,10 @@ export function decide(s: Sim, p: Person) {
   else if (berriesRipe(s.tick)) add('eatwild', hunger * 1.1);
   if (dark) add('sleep', p.rest < 94 ? 1.45 + (hour > 21 || hour < 5 ? 0.3 : 0) : 0.2);
   else add('sleep', p.rest < 32 ? ((32 - p.rest) / 32) * 1.7 : 0);
-  if (temp < 11 && p.warmth < 62) add('warm', ((62 - p.warmth) / 62) * 1.7 + (dark ? 0.15 : 0));
+  // (with the fire out and no wood in the stores, sitting by the cold hearth warms nobody: those fit to fetch
+  // wood go for it first, and only the very cold, the weak and the children shelter at home)
+  const deadFire = !s.hearthLit() && c.stock.wood < 1 && age >= 13 && p.health > 25 && p.warmth > 6;
+  if (temp < 11 && p.warmth < 62) add('warm', (((62 - p.warmth) / 62) * 1.7 + (dark ? 0.15 : 0)) * (deadFire && !dark ? 0.5 : 1));
   add('socialize', p.belonging < 62 ? ((62 - p.belonging) / 62) * 0.95 + (hour > 17 && !dark ? 0.15 : 0) : 0);
   add('idle', 0.16 + (hour > 18 && !dark ? 0.15 : 0) + (s.has(p, 'lazy') ? 0.1 : 0));
   if (child && age >= 2 && !dark) add('play', 0.5 + (age < 9 ? 0.2 : 0));
@@ -709,8 +712,12 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const snow = snowLies(s.tick), dog = s.hasDog(p);
       // and a dog picks up a scent where a hunter alone would see nothing
       let best = -1, bestD = (snow ? 72 : 56) + (dog ? 16 : 0);
+      // a herd down to its last two is let be, unless the band is going hungry
+      const herds = new Map<number, number>();
+      for (const d of s.deer) if (d.alive) herds.set(d.herd, (herds.get(d.herd) ?? 0) + 1);
+      const spare = (c.jobs.food ?? 0) < 0.8;
       s.deer.forEach((d, i) => {
-        if (!d.alive) return;
+        if (!d.alive || (spare && (herds.get(d.herd) ?? 0) < 3)) return;
         const dist = hyp(d.x - c.x, d.z - c.z);
         if (dist < bestD && !s.people.some((q) => q !== p && q.alive && q.task?.kind === 'hunt' && q.task.ref === d.id)) {
           bestD = dist;
@@ -1057,7 +1064,7 @@ export function deposit(s: Sim, p: Person) {
       const put = Math.min(4, Math.floor(st.wood));
       st.wood -= put;
       s.book('burned', put);
-      h.fuel = Math.min(12, h.fuel + put);
+      h.fuel = Math.min(FIRE_HOLDS, h.fuel + put);
       s.buildingsVersion++;
       p.thought = 'Put an armful of wood straight on the dead fire.';
     }
@@ -1743,7 +1750,7 @@ export function runTask(s: Sim, p: Person) {
         c.stock.wood -= 2;
         s.book('burned', 2);
         const wasOut = h.fuel <= 0;
-        h.fuel = Math.min(12, h.fuel + 2);
+        h.fuel = Math.min(FIRE_HOLDS, h.fuel + 2);
         if (wasOut) s.buildingsVersion++;
       }
       p.act = t.timer % 14 < 7 ? ACT.Eat : ACT.Chat;
@@ -2514,8 +2521,11 @@ export function runTask(s: Sim, p: Person) {
       if (--t.timer > 0) return;
       const h = s.hearth();
       const wasOut = h.fuel <= 0;
-      s.book('burned', t.amount);
-      h.fuel = Math.min(12, h.fuel + t.amount);
+      // only what the fire has room for goes on: the rest goes back on the woodpile
+      const put = Math.max(0, Math.min(t.amount, FIRE_HOLDS - h.fuel));
+      s.book('burned', put);
+      h.fuel += put;
+      c.stock.wood += t.amount - put;
       if (s.dampWood()) s.practise(p, 'damp_fire');
       p.carry = CARRY.None;
       p.carryAmt = 0;

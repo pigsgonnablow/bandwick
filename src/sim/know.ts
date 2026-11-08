@@ -270,7 +270,7 @@ export const DISCOVERIES: Discovery[] = [
     // (a hunter who has watched the wolves run deer down, and heard them round the fire at night, takes in a
     // cub left behind by its pack and raises it on scraps; it grows up to hunt beside them and to bark at strangers)
     key: 'dogs', label: 'Dogs', needs: [], requires: [skill(SK.hunt, 12)],
-    practice: { wolves: 1 }, odds: 14,
+    practice: { wolves: 1 }, odds: 9,
     found: 'took in a wolf cub left behind by its pack, raised it on scraps by the fire, and it grew up to hunt at their side: the first dog',
     taught: 'raise dogs to hunt with', memory: 'Raised the first dog from a wolf cub.',
   },
