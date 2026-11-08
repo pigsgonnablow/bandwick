@@ -298,8 +298,10 @@ export function decide(s: Sim, p: Person) {
     if (age >= 13) {
       const wood = (j.wood ?? 0.3) * drive * night * fit(p, SK.wood);
       add(logsNear ? 'haul' : 'fell', wood * crowd('fell') * crowd('haul'));
-      // fallen branches near camp: a little wood at a time, and no tree has to come down
-      add('deadwood', wood * 0.8 * crowd('deadwood'));
+      // fallen branches near camp: a little wood at a time, and no tree has to come down (and for a band with no
+      // axe, in woods grown too big for a chopper, the main way to keep the fire)
+      const axe = s.toolsOf(c).some((i) => i.kind === 'axe');
+      add('deadwood', wood * (axe ? 0.8 : 1.05) * crowd('deadwood'));
       add('build', (j.build ?? 0) * drive * night * fit(p, SK.build) * crowd('build') * 1.05);
       add('preserve', (j.preserve ?? 0) * drive * night * fit(p, SK.hide) * crowd('preserve'));
     }
