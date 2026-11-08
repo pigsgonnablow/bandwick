@@ -2607,7 +2607,8 @@ export class Sim {
     // early summer: how the year's fruit and fish will be
     if (dayOfYear === 14) {
       const roll = this.rWild.next();
-      if (roll < LEAN_YEAR) {
+      // (not in the first band's first two summers, while it is still finding its feet: that would only be cruel)
+      if (roll < LEAN_YEAR && year > 2) {
         this.blightYear = year;
         // (and the fish are few: the water is fished down to what a poor year holds)
         for (let i = 0; i < this.fish.length; i++) this.fish[i] = Math.min(this.fish[i], this.fishCap[i] * 0.5);
