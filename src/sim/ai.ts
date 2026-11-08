@@ -898,7 +898,20 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
       for (const [m, n] of Object.entries(uses) as [keyof typeof uses, number][]) st[m] += n;
       t.amount = 0;
     }
-    if (t.kind === 'trap') untakeTraps(s, t);
+    if (t.kind === 'trap') {
+      untakeTraps(s, t);
+      // a round cut short by hunger or nightfall: they bring what the traps held home with them
+      // (pelts are light, and kept; the catch goes in with them when they come in to eat or sleep)
+      if (t.amount > 0) { st.meat += t.amount; s.book('trapped', t.amount); s.book('gathered.meat', t.amount); t.amount = 0; }
+      if ((t.fish ?? 0) > 0) { st.fish += t.fish!; s.book('trapped', t.fish!); s.book('gathered.fish', t.fish!); t.fish = 0; }
+      if ((t.furs ?? 0) > 0) {
+        const n = Math.min(t.furs!, Math.max(0, FURS_KEPT - st.furs));
+        st.furs += n;
+        s.book('gathered.furs', n);
+        for (let k = 0; k < t.furs!; k++) train(p, 'skin');
+        t.furs = 0;
+      }
+    }
     if (t.kind === 'preserve' && t.amount > 0) {
       // back as it came: fish to the fish, meat to the meat
       const fish = Math.min(t.amount, t.fish ?? 0);
@@ -1121,6 +1134,8 @@ function flash(p: Person, code: number) {
  * run thickest or the fish are, near camp. Three numbers a stop: trap id, tile to stand on, and the
  * tile to set it on (-1: check it, -3: check it and take it up).
  */
+/** Stops in a day's round of the traps: walking out to them all and back is a long day. */
+const TRAP_ROUND = 6;
 function trapRoute(s: Sim): number[] {
   const c = s.camp, N = s.N;
   const mine = s.toolsOf(c).filter((i) => TRAP_KINDS.includes(i.kind) && i.holder < 0);
@@ -1203,10 +1218,16 @@ function trapRoute(s: Sim): number[] {
     }
     return out;
   };
-  const a = order(checks, c.x, c.z);
-  const last = a[a.length - 1];
-  const b = order(sets, last ? (last[1] % N) + 0.5 : c.x, last ? Math.floor(last[1] / N) + 0.5 : c.z);
-  return [...a, ...b].flat();
+  // the deadfalls first: the earths and lodges lie furthest out, and a round that ran out of daylight
+  // on the near snares never reached them. Then the nearest of the rest, as many as a day allows
+  // (those left over wait for tomorrow's round)
+  const isDeadfall = (st: number[]) => s.items.find((i) => i.id === st[0])?.kind === 'deadfall';
+  const d = [...order(checks.filter(isDeadfall), c.x, c.z), ...order(sets.filter(isDeadfall), c.x, c.z)];
+  let at = d[d.length - 1];
+  const a = order(checks.filter((st) => !isDeadfall(st)), at ? (at[1] % N) + 0.5 : c.x, at ? Math.floor(at[1] / N) + 0.5 : c.z);
+  at = a[a.length - 1] ?? at;
+  const b = order(sets.filter((st) => !isDeadfall(st)), at ? (at[1] % N) + 0.5 : c.x, at ? Math.floor(at[1] / N) + 0.5 : c.z);
+  return [...d, ...a, ...b].slice(0, TRAP_ROUND).flat();
 }
 
 /** Traps still in the basket when the round ends, or is given up, go back on the pile. */
