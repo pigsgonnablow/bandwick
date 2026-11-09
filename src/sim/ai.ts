@@ -1820,7 +1820,8 @@ export function runTask(s: Sim, p: Person) {
       if (!b || !pl || !b.built) return finish(s, p);
       if (t.stage === 0) {
         if (moving(go(s, p, t))) return;
-        const still = t.kind === 'sow' ? !pl.crop : t.kind === 'tend' ? pl.crop > 0 && pl.growth < 1 : pl.crop > 0 && pl.growth >= 1 && pl.left > 0.3;
+        // (a sower who arrives too late in the spring for the crop to ripen leaves the plot be)
+        const still = t.kind === 'sow' ? s.sowable(b, t.amount >= SEED_PER_PLOT ? CROP.Grain : CROP.Roots) : t.kind === 'tend' ? pl.crop > 0 && pl.growth < 1 : pl.crop > 0 && pl.growth >= 1 && pl.left > 0.3;
         if (!still) return finish(s, p);
         t.stage = 1;
         const skill = p.skills[SK.garden];
@@ -1874,7 +1875,8 @@ export function runTask(s: Sim, p: Person) {
       s.practise(p, 'harvest');
       if (pl.left <= 0.3) {
         // the plot is bare: the ground is a little more tired for it
-        const first = !s.plots(c).some((q) => q !== b && (q.plot?.reaped ?? 0) > 0);
+        // (the first harvest the band has ever brought in: no plot of theirs, this one included, reaped before)
+        const first = !s.plots(c).some((q) => (q.plot?.reaped ?? 0) > 0);
         Object.assign(pl, { crop: 0, growth: 0, weeds: 0, left: 0, greens: 0, cond: 1, sown: 0, reaped: yearOf(s.tick), last: pl.crop, soil: Math.max(0.4, pl.soil - SOIL_TIRE) });
         s.buildingsVersion++;
         if (first) s.event('harvest', `${p.name} brought in the first harvest from the gardens of ${c.name}.`, [p.id], b.x + 0.5, b.z + 0.5, 3);

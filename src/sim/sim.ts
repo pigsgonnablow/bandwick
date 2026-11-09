@@ -2071,11 +2071,11 @@ export class Sim {
     if (!pl || !pl.crop) return 0;
     return PLOT_YIELD[pl.crop] * pl.cond * pl.soil * pl.care * this.gardenYear();
   }
-  /** Whether a plot can be sown today: in spring, early enough for its crop to ripen before the frost. */
+  /** Whether a plot can be sown today: in spring, early enough for its crop to ripen with a few days to bring it in before the frost. */
   sowable(b: Building, crop: number, t = this.tick) {
     const pl = b.plot;
     const doy = dayOf(t) % DAYS_PER_YEAR;
-    return seasonOf(t) === 0 && doy <= (crop === CROP.Grain ? 11 : 9) && (!pl || (!pl.crop && pl.soil >= SOIL_FALLOW && pl.reaped !== yearOf(t)));
+    return seasonOf(t) === 0 && doy <= (crop === CROP.Grain ? 11 : 7) && (!pl || (!pl.crop && pl.soil >= SOIL_FALLOW && pl.reaped !== yearOf(t)));
   }
   /** What the band would sow next: grain while there is seed for it, else roots dug from the meadow. */
   nextCrop(c = this.camp, claimed = 0) {
@@ -2133,7 +2133,8 @@ export class Sim {
       }
       if (pl.growth < 1) {
         const before = pl.growth;
-        pl.growth = Math.min(1, pl.growth + 1 / GROW_DAYS[pl.crop]);
+        // (to the day: a sum of so many fractions of a day can fall a hair short of whole)
+        pl.growth = pl.growth + 1 / GROW_DAYS[pl.crop] > 1 - 1e-6 ? 1 : pl.growth + 1 / GROW_DAYS[pl.crop];
         // the weeds come up through spring and summer, and choke a plot nobody weeds
         if (season < 2) pl.weeds = Math.min(1, pl.weeds + 0.06);
         pl.cond = Math.max(0.1, pl.cond - Math.max(0, pl.weeds - 0.45) * 0.06);
