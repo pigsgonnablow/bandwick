@@ -2081,11 +2081,19 @@ export class Sim {
   nextCrop(c = this.camp, claimed = 0) {
     return this.knows('grain', c) && (c.seed ?? 0) - claimed >= SEED_PER_PLOT ? CROP.Grain : CROP.Roots;
   }
-  /** Plots a band wants: about one for every two or three people, more once it sows grain. */
+  /** Plots a band wants: one for every three people, nearly one each once it sows grain (fewer with grain to spare). */
   plotsWanted(c = this.camp) {
     if (!this.knows('garden', c)) return 0;
-    const pop = this.members(c).length;
-    return Math.min(16, Math.max(2, Math.ceil(pop * (this.knows('grain', c) ? 0.55 : 0.35))));
+    const ms = this.members(c);
+    const want = Math.min(24, Math.max(2, Math.ceil(ms.length * (this.knows('grain', c) ? 0.85 : 0.35))));
+    // with two years' grain already put by, half as many will do
+    const year = ms.reduce((n, p) => n + (this.age(p) < 12 ? DAILY_CHILD : DAILY_ADULT), 0) * DAYS_PER_YEAR;
+    return c.stock.grain >= 2 * year ? Math.max(2, Math.ceil(want / 2)) : want;
+  }
+  /** Plots still to sow this year: as many as the band wants, counting those already sown or reaped. */
+  toSow(c = this.camp) {
+    const y = yearOf(this.tick);
+    return Math.max(0, this.plotsWanted(c) - this.plots(c).filter((b) => b.plot?.crop || b.plot?.reaped === y).length);
   }
   /** The harvest still to come in from the band's gardens this year, in meals (what is ripe, and most of what is still growing). */
   gardenComing(c = this.camp) {
@@ -3056,12 +3064,12 @@ export class Sim {
     // the gardens: plots to sow this spring, plots to weed, pick or guard, and ripe ones to bring in
     const plots = this.knows('garden') ? this.plots(c) : [];
     let claimed = 0;
-    const toSow = plots.filter((b) => {
+    const toSow = Math.min(plots.length ? this.toSow(c) : 0, plots.filter((b) => {
       const crop = this.nextCrop(c, claimed);
       if (!this.sowable(b, crop)) return false;
       if (crop === CROP.Grain) claimed += SEED_PER_PLOT;
       return true;
-    }).length;
+    }).length);
     const growing = plots.filter((b) => b.plot?.crop && b.plot.growth < 1);
     const toTend = growing.filter((b) => b.plot!.weeds > 0.35 || b.plot!.greens >= GREENS_LOAD * 0.75 || (this.tick - b.plot!.raided < 2 * TICKS_PER_DAY && b.plot!.guarded <= this.tick)).length;
     const ripe = plots.filter((b) => b.plot?.crop && b.plot.growth >= 1 && b.plot.left > 0.3).length;
@@ -3228,7 +3236,7 @@ export class Sim {
     const all = mine.filter((b) => b.kind === 'plot');
     // (plots resting this year don't count: the band digs new ground rather than go short)
     const working = all.filter((b) => (b.plot?.soil ?? 1) >= SOIL_FALLOW).length;
-    if (!all.some((b) => !b.built) && working < this.plotsWanted(c) && all.length < 24) {
+    if (!all.some((b) => !b.built) && working < this.plotsWanted(c) && all.length < Math.min(32, Math.ceil(this.plotsWanted(c) * 1.7))) {
       const tile = this.plotSite(c);
       if (tile >= 0) {
         this.clearTile(tile);

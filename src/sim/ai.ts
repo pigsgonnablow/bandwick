@@ -994,6 +994,8 @@ function seedClaimed(s: Sim, p: Person) {
 function plotFor(s: Sim, p: Person, kind: TaskKind) {
   let best: Building | null = null, bd = Infinity;
   const crop = kind === 'sow' ? s.nextCrop(s.camp, seedClaimed(s, p)) : 0;
+  // (no more plots sown than the band wants this year, counting those others are on their way to sow)
+  if (kind === 'sow' && s.toSow(s.camp) - s.people.filter((q) => q !== p && q.alive && q.band === p.band && q.task?.kind === 'sow').length <= 0) return null;
   for (const b of s.plots(s.camp)) {
     const pl = b.plot;
     if (!pl) continue;
@@ -1820,8 +1822,8 @@ export function runTask(s: Sim, p: Person) {
       if (!b || !pl || !b.built) return finish(s, p);
       if (t.stage === 0) {
         if (moving(go(s, p, t))) return;
-        // (a sower who arrives too late in the spring for the crop to ripen leaves the plot be)
-        const still = t.kind === 'sow' ? s.sowable(b, t.amount >= SEED_PER_PLOT ? CROP.Grain : CROP.Roots) : t.kind === 'tend' ? pl.crop > 0 && pl.growth < 1 : pl.crop > 0 && pl.growth >= 1 && pl.left > 0.3;
+        // (a sower who arrives too late in the spring for the crop to ripen, or to find enough plots sown already, leaves the plot be)
+        const still = t.kind === 'sow' ? s.sowable(b, t.amount >= SEED_PER_PLOT ? CROP.Grain : CROP.Roots) && s.toSow(c) > 0 : t.kind === 'tend' ? pl.crop > 0 && pl.growth < 1 : pl.crop > 0 && pl.growth >= 1 && pl.left > 0.3;
         if (!still) return finish(s, p);
         t.stage = 1;
         const skill = p.skills[SK.garden];

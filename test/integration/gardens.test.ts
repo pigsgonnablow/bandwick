@@ -510,4 +510,42 @@ describe('gardens', () => {
       expect(36 - ripe).toBeGreaterThanOrEqual(3);
     }
   });
+
+  it('are sown no more than the band wants, and fewer with years of grain put by', () => {
+    const s = sim(1);
+    const c = s.camp;
+    c.knows.push('garden', 'grain');
+    c.seed = 200;
+    const want = s.plotsWanted(c);
+    expect(want).toBeGreaterThanOrEqual(2);
+    for (let i = 0; i < want + 4; i++) plot(s, 2 + (i % 6), 1 + Math.floor(i / 6));
+    s.tick = dayTick(s, 2);
+    expect(s.toSow(c)).toBe(want);
+    s.plan();
+    expect(c.jobs.sow).toBeGreaterThan(0);
+    // once that many are in, nobody goes out to sow another
+    for (const b of s.plots(c).slice(0, want)) Object.assign(b.plot!, { crop: CROP.Grain, sown: s.tick });
+    expect(s.toSow(c)).toBe(0);
+    s.plan();
+    expect(c.jobs.sow).toBe(0);
+    const p = adult(s);
+    s.camp = c;
+    work(s, p, 'sow', s.plots(c)[want], SEED_PER_PLOT);
+    expect(s.plots(c).filter((b) => b.plot!.crop).length).toBe(want);
+    // with two years' grain in the store, half as many plots will do
+    c.stock.grain = 100000;
+    expect(s.plotsWanted(c)).toBe(Math.max(2, Math.ceil(want / 2)));
+  });
+
+  it('are not dug without end: a band with plots resting digs a few more, not a field to the horizon', () => {
+    const s = sim(1);
+    const c = s.camp;
+    c.knows.push('garden', 'grain');
+    const want = s.plotsWanted(c);
+    for (let i = 0; i < Math.ceil(want * 1.7); i++) { const b = plot(s, 2 + (i % 6), 1 + Math.floor(i / 6)); b.plot!.soil = 0.45; }
+    const n = s.plots(c, true).length;
+    s.tick = dayTick(s, 14);
+    (s as unknown as { planGardens(c: unknown, s: number): void }).planGardens(c, 1);
+    expect(s.plots(c, true).length).toBe(n);
+  });
 });
