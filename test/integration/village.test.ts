@@ -2,7 +2,7 @@
 // and the midwinter feast.
 import { describe, it, expect } from 'vitest';
 import { TICKS_PER_DAY, TICKS_PER_SEASON, TICKS_PER_YEAR, seasonOf, dayOf, hourOf, DAYS_PER_YEAR } from '../../src/sim/time';
-import { ACT, CARRY, RECIPE_KEYS, COOK_GAIN, GIFT_DAYS, MIDWINTER, NEEDLE_SPEED, BONES_PER_DEER, TEETH_PER_DEER, Person, Task, TaskKind, foodTotal } from '../../src/sim/band';
+import { ACT, CARRY, SK, RECIPE_KEYS, COOK_GAIN, GIFT_DAYS, MIDWINTER, NEEDLE_SPEED, BONES_PER_DEER, TEETH_PER_DEER, Person, Task, TaskKind, foodTotal } from '../../src/sim/band';
 import { DISCOVERY } from '../../src/sim/know';
 import { decide, deposit, runTask } from '../../src/sim/ai';
 import { Sim } from '../../src/sim/sim';
@@ -128,7 +128,9 @@ describe('healing herbs', () => {
   it('are taken to the sick, whose fever does less harm and breaks sooner', () => {
     const s = sim(1);
     s.camp.knows.push('herbs');
-    const nurse = adult(s);
+    // (the band's healer: whoever knows the plants best)
+    const nurse = s.living().filter((q) => s.age(q) >= 18 && s.age(q) <= 50).sort((a, b) => b.skills[SK.forage] - a.skills[SK.forage])[0];
+    s.camp = s.campOf(nurse);
     const sick = adult(s, [nurse]);
     s.camp.stock.herbs = 3;
     sick.sick = 6;

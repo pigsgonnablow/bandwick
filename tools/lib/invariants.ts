@@ -176,8 +176,8 @@ export class InvariantChecker {
     } else idleAdults.set(-1, 0);
     // buildings
     const tiles = new Set<number>();
-    // (a windbreak stands at the fire and a woodpile roof over the stockpile, on their tiles)
-    const host = { windbreak: 'hearth', woodshed: 'stockpile' } as Record<string, string>;
+    // (a windbreak stands at the fire, a woodpile roof over the stockpile and a fence round a garden plot, on their tiles)
+    const host = { windbreak: 'hearth', woodshed: 'stockpile', fence: 'plot' } as Record<string, string>;
     for (const b of sim.buildings) {
       if (host[b.kind]) {
         if (!sim.buildings.some((q) => q.band === b.band && q.kind === host[b.kind] && q.tile === b.tile)) flag(`${b.kind} away from its ${host[b.kind]}`, `${at} ${b.kind} ${b.id}`);

@@ -2,9 +2,10 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR } from './band';
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR,
+  CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill } from './band';
 import { denFor, deadfallSpot } from './beasts';
-import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, daylight, TICKS_PER_DAY, TICKS_PER_HOUR } from './time';
+import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, daylight, yearOf, TICKS_PER_DAY, TICKS_PER_HOUR } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
 const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
@@ -94,6 +95,7 @@ export function workSkill(q: Person): number {
     case 'forage': case 'reap': case 'roots': case 'nuts': case 'herbs': case 'eggs': case 'honey': case 'mushrooms': return SK.forage;
     case 'preserve': case 'mend': return SK.hide;
     case 'trap': return SK.hunt;
+    case 'sow': case 'tend': case 'harvest': return SK.garden;
     case 'craft': return t.amount > 0 ? RECIPES[RECIPE_KEYS[t.ref]].skill : -1;
     default: return -1;
   }
@@ -272,6 +274,11 @@ export function decide(s: Sim, p: Person) {
     if (age >= 14 && seasonOf(s.tick) === 1 && !dark && s.knows('honey') && busyWith(s, 'honey') === 0 && c.stock.honey < 3)
       add('honey', 0.5 * drive * fit(p, SK.forage) * (s.has(p, 'brave') ? 1.3 : s.has(p, 'cautious') ? 0.6 : 1));
     if (age >= 9 && seasonOf(s.tick) === 2 && !dark && s.knows('mushrooms')) add('mushrooms', food * fit(p, SK.forage) * 1.05 * crowd('mushrooms'));
+    // the gardens: sowing in spring, weeding, picking greens and guarding through the summer (near camp,
+    // work for the older children and the old as much as anyone), and the harvest before the frost
+    if (age >= 11 && !dark && (j.sow ?? 0) > 0) add('sow', j.sow * drive * fit(p, SK.garden) * crowd('sow'));
+    if (age >= 9 && !dark && (j.tend ?? 0) > 0) add('tend', j.tend * drive * fit(p, SK.garden) * (child || age >= 50 ? 1.4 : 1) * crowd('tend'));
+    if (age >= 11 && !dark && (j.harvest ?? 0) > 0) add('harvest', j.harvest * drive * fit(p, SK.garden) * crowd('harvest'));
     // grass and reeds for thatch and cordage: work the older children can do too
     if (age >= 9) add('reap', (j.fiber ?? 0) * drive * night * fit(p, SK.forage) * (child ? 1.15 : 1) * crowd('reap'));
     // healing herbs from the undergrowth, put by for fevers: one person at a time
@@ -594,6 +601,20 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const t = newTask(s, kind, s.propTile[k], s.propX[k] + 0.3, s.propZ[k] + 0.22, k);
       p.thought = isReeds(s.propType[k]) ? 'Digging roots from under the reeds.' : 'Digging roots in the meadow.';
       if (takeFromPile(s, p, t, stick)) p.thought = 'Fetching a digging stick to dig roots.';
+      return t;
+    }
+    case 'sow': case 'tend': case 'harvest': {
+      const b = plotFor(s, p, kind);
+      if (!b) return null;
+      const t = newTask(s, kind, b.tile, b.x + 0.2 + (((p.look >>> 5) & 7) / 7) * 0.6, b.z + 0.2 + (((p.look >>> 9) & 7) / 7) * 0.6, b.id);
+      const pl = b.plot!;
+      if (kind === 'sow') {
+        // the seed is set aside as they go, so two sowers don't count on the same
+        const grain = s.nextCrop(c, seedClaimed(s, p)) === CROP.Grain;
+        t.amount = grain ? SEED_PER_PLOT : 0;
+        p.thought = grain ? 'Off to sow grain in a garden plot.' : 'Off to set roots in a garden plot.';
+      } else if (kind === 'tend') p.thought = pl.weeds > 0.35 ? 'Off to weed a garden plot.' : pl.greens >= 1 ? 'Off to pick greens in the garden.' : 'Off to keep watch over the garden.';
+      else p.thought = pl.crop === CROP.Grain ? 'Off to reap the grain.' : 'Off to dig the roots in the garden.';
       return t;
     }
     case 'reap': {
@@ -963,6 +984,30 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
   p.indoors = false;
 }
 
+/** Seed grain others are on their way to sow with. */
+function seedClaimed(s: Sim, p: Person) {
+  let n = 0;
+  for (const q of s.people) if (q !== p && q.alive && q.band === p.band && q.task?.kind === 'sow' && q.task.amount > 0) n += q.task.amount;
+  return n;
+}
+/** The garden plot someone would go to for a piece of garden work: nearest first, one person to a plot. */
+function plotFor(s: Sim, p: Person, kind: TaskKind) {
+  let best: Building | null = null, bd = Infinity;
+  const crop = kind === 'sow' ? s.nextCrop(s.camp, seedClaimed(s, p)) : 0;
+  for (const b of s.plots(s.camp)) {
+    const pl = b.plot;
+    if (!pl) continue;
+    const want = kind === 'sow' ? s.sowable(b, crop)
+      : kind === 'tend' ? pl.crop > 0 && pl.growth < 1 && (pl.weeds > 0.35 || pl.greens >= GREENS_LOAD * 0.75 || (s.tick - pl.raided < 2 * TICKS_PER_DAY && pl.guarded <= s.tick))
+      : pl.crop > 0 && pl.growth >= 1 && pl.left > 0.3;
+    if (!want) continue;
+    if (s.people.some((q) => q !== p && q.alive && q.task?.ref === b.id && q.task.kind === kind)) continue;
+    const d = hyp(b.x + 0.5 - p.x, b.z + 0.5 - p.z) - (kind === 'tend' ? pl.weeds * 6 : 0);
+    if (d < bd) { bd = d; best = b; }
+  }
+  return best;
+}
+
 function inTransit(s: Sim, buildingId: number, m: Material) {
   let n = 0;
   for (const q of s.people) if (q.alive && q.task?.kind === 'supply' && q.task.ref === buildingId && (q.task.res ?? 'wood') === m) n += q.task.amount;
@@ -1080,7 +1125,8 @@ export function deposit(s: Sim, p: Person) {
   const a = p.carryAmt;
   const kind = p.carry === CARRY.Berries ? 'berries' : p.carry === CARRY.Meat ? 'meat' : p.carry === CARRY.Fish ? 'fish' : p.carry === CARRY.Log ? 'wood'
     : p.carry === CARRY.Fiber ? 'fiber' : p.carry === CARRY.Mud ? 'mud' : p.carry === CARRY.Stone ? 'stone' : p.carry === CARRY.Roots ? 'roots' : p.carry === CARRY.Nuts ? 'nuts' : p.carry === CARRY.Herbs ? 'herbs'
-    : p.carry === CARRY.Eggs ? 'eggs' : p.carry === CARRY.Honey ? 'honey' : p.carry === CARRY.Mushrooms ? 'mushrooms' : '';
+    : p.carry === CARRY.Eggs ? 'eggs' : p.carry === CARRY.Honey ? 'honey' : p.carry === CARRY.Mushrooms ? 'mushrooms'
+    : p.carry === CARRY.Grain ? 'grain' : p.carry === CARRY.Greens ? 'greens' : '';
   // a deer carried home is skinned by whoever brought it, once the band knows how to work a hide; once it
   // knows how to make cloaks, the hide is kept for one
   if (kind === 'meat' && p.task?.kind === 'hunt' && a >= 4 && s.knows('preserving')) {
@@ -1106,6 +1152,15 @@ export function deposit(s: Sim, p: Person) {
   if (kind) {
     st[kind] += a;
     s.book(`gathered.${kind}`, a);
+    // grain brought in: some is kept back to sow next spring, enough for every plot
+    if (kind === 'grain') {
+      const c = s.camp;
+      const keep = Math.max(0, Math.min(a * 0.35, s.plots(c).length * SEED_PER_PLOT - (c.seed ?? 0)));
+      c.seed = (c.seed ?? 0) + keep;
+      st.grain -= keep;
+      s.book('seed', keep);
+      s.practise(p, 'store_grain');
+    }
     // wood brought home to a dead fire goes straight onto it, rather than waiting for someone to fetch it
     const h = kind === 'wood' ? s.hearth() : undefined;
     if (h && h.fuel <= 0 && hyp(p.x - s.camp.x, p.z - s.camp.z) < 4) {
@@ -1129,6 +1184,7 @@ export function deposit(s: Sim, p: Person) {
 /** Gathering rounds that fill their hands at one stop after another before the walk home, and what they carry. */
 const ROUNDS: Partial<Record<TaskKind, number>> = {
   forage: CARRY.Berries, roots: CARRY.Roots, nuts: CARRY.Nuts, eggs: CARRY.Eggs, mushrooms: CARRY.Mushrooms, honey: CARRY.Honey, reap: CARRY.Fiber,
+  harvest: CARRY.Grain, tend: CARRY.Greens,
 };
 
 /**
@@ -1138,7 +1194,7 @@ const ROUNDS: Partial<Record<TaskKind, number>> = {
  */
 export function bringHome(s: Sim, p: Person) {
   const t = p.task;
-  if (!t || t.homeAt !== undefined || p.carryAmt <= 0 || ROUNDS[t.kind] !== p.carry) return false;
+  if (!t || t.homeAt !== undefined || p.carryAmt <= 0 || (ROUNDS[t.kind] !== p.carry && !(t.kind === 'harvest' && p.carry === CARRY.Roots))) return false;
   // the next bush or tree they were making for is free for someone else
   s.releaseTask(p);
   goStore(s, p, t, 2);
@@ -1150,7 +1206,7 @@ export function bringHome(s: Sim, p: Person) {
 /** Food they could eat from, carried home: at least a mouthful of anything gathered, caught or hunted. */
 export function foodInHand(p: Person) {
   const k = p.carry;
-  return p.carryAmt >= 1 && (k === CARRY.Berries || k === CARRY.Meat || k === CARRY.Fish || k === CARRY.Roots || k === CARRY.Nuts || k === CARRY.Eggs || k === CARRY.Honey || k === CARRY.Mushrooms);
+  return p.carryAmt >= 1 && (k === CARRY.Berries || k === CARRY.Meat || k === CARRY.Fish || k === CARRY.Roots || k === CARRY.Nuts || k === CARRY.Eggs || k === CARRY.Honey || k === CARRY.Mushrooms || k === CARRY.Grain || k === CARRY.Greens);
 }
 
 /** On the way back to the stores with goods: they see the delivery through unless it's an emergency. */
@@ -1371,7 +1427,7 @@ export function runTask(s: Sim, p: Person) {
       // (cooked, the same food fills more: less of it makes a meal)
       let got = 0;
       const st = c.stock;
-      for (const k of ['berries', 'eggs', 'mushrooms', 'fish', 'meat', 'roots', 'nuts', 'preserved', 'honey'] as const) {
+      for (const k of ['berries', 'greens', 'eggs', 'mushrooms', 'fish', 'meat', 'roots', 'nuts', 'grain', 'preserved', 'honey'] as const) {
         const worth = t.amount && COOKED.includes(k) ? COOK_GAIN : 1;
         const take = Math.min(st[k], (want - got) / worth);
         st[k] -= take;
@@ -1752,6 +1808,83 @@ export function runTask(s: Sim, p: Person) {
       finish(s, p);
       return;
     }
+    case 'sow': case 'tend': case 'harvest': {
+      const b = s.buildings.find((q) => q.id === t.ref);
+      const pl = b?.plot;
+      if (t.stage === 2) {
+        if (moving(go(s, p, t))) return;
+        deposit(s, p);
+        return finish(s, p);
+      }
+      // the plot gone (the band moved on), or someone else got to the work first
+      if (!b || !pl || !b.built) return finish(s, p);
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        const still = t.kind === 'sow' ? !pl.crop : t.kind === 'tend' ? pl.crop > 0 && pl.growth < 1 : pl.crop > 0 && pl.growth >= 1 && pl.left > 0.3;
+        if (!still) return finish(s, p);
+        t.stage = 1;
+        const skill = p.skills[SK.garden];
+        t.timer = Math.max(12, Math.round((t.kind === 'sow' ? 40 : t.kind === 'tend' ? 26 : 30) * (1.25 - skill * 0.025)));
+        t.span = t.timer;
+      }
+      // sowing: the ground broken with a stick, then the seed scattered or the roots set; weeding and picking
+      // bent over the rows; grain reaped by the handful, roots dug
+      const half = t.timer > (t.span ?? 0) / 2;
+      p.act = t.kind === 'sow' ? (half ? ACT.Dig : ACT.Gather) : t.kind === 'tend' ? ACT.Gather : pl.crop === CROP.Grain ? ACT.Gather : ACT.Dig;
+      face(p, b.x + 0.5, b.z + 0.5);
+      if (--t.timer > 0) return;
+      const skill = p.skills[SK.garden];
+      if (t.kind === 'sow') {
+        if (pl.crop) return finish(s, p);
+        const grain = t.amount >= SEED_PER_PLOT && (c.seed ?? 0) >= SEED_PER_PLOT;
+        if (grain) c.seed! -= SEED_PER_PLOT;
+        Object.assign(pl, { crop: grain ? CROP.Grain : CROP.Roots, sown: s.tick, growth: 0, weeds: 0, cond: 1, left: 0, greens: 0, care: gardenSkill(skill) });
+        t.amount = 0;
+        s.buildingsVersion++;
+        train(p, 'garden.sow');
+        p.thought = grain ? 'Sowed a plot with grain.' : 'Set a plot with roots dug from the meadow.';
+        return finish(s, p);
+      }
+      if (t.kind === 'tend') {
+        if (!pl.crop) return finish(s, p);
+        const weeded = pl.weeds > 0.1;
+        pl.weeds = Math.max(0, pl.weeds - (0.75 + skill * 0.015));
+        // the crop takes on the care of whoever looks after it
+        pl.care = pl.care * 0.8 + gardenSkill(skill) * 0.2;
+        // and someone out at the plot keeps the deer off it through the night
+        pl.guarded = s.tick + Math.round(TICKS_PER_DAY * 0.8);
+        train(p, 'garden.tend');
+        if (pl.greens >= 1) {
+          const n = Math.min(loadOf(p, GREENS_LOAD), pl.greens);
+          pl.greens -= n;
+          p.carry = CARRY.Greens;
+          p.carryAmt = n;
+          goStore(s, p, t, 2);
+          p.thought = 'Carrying greens from the garden back to camp.';
+          return;
+        }
+        p.thought = weeded ? 'Weeded a garden plot.' : 'Kept watch over the garden.';
+        return finish(s, p);
+      }
+      // the harvest: a load at a time, until the plot is bare
+      const grain = pl.crop === CROP.Grain;
+      const n = Math.min(loadOf(p, grain ? GRAIN_LOAD : ROOTS_LOAD), pl.left);
+      pl.left -= n;
+      train(p, 'garden.harvest');
+      s.practise(p, 'harvest');
+      if (pl.left <= 0.3) {
+        // the plot is bare: the ground is a little more tired for it
+        const first = !s.plots(c).some((q) => q !== b && (q.plot?.reaped ?? 0) > 0);
+        Object.assign(pl, { crop: 0, growth: 0, weeds: 0, left: 0, greens: 0, cond: 1, sown: 0, reaped: yearOf(s.tick), last: pl.crop, soil: Math.max(0.4, pl.soil - SOIL_TIRE) });
+        s.buildingsVersion++;
+        if (first) s.event('harvest', `${p.name} brought in the first harvest from the gardens of ${c.name}.`, [p.id], b.x + 0.5, b.z + 0.5, 3);
+      }
+      p.carry = grain ? CARRY.Grain : CARRY.Roots;
+      p.carryAmt = n;
+      goStore(s, p, t, 2);
+      p.thought = grain ? 'Carrying sheaves of grain back to camp.' : 'Carrying a bundle of roots from the garden.';
+      return;
+    }
     case 'mend': {
       const it = s.items.find((i) => i.id === t.ref);
       if (!it) return abandon(s, p);
@@ -1848,7 +1981,7 @@ export function runTask(s: Sim, p: Person) {
       const st = c.stock;
       let got = 0;
       const want = s.age(p) < 12 ? FEAST_MEAL * 0.6 : FEAST_MEAL;
-      for (const k of ['meat', 'fish', 'eggs', 'mushrooms', 'preserved', 'nuts', 'roots', 'honey', 'berries'] as const) {
+      for (const k of ['meat', 'fish', 'eggs', 'mushrooms', 'preserved', 'nuts', 'roots', 'grain', 'honey', 'berries', 'greens'] as const) {
         const take = Math.min(st[k], want - got);
         st[k] -= take;
         s.book(`eaten.${k}`, take);
@@ -2851,6 +2984,9 @@ export function completeBuilding(s: Sim, b: Building, p: Person) {
       s.event('build', first ? `The first ${label} at ${s.camp.name} stands, home to ${owner.name}'s family.` : `A ${label} was finished for ${owner.name}'s family.`,
         household.map((h) => h.id), b.x + 0.5, b.z + 0.5, first ? 3 : 1);
     } else s.event('build', `A ${label} was finished.`, [p.id], b.x + 0.5, b.z + 0.5, 1);
+  } else if (b.kind === 'plot' || b.kind === 'fence') {
+    // (a field of plots is dug one after another: only the first is news)
+    if (first) s.event('build', b.kind === 'plot' ? `${p.name} and the others dug the first garden plot at ${s.camp.name}.` : `${p.name} and the others put up the first fence round a garden plot at ${s.camp.name}.`, [p.id], b.x + 0.5, b.z + 0.5, 2);
   } else {
     s.event('build', first ? `${p.name} and the others raised the camp's first ${label}.` : `A ${label} was finished.`, [p.id], b.x + 0.5, b.z + 0.5, first ? 3 : 1);
   }

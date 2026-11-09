@@ -24,6 +24,7 @@ export const SKILL_TIPS: Record<string, string> = {
   weaving: 'Weaving: twisting grass into cordage and weaving baskets and mats.',
   pottery: 'Pottery: shaping and firing clay into pots for the stores.',
   hidework: 'Hidework: scraping hides and sewing cloaks, hats, shoes and bags, and mending them when they wear.',
+  gardening: 'Gardening: sowing, weeding and harvesting the garden plots. A skilled gardener works faster and brings in a bigger harvest: about 60% from a beginner, 140% from a master.',
 };
 export const SKILLS_NOTE = 'Skills grow with practice, slowest near the top. The band sends its most skilled to each job, and new ideas come only to those who have mastered the crafts around them.';
 

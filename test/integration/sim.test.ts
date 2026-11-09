@@ -233,7 +233,7 @@ describe('a hut', () => {
     const home = s.camp;
     const owner = s.members().find((q) => s.age(q) >= 18)!;
     const site = s.newBuilding('hut', home.tile + 5 * s.N + 3, owner.id);
-    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, furs: 0 };
+    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0 };
     const away = s.foundCamp(home.tile + 30, stock, -1, -1);
     (s as any).join([owner], away);
     const moved = owner.home;
@@ -360,7 +360,7 @@ describe('children left on their own', () => {
     const home = s.camp;
     const kids = s.members().filter((p) => s.age(p) < 14).slice(0, 2);
     expect(kids.length).toBeGreaterThan(0);
-    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, furs: 0 };
+    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0 };
     const lone = s.foundCamp(home.tile + 30, stock, -1, -1);
     (s as any).join(kids, lone);
     s.camp = home;

@@ -18,15 +18,17 @@ Conventions (read by src/render/band.ts):
   beaver__{body,head,tail,legFL,legFR,legBL,legBR}                  a beaver, posed in the shader (waddling, swimming, gnawing).
   lodge__beaver, dam__beaver                                        a beaver lodge, and a dam across a river (along x), origin at the water.
   hare__{body,head,ears,fore,hind}                                 a brown hare in parts, posed in the shader (hopping, sitting up, nibbling).
-  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,basket,basketFull,hare} attached to a person's hands or shoulder.
+  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,grain,greens,basket,basketFull,hare} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
   boat__dugout                                                    the dugout the first band lands in (origin at the waterline, bow to -Y).
   item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace}  each made thing in real colours,
       for the picture in its window (the game fits it to the picture).
-  bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed}  one tile footprint, centred on the origin
+  bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
+  bld__{plot,plotSown,plotRoots,plotGrain,plotRipe,plotStubble}  a garden plot through its year (bare or fallow, sown, roots in
+      leaf, young grain, ripe grain, stubble with stooks); the fence goes round the same tile.
 Models face -Y in Blender (= +Z in the game). 1 unit = one 6 m tile; an adult is 0.4 tall.
 """
 import math
@@ -1629,6 +1631,44 @@ for k in range(5):  # caps peeping over the rim
         v.co.z = max(v.co.z, -0.02)
 q.finish("carry__mushrooms")
 
+q = Part()  # a sheaf of grain for the shoulder (along x, like a log): stalks bound twice, the cut ends at -x,
+rr = random.Random(53)  # the ripe heads nodding at +x
+STRAW = (212, 184, 112)
+STRAW_DK = (178, 150, 88)
+EAR = (196, 156, 78)
+for k in range(22):
+    a, r = rr.uniform(0, math.tau), rr.uniform(0, 0.02)
+    y, z = math.cos(a) * r, math.sin(a) * r
+    butt = Vector((-0.15 + rr.uniform(-0.01, 0.01), y * 0.9, z * 0.9))
+    waist = Vector((0.0, y * 0.5, z * 0.5))
+    tip = Vector((0.13 + rr.uniform(0, 0.03), y * 2.2, z * 2.0 - 0.012))
+    col = STRAW if k % 3 else STRAW_DK
+    q.cyl(3, 0.0028, 0.0026, butt, waist, col, rr, 0.06, cap=False)
+    q.cyl(3, 0.0026, 0.002, waist, tip, col, rr, 0.06, cap=False)
+    d = (tip - waist).normalized()
+    head = tip + d * 0.018 + Vector((0, 0, -0.006))
+    for v in q.blob((0, 0, 0), (0.016, 0.0045, 0.0045), jit(EAR, rr, 0.08), rr, 0.06, subdiv=1):  # the ear, nodding
+        v.co = head + Matrix.Rotation(math.atan2(d.y, d.x), 3, "Z") @ Matrix.Rotation(0.35, 3, "Y") @ v.co
+for x in (-0.07, 0.035):  # the bands, twisted from the straw itself
+    q.cyl(8, 0.024 - abs(x) * 0.05, 0.024 - abs(x) * 0.05, (x - 0.006, 0, 0), (x + 0.006, 0, 0), STRAW_DK, rr, 0.03, cap=False)
+q.finish("carry__grain")
+
+q = Part()  # an armful of greens from the garden: broad leaves and stems tied at the stalk, hanging from the fist
+rr = random.Random(54)
+GLEAF = (88, 126, 56)
+GLEAF_DK = (64, 98, 44)
+GLEAF_LT = (118, 150, 72)
+for k in range(11):
+    a = k / 11 * math.tau + rr.uniform(-0.2, 0.2)
+    stem_end = Vector((math.cos(a) * 0.012, math.sin(a) * 0.01, -0.03 - rr.uniform(0, 0.012)))
+    q.cyl(3, 0.0025, 0.002, (0, 0, 0.012), stem_end, (150, 160, 96), rr, 0.06, cap=False)
+    leaf_c = stem_end + Vector((math.cos(a) * 0.02, math.sin(a) * 0.016, -0.028))
+    m = Matrix.Rotation(a, 3, "Z") @ Matrix.Rotation(0.5, 3, "Y")
+    for v in q.blob((0, 0, 0), (0.022, 0.014, 0.004), rr.choice((GLEAF, GLEAF_DK, GLEAF_LT)), rr, 0.08, noise=0.15):
+        v.co = leaf_c + m @ v.co
+q.cyl(8, 0.008, 0.008, (0, 0, -0.004), (0, 0, 0.006), ROPE_TIE, rr, 0.03, cap=False)  # the tie
+q.finish("carry__greens")
+
 # ---------------------------------------------------------------- tools and traps
 WOOD = (138, 104, 66)
 WOOD_DARK = (96, 70, 44)
@@ -2710,6 +2750,191 @@ for k in range(5):  # chips
     q.box((0.4 + rnd.uniform(-0.08, 0.08), -0.06 + rnd.uniform(-0.08, 0.08), 0.003), (0.014, 0.008, 0.003), (204, 180, 136), rnd, 0.06,
           rot=Matrix.Rotation(rnd.uniform(0, math.pi), 3, "Z"))
 q.finish("bld__woodshed")
+
+
+# ---------------------------------------------------------------- the gardens
+# A garden plot is one tile of ground cleared and turned into ridges, five across the tile (along x), with a
+# low edge of cut turf. It comes in the looks a plot has through the year: bare (just dug, or lying fallow),
+# sown, set with roots in leaf, young green grain, ripe grain, and the stubble after the reaping with a few
+# stooks left to dry. Each sits on the ground at z = 0 and fills the tile (+-0.46).
+SOIL = (94, 72, 52)
+SOIL_DK = (74, 56, 40)
+SOIL_LT = (118, 92, 66)
+TURF = (96, 112, 60)
+SPROUT = (126, 168, 76)
+GRAIN_GREEN = (104, 148, 62)
+GRAIN_GREEN_DK = (82, 122, 50)
+RIPE = (214, 180, 96)
+RIPE_DK = (186, 150, 78)
+RIPE_EAR = (204, 160, 80)
+STUBBLE = (196, 174, 120)
+RIDGES = [-0.34, -0.17, 0.0, 0.17, 0.34]
+HALF = 0.44
+
+
+def plot_bed(q, rnd, dry=False):
+    """The turned ground: a flat bed of earth, five ridges with furrows between, clods, and a turf edge."""
+    q.box((0, 0, 0.002), (HALF * 2, HALF * 2, 0.008), SOIL_DK, rnd, 0.04)
+    for y in RIDGES:
+        segs = 6
+        for k in range(segs):  # each ridge in short lengths, a little uneven, as dug by hand
+            x0 = -HALF + 0.03 + k * (2 * HALF - 0.06) / segs
+            w = (2 * HALF - 0.06) / segs
+            q.box((x0 + w / 2, y + rnd.uniform(-0.006, 0.006), 0.016), (w * 1.04, 0.11 + rnd.uniform(-0.01, 0.01), 0.026 + rnd.uniform(-0.004, 0.006)),
+                  jit(SOIL_LT if dry else SOIL, rnd, 0.08), rnd, 0.06, taper=0.45)
+    for k in range(18):  # clods turned up along the ridges
+        y = rnd.choice(RIDGES) + rnd.uniform(-0.04, 0.04)
+        q.blob((rnd.uniform(-HALF + 0.05, HALF - 0.05), y, 0.026), (0.014, 0.011, 0.008), jit(SOIL_DK, rnd, 0.1), rnd, 0.08, noise=0.3)
+    for side in range(4):  # the turf cut from the plot, laid along its edge
+        for k in range(7):
+            t = -HALF + (k + 0.5) * 2 * HALF / 7
+            x, y = (t, -HALF) if side == 0 else (t, HALF) if side == 1 else (-HALF, t) if side == 2 else (HALF, t)
+            sx, sy = (0.12, 0.035) if side < 2 else (0.035, 0.12)
+            q.box((x, y, 0.01), (sx, sy, 0.02), jit(TURF, rnd, 0.1), rnd, 0.06, taper=0.8)
+
+
+def along_ridges(rnd, per, jitter=0.03):
+    """Points along the ridge crests: per ridge, evenly spaced and a little off true."""
+    for y in RIDGES:
+        for k in range(per):
+            x = -HALF + 0.07 + k * (2 * HALF - 0.14) / max(1, per - 1)
+            yield x + rnd.uniform(-jitter, jitter) * 0.5, y + rnd.uniform(-jitter, jitter) * 0.4
+
+
+def blade(q, base, h, lean, col, rnd, w=0.0035):
+    """One leaf of grass or grain: a thin tapered stalk leaning a little."""
+    a = rnd.uniform(0, math.tau)
+    tip = Vector(base) + Vector((math.cos(a) * lean, math.sin(a) * lean, h))
+    q.cyl(3, w, 0.0008, base, tip, col, rnd, 0.08, cap=False)
+    return tip
+
+
+q = Part()  # bare: just dug, or lying fallow, a digging stick left stuck in the end of a ridge
+rnd = random.Random(60)
+plot_bed(q, rnd)
+q.cyl(4, 0.006, 0.005, (0.4, 0.3, -0.01), (0.37, 0.27, 0.2), POLE, rnd)
+q.finish("bld__plot")
+
+q = Part()  # sown: the ridges raked fine, a line of shoots just through along each crest
+rnd = random.Random(61)
+plot_bed(q, rnd, dry=True)
+for x, y in along_ridges(rnd, 12):
+    for t in range(2):
+        blade(q, (x + t * 0.008, y, 0.028), 0.018 + rnd.uniform(0, 0.012), 0.004, SPROUT, rnd, 0.0025)
+q.finish("bld__plotSown")
+
+q = Part()  # roots in leaf: a clump of broad leaves over each root, in rows along the ridges
+rnd = random.Random(62)
+plot_bed(q, rnd)
+for x, y in along_ridges(rnd, 7, 0.04):
+    for t in range(5):
+        a = t / 5 * math.tau + rnd.uniform(-0.3, 0.3)
+        c = Vector((x + math.cos(a) * 0.022, y + math.sin(a) * 0.02, 0.05 + rnd.uniform(-0.008, 0.012)))
+        q.cyl(3, 0.003, 0.002, (x, y, 0.028), c, (110, 140, 70), rnd, 0.06, cap=False)
+        m = Matrix.Rotation(a, 3, "Z") @ Matrix.Rotation(-0.45, 3, "Y")
+        for v in q.blob((0, 0, 0), (0.024, 0.015, 0.004), rnd.choice((GLEAF, GLEAF_DK, GLEAF_LT)), rnd, 0.06, noise=0.12):
+            v.co = c + m @ v.co
+    q.blob((x, y, 0.03), (0.012, 0.012, 0.008), (196, 170, 128), rnd, 0.06)  # the top of the root, showing
+q.finish("bld__plotRoots")
+
+q = Part()  # young grain: thick green blades a hand high along every ridge
+rnd = random.Random(63)
+plot_bed(q, rnd)
+for x, y in along_ridges(rnd, 9, 0.02):  # tufts of leaves along each ridge, the blades rising out of them
+    q.blob((x, y, 0.034), (0.055, 0.03, 0.018), jit(GRAIN_GREEN_DK if rnd.random() < 0.5 else GRAIN_GREEN, rnd, 0.06), rnd, 0.06, noise=0.3)
+for x, y in along_ridges(rnd, 14):
+    for t in range(4):
+        blade(q, (x + rnd.uniform(-0.012, 0.012), y + rnd.uniform(-0.02, 0.02), 0.026), 0.05 + rnd.uniform(0, 0.025), 0.012,
+              GRAIN_GREEN if t % 2 else GRAIN_GREEN_DK, rnd, 0.004)
+q.finish("bld__plotGrain")
+
+q = Part()  # ripe grain: knee-high golden stalks standing thick, the heavy ears nodding all one way in the wind
+rnd = random.Random(64)
+plot_bed(q, rnd, dry=True)
+for x, y in along_ridges(rnd, 10, 0.02):  # the standing grain seen as a mass, uneven, with the stalks and ears over it
+    q.blob((x, y, 0.055), (0.05, 0.05, 0.05), jit(RIPE_DK, rnd, 0.06), rnd, 0.06, noise=0.3)
+    q.blob((x + 0.01, y, 0.098), (0.042, 0.04, 0.016), jit(RIPE_EAR, rnd, 0.06), rnd, 0.06, noise=0.35)
+for x, y in along_ridges(rnd, 15):
+    for t in range(4):
+        base = Vector((x + rnd.uniform(-0.014, 0.014), y + rnd.uniform(-0.03, 0.03), 0.026))
+        top = base + Vector((0.014 + rnd.uniform(-0.006, 0.01), rnd.uniform(-0.006, 0.006), 0.1 + rnd.uniform(0, 0.03)))
+        q.cyl(3, 0.0028, 0.0018, base, top, jit(RIPE if t % 2 else RIPE_DK, rnd, 0.06), rnd, 0.0, cap=False)
+        q.box(top + Vector((0.008, 0, -0.004)), (0.022, 0.006, 0.006), jit(RIPE_EAR, rnd, 0.08), rnd, 0.06,
+              rot=Matrix.Rotation(-0.6, 3, "Y"), taper=0.5)
+q.finish("bld__plotRipe")
+
+q = Part()  # after the reaping: short stubble on the ridges, and three stooks of sheaves leaned together to dry
+rnd = random.Random(65)
+plot_bed(q, rnd, dry=True)
+for x, y in along_ridges(rnd, 13):
+    for t in range(3):
+        blade(q, (x + rnd.uniform(-0.014, 0.014), y + rnd.uniform(-0.03, 0.03), 0.026), 0.012 + rnd.uniform(0, 0.008), 0.002, STUBBLE, rnd, 0.0025)
+for sx, sy in ((-0.22, -0.08), (0.06, 0.1), (0.28, -0.2)):
+    for k in range(6):  # sheaves stood on their butts, heads together at the top
+        a = k / 6 * math.tau + rnd.uniform(-0.15, 0.15)
+        foot = Vector((sx + math.cos(a) * 0.05, sy + math.sin(a) * 0.05, 0.02))
+        top = Vector((sx + math.cos(a) * 0.012, sy + math.sin(a) * 0.012, 0.15))
+        q.cyl(5, 0.016, 0.011, foot, top, jit(RIPE, rnd, 0.06), rnd, 0.04)
+        q.cyl(6, 0.0125, 0.0125, foot.lerp(top, 0.55) - Vector((0, 0, 0.004)), foot.lerp(top, 0.55) + Vector((0, 0, 0.004)), RIPE_DK, rnd, 0.03, cap=False)
+        for v in q.blob((0, 0, 0), (0.016, 0.012, 0.022), jit(RIPE_EAR, rnd, 0.08), rnd, 0.06):
+            v.co = top + Vector((math.cos(a) * 0.006, math.sin(a) * 0.006, 0.016)) + v.co
+q.finish("bld__plotStubble")
+
+# the garden fence: a hurdle of stakes and woven withies round the edge of the plot, knee high, the sides
+# leaning a little, a gap at the front (-y) closed with a hurdle propped across it
+q = Part()
+rnd = random.Random(66)
+FH = 0.15
+FR = 0.48
+
+
+def hurdle(q, a, b, rnd, h=FH, n=7):
+    """A straight run of wattle from a to b: stakes driven in, withies woven between them in courses."""
+    a, b = Vector(a), Vector(b)
+    stakes = [a.lerp(b, k / n) for k in range(n + 1)]
+    for p in stakes:
+        q.cyl(4, 0.0075, 0.006, p + Vector((0, 0, -0.01)), p + Vector((rnd.uniform(-0.004, 0.004), rnd.uniform(-0.004, 0.004), h + 0.02 + rnd.uniform(0, 0.015))), POLE, rnd, 0.06)
+    d = (b - a).normalized()
+    side = Vector((-d.y, d.x, 0))
+    for j in range(5):
+        z = 0.02 + j * (h - 0.02) / 5
+        for k in range(n):
+            off = side * (0.006 if (k + j) % 2 else -0.006)
+            q.cyl(3, 0.0045, 0.0045, stakes[k] + off + Vector((0, 0, z)), stakes[k + 1] - off + Vector((0, 0, z)), jit(WATTLE, rnd, 0.08), rnd, 0.0, cap=False)
+
+
+hurdle(q, (-FR, FR, 0), (FR, FR, 0), rnd)
+hurdle(q, (-FR, -FR, 0), (-FR, FR, 0), rnd)
+hurdle(q, (FR, -FR, 0), (FR, FR, 0), rnd)
+hurdle(q, (-FR, -FR, 0), (-0.1, -FR, 0), rnd, n=5)
+hurdle(q, (0.1, -FR, 0), (FR, -FR, 0), rnd, n=5)
+# the gate: a loose hurdle leaned across the gap
+hurdle(q, (-0.13, -FR - 0.03, 0.0), (0.13, -FR - 0.03, 0.0), rnd, h=FH * 0.9, n=3)
+for x in (-0.1, 0.1):  # the posts either side of the gap, taller
+    q.cyl(5, 0.011, 0.009, (x, -FR, -0.01), (x, -FR, FH + 0.06), POLE, rnd)
+q.finish("bld__fence")
+
+# a storage pit by the stores: a round pit lined with clay and grass, filled with grain and capped with a dome
+# of daub over grass, a flat stone and a hide weighted with stones; a clay rim round it, a basket beside
+q = Part()
+rnd = random.Random(67)
+DAUB_DRY = (156, 128, 96)
+rim = [[at(r * (1 + rnd.uniform(-0.03, 0.03)), k / 14 * math.tau, z) for k in range(14)] for r, z in ((0.26, 0.0), (0.24, 0.03), (0.2, 0.036), (0.17, 0.03))]
+ring_loft(q, rim, lambda i, k: CLAY if i < 2 else CLAY_WET, rnd, 0.08)
+dome = [[at(r, k / 14 * math.tau, z) for k in range(14)] for r, z in ((0.17, 0.03), (0.16, 0.06), (0.12, 0.085), (0.06, 0.098))]
+vs = ring_loft(q, dome, lambda i, k: jit(DAUB_DRY, rnd, 0.06), rnd, 0.06)
+fan(q, vs[-1], (0, 0, 0.1), DAUB_DRY, raw=False)
+for k in range(12):  # grass sticking out from under the daub cap
+    a = k / 12 * math.tau + rnd.uniform(-0.1, 0.1)
+    q.cyl(3, 0.003, 0.001, at(0.165, a, 0.035), at(0.21 + rnd.uniform(0, 0.02), a, 0.028 + rnd.uniform(0, 0.012)), GRASS, rnd, 0.08, cap=False)
+q.box((0.0, 0.0, 0.106), (0.12, 0.1, 0.014), jit(STONE, rnd, 0.08), rnd, 0.06, rot=Matrix.Rotation(0.3, 3, "Z"), taper=0.85)  # the lid stone
+for k in range(6):  # stones round the rim, to hold down the hide over the cap in the rain
+    a = k / 6 * math.tau + 0.3
+    q.blob(at(0.22, a, 0.042), (0.03, 0.024, 0.02), rnd.choice(STONES), rnd, 0.05, noise=0.2)
+for v in q.blob((0, 0, 0), (0.06, 0.06, 0.05), (168, 132, 82), rnd, 0.05):  # a basket left by it, for carrying the grain out
+    v.co += Vector((0.3, -0.18, 0.05))
+q.blob((0.3, -0.18, 0.1), (0.05, 0.05, 0.012), RIPE_EAR, rnd, 0.06)
+q.finish("bld__pit")
 
 rnd = random.Random(20)
 ASH = (150, 146, 140)
