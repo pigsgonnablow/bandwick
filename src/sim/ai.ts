@@ -1,9 +1,9 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
-import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS } from './sim';
+import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST } from './band';
-import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, TICKS_PER_DAY } from './time';
+import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, daylight, TICKS_PER_DAY, TICKS_PER_HOUR } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
 const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
@@ -212,7 +212,10 @@ export function decide(s: Sim, p: Person) {
   else if (berriesRipe(s.tick)) add('eatwild', hunger * 1.1);
   if (dark) add('sleep', p.rest < 94 ? 1.45 + (hour > 21 || hour < 5 ? 0.3 : 0) : 0.2);
   else add('sleep', p.rest < 32 ? ((32 - p.rest) / 32) * 1.7 : 0);
-  if (temp < 11 && p.warmth < 62) add('warm', ((62 - p.warmth) / 62) * 1.7 + (dark ? 0.15 : 0));
+  // (with the fire out and no wood in the stores, sitting by the cold hearth warms nobody: those fit to fetch
+  // wood go for it first, and only the very cold, the weak and the children shelter at home)
+  const deadFire = !s.hearthLit() && c.stock.wood < 1 && age >= 13 && p.health > 25 && p.warmth > 6;
+  if (temp < 11 && p.warmth < 62) add('warm', (((62 - p.warmth) / 62) * 1.7 + (dark ? 0.15 : 0)) * (deadFire && !dark ? 0.5 : 1));
   add('socialize', p.belonging < 62 ? ((62 - p.belonging) / 62) * 0.95 + (hour > 17 && !dark ? 0.15 : 0) : 0);
   add('idle', 0.16 + (hour > 18 && !dark ? 0.15 : 0) + (s.has(p, 'lazy') ? 0.1 : 0));
   if (child && age >= 2 && !dark) add('play', 0.5 + (age < 9 ? 0.2 : 0));
@@ -295,16 +298,21 @@ export function decide(s: Sim, p: Person) {
     if (age >= 13) {
       const wood = (j.wood ?? 0.3) * drive * night * fit(p, SK.wood);
       add(logsNear ? 'haul' : 'fell', wood * crowd('fell') * crowd('haul'));
-      // fallen branches near camp: a little wood at a time, and no tree has to come down
-      add('deadwood', wood * 0.8 * crowd('deadwood'));
+      // fallen branches near camp: a little wood at a time, and no tree has to come down (and for a band with no
+      // axe, in woods grown too big for a chopper, the main way to keep the fire)
+      const axe = s.toolsOf(c).some((i) => i.kind === 'axe');
+      add('deadwood', wood * (axe ? 0.8 : 1.05) * crowd('deadwood'));
       add('build', (j.build ?? 0) * drive * night * fit(p, SK.build) * crowd('build') * 1.05);
       add('preserve', (j.preserve ?? 0) * drive * night * fit(p, SK.hide) * crowd('preserve'));
     }
-    if ((j.fuel ?? 0) > 0.5 && c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', j.fuel * (dark ? 1.1 : 1));
+    // (feeding the fire is for whoever is about camp: someone out on the land would carry the wood off with them
+    // from the stores in thought, and the fire would wait hours for it)
+    const atCamp = away < 12;
+    if (atCamp && (j.fuel ?? 0) > 0.5 && c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', j.fuel * (dark ? 1.1 : 1));
     // from late afternoon, bank the fire with enough to see the night through (in the dark, ahead of sleep)
     // (someone bringing wood from far across the land doesn't stop those at camp from feeding it now)
     const fueling = s.fuelOnHand(c);
-    if ((dark || hour >= 15) && age >= 13 && !fueling && busyWith(s, 'fuel') < 2 && s.fireShort()) add('fuel', dark ? 2.0 : 1.0);
+    if (atCamp && (dark || hour >= 15) && age >= 13 && !fueling && busyWith(s, 'fuel') < 2 && s.fireShort()) add('fuel', dark ? 2.0 : 1.0);
     // a dying fire in the cold is everyone's problem: a few go for wood whatever the hour
     const fireLow = s.hearth().fuel < 2;
     // (even the weak: a cold hearth in a hungry winter is how a whole band dies)
@@ -333,6 +341,8 @@ export function decide(s: Sim, p: Person) {
     p.nextThink = s.tick + 30;
     return;
   }
+  // out on a round with their hands part full: they bring it home before doing anything else
+  if (cur && opts.length && bringHome(s, p)) return;
   for (const o of opts) {
     const t = setup(s, p, o.kind);
     if (t) {
@@ -709,8 +719,16 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const snow = snowLies(s.tick), dog = s.hasDog(p);
       // and a dog picks up a scent where a hunter alone would see nothing
       let best = -1, bestD = (snow ? 72 : 56) + (dog ? 16 : 0);
+      // a herd down to its last three is let be to breed again, unless the band is going hungry
+      const herds = new Map<number, number>();
+      for (const d of s.deer) if (d.alive) herds.set(d.herd, (herds.get(d.herd) ?? 0) + 1);
+      const spare = (c.jobs.food ?? 0) < 0.8;
+      // a hunt still on the trail at nightfall is given up: a herd too far to have reached and stalked by dark
+      // is left for another day (a hunt that ends in a kill covers about a tile for every 3 ticks out, walk and stalk together)
+      const reach = isDark(s.tick) ? 0 : Math.max(0, (daylight(s.tick).sunset + 0.4 - hourOf(s.tick)) * TICKS_PER_HOUR) / 3;
       s.deer.forEach((d, i) => {
-        if (!d.alive) return;
+        if (!d.alive || (spare && (herds.get(d.herd) ?? 0) < 4)) return;
+        if (hyp(d.x - p.x, d.z - p.z) > reach) return;
         const dist = hyp(d.x - c.x, d.z - c.z);
         if (dist < bestD && !s.people.some((q) => q !== p && q.alive && q.task?.kind === 'hunt' && q.task.ref === d.id)) {
           bestD = dist;
@@ -726,6 +744,7 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
         for (const b of s.beasts) if (b.alive && b.kind === BEAST.Boar) size.set(b.den, (size.get(b.den) ?? 0) + 1);
         for (const b of s.beasts) {
           if (!b.alive || b.kind !== BEAST.Boar || (size.get(b.den) ?? 0) <= 3) continue;
+          if (hyp(b.x - p.x, b.z - p.z) > reach) continue;
           const dist = hyp(b.x - c.x, b.z - c.z);
           if (dist < bd && !s.people.some((q) => q !== p && q.alive && q.task?.kind === 'hunt' && q.task.ref === b.id)) { bd = dist; boar = b; }
         }
@@ -1077,7 +1096,7 @@ export function deposit(s: Sim, p: Person) {
       const put = Math.min(4, Math.floor(st.wood));
       st.wood -= put;
       s.book('burned', put);
-      h.fuel = Math.min(12, h.fuel + put);
+      h.fuel = Math.min(FIRE_HOLDS, h.fuel + put);
       s.buildingsVersion++;
       p.thought = 'Put an armful of wood straight on the dead fire.';
     }
@@ -1089,6 +1108,33 @@ export function deposit(s: Sim, p: Person) {
   }
   p.carry = CARRY.None;
   p.carryAmt = 0;
+}
+
+/** Gathering rounds that fill their hands at one stop after another before the walk home, and what they carry. */
+const ROUNDS: Partial<Record<TaskKind, number>> = {
+  forage: CARRY.Berries, roots: CARRY.Roots, nuts: CARRY.Nuts, eggs: CARRY.Eggs, mushrooms: CARRY.Mushrooms, honey: CARRY.Honey, reap: CARRY.Fiber,
+};
+
+/**
+ * Called away from a gathering round with something already in hand (by nightfall, hunger, tiredness, a
+ * path that can't be walked or a change of mind): they bring what they have home rather than drop it on
+ * the ground. Whether they turned for home.
+ */
+export function bringHome(s: Sim, p: Person) {
+  const t = p.task;
+  if (!t || t.homeAt !== undefined || p.carryAmt <= 0 || ROUNDS[t.kind] !== p.carry) return false;
+  // the next bush or tree they were making for is free for someone else
+  s.releaseTask(p);
+  goStore(s, p, t, 2);
+  p.nextThink = s.tick;
+  p.thought = 'Heading home with what they have gathered.';
+  return true;
+}
+
+/** Food they could eat from, carried home: at least a mouthful of anything gathered, caught or hunted. */
+export function foodInHand(p: Person) {
+  const k = p.carry;
+  return p.carryAmt >= 1 && (k === CARRY.Berries || k === CARRY.Meat || k === CARRY.Fish || k === CARRY.Roots || k === CARRY.Nuts || k === CARRY.Eggs || k === CARRY.Honey || k === CARRY.Mushrooms);
 }
 
 /** On the way back to the stores with goods: they see the delivery through unless it's an emergency. */
@@ -1249,12 +1295,13 @@ export function runTask(s: Sim, p: Person) {
   // anything left half-done for too long is abandoned (the walk home with goods gets its own clock)
   const home = delivering(p);
   if (home ? s.tick - t.homeAt! > 1200 : s.tick - t.started > 520 && t.kind !== 'sleep') {
+    if (bringHome(s, p)) return;
     abandon(s, p);
     p.nextThink = s.tick;
     return;
   }
   // starving on the way home with food: eat a little of it rather than drop it
-  if (home && p.food < 20 && p.carryAmt >= 1 && (p.carry === CARRY.Berries || p.carry === CARRY.Meat || p.carry === CARRY.Fish || p.carry === CARRY.Roots || p.carry === CARRY.Nuts || p.carry === CARRY.Eggs || p.carry === CARRY.Honey || p.carry === CARRY.Mushrooms)) {
+  if (home && p.food < 20 && foodInHand(p)) {
     p.carryAmt -= 1;
     p.food = clamp(p.food + 48);
     p.thought = 'Ate some of what they were carrying home.';
@@ -1267,6 +1314,8 @@ export function runTask(s: Sim, p: Person) {
       if (t.kind === 'fish') s.unreachable.set(-(t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
       if (t.kind === 'trap' && t.stage >= 0) s.unreachable.set(-3 * s.N * s.N - (t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
       if ((t.kind === 'dig' || t.kind === 'quarry') && t.stage >= 0) s.unreachable.set((t.kind === 'dig' ? -1 : -2) * s.N * s.N - (t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
+      // (the next bush can't be reached, but home can: what is in hand goes there)
+      if (bringHome(s, p)) return true;
       abandon(s, p);
       p.nextThink = s.tick;
       return true;
@@ -1763,7 +1812,7 @@ export function runTask(s: Sim, p: Person) {
         c.stock.wood -= 2;
         s.book('burned', 2);
         const wasOut = h.fuel <= 0;
-        h.fuel = Math.min(12, h.fuel + 2);
+        h.fuel = Math.min(FIRE_HOLDS, h.fuel + 2);
         if (wasOut) s.buildingsVersion++;
       }
       p.act = t.timer % 14 < 7 ? ACT.Eat : ACT.Chat;
@@ -1899,7 +1948,7 @@ export function runTask(s: Sim, p: Person) {
           finish(s, p);
           return;
         }
-        const got = t.kind === 'eggs' ? 1 + skill * 0.03 : t.kind === 'honey' ? 2 + skill * 0.04 : 2.5 + skill * 0.05;
+        const got = t.kind === 'eggs' ? 1 + skill * 0.03 : t.kind === 'honey' ? 2 + skill * 0.04 : (2.5 + skill * 0.05) * s.leanCrop();
         p.carry = g.carry;
         p.carryAmt = Math.min(gleanLoad(p, t.kind), p.carryAmt + got);
         train(p, t.kind);
@@ -1939,7 +1988,7 @@ export function runTask(s: Sim, p: Person) {
         face(p, s.propX[t.ref], s.propZ[t.ref]);
         if (--t.timer > 0) return;
         // an old oak drops more than one just come to bearing
-        const got = (treeStage(s.propType[t.ref]) >= 3 ? 5 : 3.5) + p.skills[SK.forage] * 0.06;
+        const got = ((treeStage(s.propType[t.ref]) >= 3 ? 5 : 3.5) + p.skills[SK.forage] * 0.06) * s.leanCrop();
         s.nutsTaken.set(t.ref, s.tick + TICKS_PER_DAY * 40);
         s.reserved.delete(t.ref);
         p.carry = CARRY.Nuts;
@@ -1987,7 +2036,7 @@ export function runTask(s: Sim, p: Person) {
         face(p, s.propX[t.ref], s.propZ[t.ref]);
         if (--t.timer > 0) return;
         // a clump gives up its roots once a year; they grow again from what is left in the ground
-        const got = (isReeds(s.propType[t.ref]) ? 3.5 : 2.5) + p.skills[SK.forage] * 0.06;
+        const got = ((isReeds(s.propType[t.ref]) ? 3.5 : 2.5) + p.skills[SK.forage] * 0.06) * s.leanCrop();
         s.rootsTaken.set(t.ref, s.tick + TICKS_PER_DAY * 40);
         s.reserved.delete(t.ref);
         p.carry = CARRY.Roots;
@@ -2435,7 +2484,9 @@ export function runTask(s: Sim, p: Person) {
         const chance = 0.42 + p.skills[SK.fish] * 0.028 + (s.fish[w] / Math.max(1, s.fishCap[w])) * 0.18 - (seasonOf(s.tick) === 3 ? 0.12 : 0);
         flash(p, FLASH.Stab);
         if (r.next() < chance) {
-          const got = Math.min(s.fish[w], Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (seasonOf(s.tick) === 3 ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1)));
+          // (water fished down, or in a lean year, gives smaller catches: fewer fish, and smaller)
+          const stocked = s.fish[w] / Math.max(1, s.fishCap[w]);
+          const got = Math.min(s.fish[w], Math.max(1, Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (0.35 + 0.65 * stocked) * (seasonOf(s.tick) === 3 ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1))));
           s.fish[w] -= got;
           s.fishVersion++;
           train(p, 'fish.catch');
@@ -2537,8 +2588,11 @@ export function runTask(s: Sim, p: Person) {
       if (--t.timer > 0) return;
       const h = s.hearth();
       const wasOut = h.fuel <= 0;
-      s.book('burned', t.amount);
-      h.fuel = Math.min(12, h.fuel + t.amount);
+      // only what the fire has room for goes on: the rest goes back on the woodpile
+      const put = Math.max(0, Math.min(t.amount, FIRE_HOLDS - h.fuel));
+      s.book('burned', put);
+      h.fuel += put;
+      c.stock.wood += t.amount - put;
       if (s.dampWood()) s.practise(p, 'damp_fire');
       p.carry = CARRY.None;
       p.carryAmt = 0;

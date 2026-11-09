@@ -25,8 +25,8 @@ export const TRAINING = {
   dig: [{ skill: SK.build, gain: 0.05 }], // a load of mud or stone dug
   // (building is the rarest work, a few roofs a year: each spell of it teaches the most)
   build: [{ skill: SK.build, gain: 0.3 }], // a spell of work on a building site
-  fell: [{ skill: SK.wood, gain: 0.08 }], // a tree brought down
-  deadwood: [{ skill: SK.wood, gain: 0.02 }], // an armful of fallen branches
+  fell: [{ skill: SK.wood, gain: 0.11 }], // a tree brought down
+  deadwood: [{ skill: SK.wood, gain: 0.03 }], // an armful of fallen branches
   'hunt.kill': [{ skill: SK.hunt, gain: 0.35 }],
   'hunt.miss': [{ skill: SK.hunt, gain: 0.05 }],
   'trap.catch': [{ skill: SK.hunt, gain: 0.03 }], // a catch taken from a snare or fish trap

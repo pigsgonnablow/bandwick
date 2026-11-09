@@ -100,6 +100,8 @@ describe('hide cloaks', () => {
     p.x = s.camp.x + 20;
     p.z = s.camp.z + 20;
     expect(s.tempAt(p)).toBeLessThan(10);
+    // measured against nothing on their back (they may have made themselves something by now)
+    if (p.worn) delete p.worn.body;
     const loss = () => { p.warmth = 80; p.indoors = false; needs(p); return 80 - p.warmth; };
     const bare = loss();
     s.items.push({ id: s.newId(), kind: 'cloak', band: p.band, holder: -1, wear: 0, made: s.tick, maker: -1, wearer: p.id });
