@@ -91,9 +91,9 @@ function smooth(a: number, b: number, x: number) {
 }
 /** The arm a carried thing hangs from, in the pose it is normally carried in: [shoulder, elbow, lean]. */
 function baseArm(carry: number): [number, number, number] {
-  if (carry === CARRY.Log || carry === CARRY.Meat || carry === CARRY.Stone) return [-1.55, -1.95, 0.05];
+  if (carry === CARRY.Log || carry === CARRY.Meat || carry === CARRY.Stone || carry === CARRY.Grain) return [-1.55, -1.95, 0.05];
   if (carry === CARRY.Body) return [-1.25, -1.35, 0.05];
-  if (carry === CARRY.Berries || carry === CARRY.Fiber || carry === CARRY.Mud || carry === CARRY.Roots || carry === CARRY.Nuts || carry === CARRY.Herbs || carry === CARRY.Eggs || carry === CARRY.Honey || carry === CARRY.Mushrooms) return [-0.15, -0.55, 0.05];
+  if (carry === CARRY.Berries || carry === CARRY.Fiber || carry === CARRY.Mud || carry === CARRY.Roots || carry === CARRY.Nuts || carry === CARRY.Herbs || carry === CARRY.Eggs || carry === CARRY.Honey || carry === CARRY.Mushrooms || carry === CARRY.Greens) return [-0.15, -0.55, 0.05];
   return [-0.1, -0.5, 0.05];
 }
 /** The walk (0) or run (1) cycle's value for one channel at stride phase `ph`, as gaitAt in POSE_GLSL. */
@@ -310,7 +310,7 @@ export class BandLayer {
       [STICK, 'stick'], [SNARE, 'snare'], [FISHTRAP, 'fishtrap'], [BASKET, 'basket'], [BASKET_FULL, 'basketFull'], [HARE, 'hare'],
       // cut grass in a bundle, clay in a hide, a stone on the shoulder
       [CARRY.Fiber, 'fiber'], [CARRY.Mud, 'mud'], [CARRY.Stone, 'stone'], [CARRY.Roots, 'roots'], [CARRY.Nuts, 'nuts'], [CARRY.Herbs, 'herbs'],
-      [CARRY.Eggs, 'eggs'], [CARRY.Honey, 'honey'], [CARRY.Mushrooms, 'mushrooms'],
+      [CARRY.Eggs, 'eggs'], [CARRY.Honey, 'honey'], [CARRY.Mushrooms, 'mushrooms'], [CARRY.Grain, 'grain'], [CARRY.Greens, 'greens'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
@@ -326,7 +326,8 @@ export class BandLayer {
       this.group.add(m);
     }
     // buildings
-    for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed']) {
+    for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
+      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -1500,7 +1501,8 @@ export class BandLayer {
   }
 
   /** Which model draws a building: huts come in two shapes, each with wattle, daub and stone walls. */
-  private modelOf(b: { kind: string; id: number; walls?: string }) {
+  private modelOf(b: { kind: string; id: number; walls?: string; look?: string }) {
+    if (b.kind === 'plot') return b.look && this.buildingMeshes.has(b.look) ? b.look : 'plot';
     if (b.kind !== 'hut' && b.kind !== 'storehouse') return b.kind;
     const shape = b.kind === 'storehouse' ? b.kind : b.id % 2 ? 'hut1' : 'hut0';
     const own = shape + (b.walls === 'daub' ? 'd' : b.walls === 'stone' ? 's' : '');
@@ -1514,7 +1516,7 @@ export class BandLayer {
       if (this.introBuild.get(b.id) === 0) continue;
       const kind = this.modelOf(b);
       need.set(kind, (need.get(kind) ?? 0) + 1);
-      if (!b.built) need.set('site', (need.get('site') ?? 0) + 1);
+      if (!b.built && b.kind !== 'plot') need.set('site', (need.get('site') ?? 0) + 1);
       if (b.bedding) need.set('bedding', (need.get('bedding') ?? 0) + 1);
     }
     for (const [kind, n] of need) {
@@ -1565,7 +1567,7 @@ export class BandLayer {
         const pop = this.bandPop.get(b.band) ?? 10;
         this.auraList.unshift({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, r: 7 + Math.sqrt(pop) * 1.8, c: bc.color, k: 0.3, terr: true });
       }
-      if (!b.built) {
+      if (!b.built && b.kind !== 'plot') {
         // the pile of stakes and rods lies where the work is: a windbreak goes up in an arc behind the fire,
         // so its pile sits just inside the arc rather than in the fire on the hearth's tile
         if (b.kind === 'windbreak') {
@@ -1793,6 +1795,8 @@ function carryOffset(kind: number) {
     case CARRY.Eggs: p.set(0.076, 0.14, 0.035); break; // a nest of eggs held in the hand
     case CARRY.Honey: p.set(0.076, 0.14, 0.035); break; // comb on a slab of bark
     case CARRY.Mushrooms: p.set(0.076, 0.15, 0.035); break; // a small grass basket, by its handle
+    case CARRY.Greens: p.set(0.076, 0.15, 0.035); break; // a bunch of greens, by the tied stalks
+    case CARRY.Grain: p.set(0.06, 0.3, 0); e.set(0, Math.PI / 2, 0.15); break; // a sheaf on the shoulder, like a log
     case CARRY.Stone: p.set(0.06, 0.315, -0.008); e.set(0, 0.3, 0); break; // on the right shoulder
     case CARRY.Meat: p.set(0, 0.3, -0.03); e.set(0, Math.PI / 2, 0); break;
     case CARRY.Fish: p.set(0.078, 0.15, 0.02); e.set(0, Math.PI / 2, -1.2); break;

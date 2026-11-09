@@ -5,7 +5,7 @@ import { TICKS_PER_DAY } from '../../src/sim/time';
 import { bandDiscoveries, firstFound } from '../../src/ui/discoveries';
 import { sim, runTo, runYears } from '../helpers';
 
-const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, furs: 0 };
+const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0 };
 
 describe('discoveries in the chronicle', () => {
   it('keeps who worked something out, and when', () => {

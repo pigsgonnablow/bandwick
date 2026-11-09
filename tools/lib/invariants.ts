@@ -3,7 +3,7 @@
 // anything impossible it finds in `problems`, keyed by kind, with the first example of each.
 import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
-import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, yearOf } from '../../src/sim/time';
+import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, yearOf, seasonOf } from '../../src/sim/time';
 import { FAR_GRAVE } from '../../src/sim/ai';
 import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS, GARMENTS, isGarment, MEND_MAX, type RecipeKey } from '../../src/sim/band';
 import { dayOf } from '../../src/sim/time';
@@ -131,7 +131,9 @@ export class InvariantChecker {
       if (t?.kind === 'feast' && band && band.feastDay !== dayOf(sim.tick) && band.feastDay !== dayOf(sim.tick) - 1) flag('feasting on an ordinary day', `${at} ${p.name}`);
       if (p.task && sim.tick - p.task.started > 700 && p.task.kind !== 'sleep') flag('task stuck', `${at} ${p.name} ${p.task.kind} stage ${p.task.stage}`);
       // an adult with no task at several daily checks in a row is looping on something
-      if (sim.age(p) >= 14 && !p.task) {
+      // (someone who finished a job this very tick picks the next one up on the next: that is not idling, even
+      // when their day runs to the same clock and the job ends at the check, night after night)
+      if (sim.age(p) >= 14 && !p.task && p.nextThink !== sim.tick) {
         const n = (idleAdults.get(p.id) ?? 0) + 1;
         idleAdults.set(p.id, n);
         if (n >= 3) flag('adult without a task for days', `${at} ${p.name}`);
@@ -176,8 +178,8 @@ export class InvariantChecker {
     } else idleAdults.set(-1, 0);
     // buildings
     const tiles = new Set<number>();
-    // (a windbreak stands at the fire and a woodpile roof over the stockpile, on their tiles)
-    const host = { windbreak: 'hearth', woodshed: 'stockpile' } as Record<string, string>;
+    // (a windbreak stands at the fire, a woodpile roof over the stockpile and a fence round a garden plot, on their tiles)
+    const host = { windbreak: 'hearth', woodshed: 'stockpile', fence: 'plot' } as Record<string, string>;
     for (const b of sim.buildings) {
       if (host[b.kind]) {
         if (!sim.buildings.some((q) => q.band === b.band && q.kind === host[b.kind] && q.tile === b.tile)) flag(`${b.kind} away from its ${host[b.kind]}`, `${at} ${b.kind} ${b.id}`);
@@ -193,6 +195,27 @@ export class InvariantChecker {
       const count = new Uint8Array(N * N);
       for (let k = 0; k < sim.propCount; k++) if (sim.propAlive[k] && isTreeType(sim.propType[k])) count[sim.propTile[k]]++;
       for (let i = 0; i < N * N; i++) if (count[i] !== sim.treesOnTile[i]) { flag('tree count drift', `${at} tile ${i} ${count[i]} vs ${sim.treesOnTile[i]}`); break; }
+    }
+    // gardens: every plot's state in range, nothing growing through the winter or in ground not yet dug,
+    // one fence to a plot, seed never below nothing, and nobody working another band's plot
+    const fences = new Set<number>();
+    // (the frost takes what is left on the first morning of winter: by the next day nothing is growing)
+    const winter = seasonOf(sim.tick) === 3 && seasonOf(sim.tick - TICKS_PER_DAY) === 3;
+    for (const b of sim.buildings) {
+      if (b.kind === 'fence') { if (fences.has(b.tile)) flag('two fences round one plot', `${at} tile ${b.tile}`); fences.add(b.tile); }
+      const pl = b.plot;
+      if (b.kind !== 'plot' || !pl) continue;
+      const bad = [['growth', 0, 1], ['weeds', 0, 1], ['cond', 0.1, 1], ['soil', 0.4, 1], ['care', 0.6, 1.4], ['left', 0, 200], ['greens', 0, 50]] as const;
+      for (const [k, lo, hi] of bad) if (!Number.isFinite(pl[k]) || pl[k] < lo - 1e-6 || pl[k] > hi + 1e-6) flag(`plot ${k} out of range`, `${at} plot ${b.id} ${pl[k]}`);
+      if (pl.crop && (winter || !b.built)) flag(winter ? 'crop growing in winter' : 'crop in an undug plot', `${at} plot ${b.id}`);
+      if (!pl.crop && (pl.growth > 0 || pl.left > 0)) flag('empty plot with a crop left in it', `${at} plot ${b.id}`);
+    }
+    for (const c of sim.camps) if (c.seed !== undefined && (!Number.isFinite(c.seed) || c.seed < -1e-6)) flag('seed grain below nothing', `${at} ${c.name} ${c.seed}`);
+    for (const p of sim.living()) {
+      const t = p.task;
+      if (!t || (t.kind !== 'sow' && t.kind !== 'tend' && t.kind !== 'harvest')) continue;
+      const b = sim.buildings.find((q) => q.id === t.ref);
+      if (b && (b.kind !== 'plot' || b.band !== p.band)) flag('garden work on the wrong ground', `${at} ${p.name} ${t.kind} ${b.kind} of band ${b.band}`);
     }
     for (const c of sim.liveCamps()) if (foodTotal(c.stock) > 5000) flag('food hoard absurd', `${at} ${c.name} ${foodTotal(c.stock)}`);
     // nobody starves while there is food in their own band's store

@@ -32,6 +32,10 @@ export type Practice =
   | 'wolves' // a hunt with a wolf pack close by, or an evening hearing them howl round camp
   | 'boar' // a hunt with a sounder of wild boar rooting close by
   | 'fur' // a fox's raid found at a snare, a fox or beaver watched at dusk, wood a beaver felled carried home
+  | 'midden' // a spring day at a camp lived in since the spring before, when things sprout from the scraps thrown out (each adult)
+  | 'harvest' // a load of the garden's harvest brought in
+  | 'raided' // finding a garden plot raided by deer, boar or hares (each gardener)
+  | 'store_grain' // grain carried into the stores (per load)
 
 /**
  * What someone has to be before they can have an idea. Only skill levels for now; a new kind of
@@ -307,6 +311,36 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'build a storehouse', memory: 'Thought of a storehouse to keep food from spoiling.',
   },
   {
+    // (a forager who digs roots, back at a camp where the band has lived since last spring, sees roots and greens
+    // sprouting on the heap where the peelings and the spoiled ones were thrown, and sets some in the ground on purpose)
+    key: 'garden', label: 'Garden plots', needs: [], requires: [skill(SK.forage, ABLE), skill(SK.tool, 5)], brings: ['digstick'],
+    practice: { midden: 1, dig_stick: 2, forage: 0.3 }, odds: 110,
+    found: 'noticed roots sprouting where the scraps were thrown the spring before, and dug a plot by the camp to set them in on purpose: the band\'s first garden',
+    taught: 'dig garden plots and grow roots and greens', memory: 'Dug the first garden plot.',
+  },
+  {
+    // (a gardener cutting grass for thatch at the end of summer, the ripe heads shedding seed in their hands,
+    // thinks of sowing it in the garden like the roots)
+    key: 'grain', label: 'Sowing grain', needs: ['garden'], requires: [skill(SK.garden, 5), skill(SK.forage, ABLE)],
+    practice: { thatch: 0.5, harvest: 1 }, odds: 12,
+    found: 'rubbed the seed from the heads of the wild grass, sowed it in a garden plot, and reaped a harvest of grain that keeps the year round',
+    taught: 'sow and reap grain', memory: 'Sowed and reaped the first grain.',
+  },
+  {
+    // (a gardener who finds a plot trampled and eaten in the night thinks of a hurdle round it, like the windbreak)
+    key: 'fences', label: 'Garden fences', needs: ['garden'], requires: [skill(SK.garden, 6), skill(SK.build, 8)],
+    practice: { raided: 1 }, odds: 3,
+    found: 'drove a ring of stakes round a garden plot and wove withies between them, and the deer kept out',
+    taught: 'fence their gardens against the deer and the boar', memory: 'Fenced the first garden plot.',
+  },
+  {
+    // (someone carrying the grain into the stores, who has watched it go mouldy in the damp, thinks of a dry pit)
+    key: 'pits', label: 'Storage pits', needs: ['grain'], requires: [skill(SK.garden, 7), skill(SK.build, 8)],
+    practice: { store_grain: 1 }, odds: 6,
+    found: 'dug a pit by the stores, lined it with clay and grass, filled it with grain and sealed it: it came out dry and sweet in spring',
+    taught: 'keep grain in lined storage pits', memory: 'Dug the first storage pit for grain.',
+  },
+  {
     key: 'daub', label: 'Wattle-and-daub', needs: ['huts'], requires: [skill(SK.build, 13), skill(SK.weave, 8)], near: 'mud',
     practice: { thatch: 1, build: 1 }, odds: 40,
     found: 'worked out how to weave walls of reeds and plaster them with mud',
@@ -325,7 +359,7 @@ export const DISCOVERY = new Map(DISCOVERIES.map((d) => [d.key, d]));
 /** What a band has to know to build something. */
 export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   const out: string[] = [];
-  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed' } as Partial<Record<BuildKind, string>>)[b.kind];
+  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits' } as Partial<Record<BuildKind, string>>)[b.kind];
   if (k) out.push(k);
   if (b.walls === 'daub') out.push('daub');
   if (b.walls === 'stone') out.push('stonework');

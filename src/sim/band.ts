@@ -7,10 +7,11 @@ export const TRAITS = [
 export type Trait = (typeof TRAITS)[number];
 export const OPPOSED: [Trait, Trait][] = [['industrious', 'lazy'], ['brave', 'cautious'], ['kind', 'cruel']];
 
-// Crafting is four skills, so people grow into the band's toolmaker, weaver, potter or hideworker.
-export const SKILLS = ['foraging', 'woodcutting', 'building', 'hunting', 'fishing', 'toolmaking', 'weaving', 'pottery', 'hidework'] as const;
+// Crafting is four skills, so people grow into the band's toolmaker, weaver, potter or hideworker. Gardening
+// comes last: nobody knows it until the band works out how to sow.
+export const SKILLS = ['foraging', 'woodcutting', 'building', 'hunting', 'fishing', 'toolmaking', 'weaving', 'pottery', 'hidework', 'gardening'] as const;
 export type Skill = (typeof SKILLS)[number];
-export const SK = { forage: 0, wood: 1, build: 2, hunt: 3, fish: 4, tool: 5, weave: 6, pot: 7, hide: 8 } as const;
+export const SK = { forage: 0, wood: 1, build: 2, hunt: 3, fish: 4, tool: 5, weave: 6, pot: 7, hide: 8, garden: 9 } as const;
 /** The top of every skill. */
 export const SKILL_MAX = 20;
 /**
@@ -47,6 +48,10 @@ export const TRAINING = {
   eggs: [{ skill: SK.forage, gain: 0.03 }],
   honey: [{ skill: SK.forage, gain: 0.06 }],
   mushrooms: [{ skill: SK.forage, gain: 0.05 }],
+  // a plot sown, a spell of weeding and guarding a plot, a load of the harvest brought in
+  'garden.sow': [{ skill: SK.garden, gain: 0.09 }],
+  'garden.tend': [{ skill: SK.garden, gain: 0.05 }],
+  'garden.harvest': [{ skill: SK.garden, gain: 0.06 }, { skill: SK.forage, gain: 0.01 }],
 } as const satisfies Record<string, Lesson>;
 export type Training = keyof typeof TRAINING;
 
@@ -66,7 +71,7 @@ export function train(p: Person, what: Training) {
 }
 
 /** What a person is known as when they are clearly the band's best at a craft. */
-export const CRAFT_TITLES: Partial<Record<number, string>> = { [SK.tool]: 'toolmaker', [SK.weave]: 'weaver', [SK.pot]: 'potter', [SK.hide]: 'hideworker' };
+export const CRAFT_TITLES: Partial<Record<number, string>> = { [SK.tool]: 'toolmaker', [SK.weave]: 'weaver', [SK.pot]: 'potter', [SK.hide]: 'hideworker', [SK.garden]: 'gardener' };
 
 /** What a person's body is doing (drives animation). */
 export const ACT = {
@@ -95,18 +100,20 @@ export const FLASH = { Thrust: 1, Stab: 2 } as const;
 export const ACT_NAMES = Object.keys(ACT);
 
 /** What a person is carrying. */
-export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10, Roots: 11, Nuts: 12, Herbs: 13, Eggs: 14, Honey: 15, Mushrooms: 16 } as const;
+export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10, Roots: 11, Nuts: 12, Herbs: 13, Eggs: 14, Honey: 15, Mushrooms: 16, Grain: 17, Greens: 18 } as const;
 
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
-  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast' | 'eggs' | 'honey' | 'mushrooms' | 'mend';
+  | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast' | 'eggs' | 'honey' | 'mushrooms' | 'mend'
+  | 'sow' | 'tend' | 'harvest';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
   'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen', 'bed', 'roots', 'nuts', 'herbs', 'nurse', 'gift', 'feast', 'eggs', 'honey', 'mushrooms', 'mend',
+  'sow', 'tend', 'harvest',
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
@@ -229,7 +236,7 @@ export const NUTS_LOAD = 8;
 /** Roasted in the embers, a meal of meat, fish, roots or acorns fills this much more; it takes a little longer. */
 export const COOK_GAIN = 1.25;
 export const COOK_TICKS = 6;
-export const COOKED = ['meat', 'fish', 'roots', 'nuts', 'eggs', 'mushrooms'];
+export const COOKED = ['meat', 'fish', 'roots', 'nuts', 'eggs', 'mushrooms', 'grain'];
 /** Eggs brought home from the nests of a spring morning (they go off almost as fast as berries). */
 export const EGGS_LOAD = 3;
 /** Honey from one wild hive smoked out in summer; the harm a bad stinging does. */
@@ -433,6 +440,8 @@ export interface Task {
   res?: Material;
   /** hunting: the quarry is a wild boar (`ref` is a beast's id) rather than a deer */
   boar?: boolean;
+  /** garden work: how long the spell of work at the plot is, all told */
+  span?: number;
 }
 
 export interface Memory {
@@ -521,7 +530,7 @@ export interface Person {
   gave?: number;
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -553,6 +562,12 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   // built onto the camp fire and the stockpile, on their tiles
   windbreak: spec({ wood: 6, cordage: 2, work: 30, label: 'Windbreak' }),
   woodshed: spec({ wood: 4, fiber: 4, cordage: 2, work: 40, label: 'Woodpile roof' }),
+  // a tile of ground cleared and turned for a garden: only work (trees on it come down first, and add to it)
+  plot: spec({ work: 60, label: 'Garden plot' }),
+  // a wattle hurdle of stakes and woven withies round a plot, to keep the deer and the boar out
+  fence: spec({ wood: 4, cordage: 2, work: 30, label: 'Garden fence' }),
+  // a pit dug by the stores, lined with clay and grass and capped, to keep grain and roots dry and cool
+  pit: spec({ mud: 3, fiber: 3, work: 60, keep: 0.35, label: 'Storage pit' }),
 };
 
 /** What a building's walls are made of. Huts and storehouses can be raised in any of these. */
@@ -607,6 +622,8 @@ export interface Building {
   walls?: Walls;
   /** a home: days the grass bedding laid in it stays fresh (absent or 0: the bare ground) */
   bedding?: number;
+  /** a garden plot: what is growing in it (absent or 0: nothing), and how it is coming on */
+  plot?: Plot;
   work: number; // done
   built: boolean;
   owner: number; // person id of the household head
@@ -615,6 +632,58 @@ export interface Building {
   finished: number;
   builders: number[];
 }
+
+/** What grows in a garden plot. */
+export const CROP = { None: 0, Roots: 1, Grain: 2 } as const;
+export const CROP_NAMES = ['', 'roots', 'grain'];
+export interface Plot {
+  crop: number;
+  /** when it was sown (0: not this year) */
+  sown: number;
+  /** 0 just sown .. 1 ready to harvest */
+  growth: number;
+  /** how far the weeds have come on since it was last weeded, 0..1 */
+  weeds: number;
+  /** what is left of the crop after weeds, raids and the weather, 0..1 */
+  cond: number;
+  /** the harvest still to bring in, in meals (set when the harvest starts) */
+  left: number;
+  /** greens ready to pick off a root plot in summer, in meals */
+  greens: number;
+  /** how good the ground still is: tired by every harvest, rested by a year left fallow, 0.4..1 */
+  soil: number;
+  /** until when someone has been out guarding it; when it was last raided, and by what */
+  guarded: number;
+  raided: number;
+  raider: string;
+  /** the year it was last harvested (0: never), and what was in it */
+  reaped: number;
+  last: number;
+  /** how well it has been looked after, from the skill of whoever sowed and weeded it (see gardenSkill) */
+  care: number;
+}
+export const newPlot = (): Plot => ({ crop: 0, sown: 0, growth: 0, weeds: 0, cond: 1, left: 0, greens: 0, soil: 1, guarded: 0, raided: 0, raider: '', reaped: 0, last: 0, care: 1 });
+/** Days from sowing to harvest: grain sown in spring is reaped at the end of summer, roots are dug in autumn. */
+export const GROW_DAYS = [0, 26, 19];
+/** What one plot gives in an ordinary year, worked by a gardener of 10, in meals. */
+export const PLOT_YIELD = [0, 24, 40];
+/** The grain kept back to sow one plot (about a sixth of what it gives); root plots are set from wild roots. */
+export const SEED_PER_PLOT = 6;
+/** Greens a root plot puts on each summer day, while it is weeded, and a picker's load of them. */
+export const GREENS_PER_DAY = 0.7;
+export const GREENS_LOAD = 4;
+/** A load of the harvest carried home: sheaves of grain on the back, or roots in a bundle. */
+export const GRAIN_LOAD = 14;
+/** A garden in a lean year, and in a year of plenty, against an ordinary one (wild crops fall to LEAN_CROP). */
+export const LEAN_GARDEN = 0.65;
+export const PLENTY_GARDEN = 1.15;
+/** How much a harvest tires the ground, and how much a year left fallow gives back. */
+export const SOIL_TIRE = 0.1;
+export const SOIL_REST = 0.45;
+/** Ground this tired is left to rest for a year. */
+export const SOIL_FALLOW = 0.6;
+/** The harvest against a gardener's skill: 60% from a beginner, all of it at 10, 140% from a master. */
+export const gardenSkill = (level: number) => 0.6 + Math.min(20, level) * 0.04;
 
 export interface Deer {
   id: number;
@@ -754,6 +823,9 @@ export interface Stock {
   eggs: number;
   honey: number;
   mushrooms: number;
+  /** grain reaped from the gardens, and greens picked from them in summer (absent in older saves until restored) */
+  grain: number;
+  greens: number;
   /** fox and beaver pelts from the deadfalls (absent in older saves until restored) */
   furs: number;
 }
@@ -771,9 +843,9 @@ export interface SimEvent {
 }
 
 /** Everything in the stores that can be eaten. */
-export const FOODS = ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts', 'eggs', 'honey', 'mushrooms'] as const;
+export const FOODS = ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts', 'eggs', 'honey', 'mushrooms', 'grain', 'greens'] as const;
 export type Food = (typeof FOODS)[number];
-export const foodTotal = (s: Stock) => s.berries + s.meat + s.fish + s.preserved + s.roots + s.nuts + s.eggs + s.honey + s.mushrooms;
+export const foodTotal = (s: Stock) => s.berries + s.meat + s.fish + s.preserved + s.roots + s.nuts + s.eggs + s.honey + s.mushrooms + s.grain + s.greens;
 
 /** The health levels the sim acts on (the info window's health tooltip reads them too). */
 export const HEALTH = {

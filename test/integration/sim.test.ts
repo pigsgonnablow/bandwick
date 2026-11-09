@@ -3,7 +3,7 @@ import { Sim, SaveData, LOGS } from '../../src/sim/sim';
 import { generateWorld } from '../../src/sim/worldgen';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, START_TICK, DAYS_PER_SEASON, seasonOf } from '../../src/sim/time';
 import { FAR_GRAVE, completeBuilding, standOn } from '../../src/sim/ai';
-import { runChecked } from '../../tools/lib/invariants';
+import { runChecked, InvariantChecker } from '../../tools/lib/invariants';
 import { sim, world, runTo, runYears } from '../helpers';
 import { REMAINS, remainsStage } from '../../src/sim/band';
 
@@ -233,7 +233,7 @@ describe('a hut', () => {
     const home = s.camp;
     const owner = s.members().find((q) => s.age(q) >= 18)!;
     const site = s.newBuilding('hut', home.tile + 5 * s.N + 3, owner.id);
-    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, furs: 0 };
+    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0 };
     const away = s.foundCamp(home.tile + 30, stock, -1, -1);
     (s as any).join([owner], away);
     const moved = owner.home;
@@ -360,12 +360,36 @@ describe('children left on their own', () => {
     const home = s.camp;
     const kids = s.members().filter((p) => s.age(p) < 14).slice(0, 2);
     expect(kids.length).toBeGreaterThan(0);
-    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, furs: 0 };
+    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0 };
     const lone = s.foundCamp(home.tile + 30, stock, -1, -1);
     (s as any).join(kids, lone);
     s.camp = home;
     runTo(s, s.tick + TICKS_PER_DAY + 1);
     for (const k of kids) expect(k.band).toBe(home.id);
     expect(lone.gone).toBeGreaterThan(0);
+  });
+});
+
+describe('the daily checks', () => {
+  it('flag someone left with nothing to do for days, but not someone who just finished a job at the check', () => {
+    const s = sim(1);
+    const p = s.living().find((q) => s.age(q) >= 18)!;
+    const day = (n: number, done: boolean) => {
+      const ch = new InvariantChecker(s, 'idle');
+      for (let i = 0; i < n; i++) {
+        s.tick = (Math.floor(s.tick / TICKS_PER_DAY) + 1) * TICKS_PER_DAY;
+        // (everyone else has just finished a job too)
+        for (const q of s.living()) if (q !== p) { q.task = null; q.nextThink = s.tick; }
+        p.task = null;
+        // (a job finished this tick leaves them free to choose the next one on the next tick)
+        p.nextThink = done ? s.tick : s.tick + 15;
+        ch.check();
+      }
+      return ch.problems.get('adult without a task for days')?.first.includes(p.name) ?? false;
+    };
+    // the same clockwork day, a job ending on the stroke of midnight, night after night
+    expect(day(4, true)).toBe(false);
+    // stood about with nothing chosen
+    expect(day(4, false)).toBe(true);
   });
 });
