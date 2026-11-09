@@ -8,7 +8,7 @@ import {
 } from './types';
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
-  Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Wolf, Pack, WOLF, Stock, SimEvent, Task, TaskKind, Memory,
+  Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Wolf, Pack, WOLF, Beast, Den, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
   BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT,
 } from './band';
@@ -17,6 +17,7 @@ import {
   isDark, temperature, berriesRipe, freshFrozen, rutting, snowLies, isWinter, seasonPos, seasonOf, ageYears, yearOf, dayOf, hourOf,
 } from './time';
 import { decide, runTask, abandon, sendHome, delivering, foodInHand, FAR_GRAVE } from './ai';
+import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard } from './beasts';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets } from './know';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
@@ -176,6 +177,8 @@ export interface Camp {
   /** when wolves were last heard howling from camp, and whether the band has noted them at all */
   heardWolves?: number;
   wolvesNoted?: boolean;
+  /** whether a fox has been found robbing the band's snares yet */
+  foxNoted?: boolean;
   /** what a newcomer who married in will teach the band, and when */
   learning?: { k: string; at: number; by: number }[];
   /** how and when it came to know each thing it knows (absent for what it knew in saves from before this was kept) */
@@ -227,6 +230,9 @@ export class Sim {
   herds: Herd[] = [];
   wolves: Wolf[] = [];
   packs: Pack[] = [];
+  /** wild boar, foxes and beavers, and the sounders' ranges, earths and lodges they belong to */
+  beasts: Beast[] = [];
+  dens: Den[] = [];
   /** every band that has ever had a camp, in order of founding */
   camps: Camp[] = [];
   /** the band being worked on right now (each person's own while they think and act) */
@@ -237,6 +243,7 @@ export class Sim {
   rAi: Rng;
   rWild: Rng;
   rWolf: Rng;
+  rBeast: Rng;
   anomaly = 0;
   private nextId = 1;
   /** A fresh id for a camp, building, person or thing. */
@@ -292,7 +299,7 @@ export class Sim {
   quarryTiles: number[] = [];
   /** per tile: how many standing trees */
   treesOnTile: Uint8Array;
-  stats = { births: 0, deaths: 0, peak: 0, starved: 0, froze: 0, kills: 0, felled: 0, wolfKills: 0 };
+  stats = { births: 0, deaths: 0, peak: 0, starved: 0, froze: 0, kills: 0, felled: 0, wolfKills: 0, boarKills: 0 };
   /** fortune's years: a year of plenty, a year the berries failed (year numbers; 0 for none yet) */
   plentyYear = 0;
   blightYear = 0;
@@ -308,6 +315,7 @@ export class Sim {
     this.rAi = Rng.stream(seed, 'ai');
     this.rWild = Rng.stream(seed, 'wild');
     this.rWolf = Rng.stream(seed, 'wolves');
+    this.rBeast = Rng.stream(seed, 'beasts');
     this.tongue = new Tongue(Rng.stream(seed, 'tongue'));
     // props
     const cap = world.propCount + 4096;
@@ -386,6 +394,7 @@ export class Sim {
     this.foundBand();
     this.placeHerds();
     this.placePacks();
+    placeBeasts(this);
     this.plan();
   }
 
@@ -413,7 +422,7 @@ export class Sim {
       params: { ...this.world.params },
       worldHash: this.world.hash,
       tick: this.tick, anomaly: this.anomaly, nextId: this.nextId, nextEvent: this.nextEvent, eventHash: this.eventHash,
-      rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState(), wolves: this.rWolf.getState() },
+      rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState(), wolves: this.rWolf.getState(), beasts: this.rBeast.getState() },
       props: {
         count: n,
         type: pick(this.propType), x: pick(this.propX), y: pick(this.propY), z: pick(this.propZ), rot: pick(this.propRot),
@@ -448,6 +457,8 @@ export class Sim {
       herds: this.herds.map((h) => ({ ...h })),
       wolves: this.wolves.map((w) => ({ ...w })),
       packs: this.packs.map((k) => ({ ...k })),
+      beasts: this.beasts.map((b) => ({ ...b })),
+      dens: this.dens.map((d) => ({ ...d })),
     };
   }
 
@@ -478,6 +489,7 @@ export class Sim {
     this.rAi.setState(d.rng.ai);
     this.rWild.setState(d.rng.wild);
     if (d.rng.wolves) this.rWolf.setState(d.rng.wolves);
+    if (d.rng.beasts) this.rBeast.setState(d.rng.beasts);
     this.tongue.r.setState(d.rng.tongue);
     // props: replace the freshly generated ones with the saved, lived-in set
     const n = d.props.count;
@@ -585,6 +597,11 @@ export class Sim {
       this.wolves = d.wolves;
       this.packs = d.packs;
     } else this.placePacks();
+    // and from before the boar, foxes and beavers
+    if (d.beasts && d.dens) {
+      this.beasts = d.beasts;
+      this.dens = d.dens;
+    } else placeBeasts(this);
     this.propsVersion++;
     this.buildingsVersion++;
   }
@@ -1154,6 +1171,7 @@ export class Sim {
     }
     this.updateDeer();
     this.updateWolves();
+    updateBeasts(this);
   }
 
   /** Who carries an infant about: their mother, else their father, else whoever took them in. */
@@ -1934,6 +1952,7 @@ export class Sim {
     this.herdsDaily(dayOfYear);
     this.packsDaily(dayOfYear);
     this.dogsDaily();
+    beastsDaily(this, dayOfYear);
     this.traps();
     this.dressAndBed();
     // each band's own day: stores, births and deaths, and the morning plan
@@ -3418,7 +3437,7 @@ export class Sim {
   }
 
   /** Whether a point is on walkable dry land (somewhere a wolf can be, or a pack's range can lie). */
-  private dryLand(x: number, z: number) {
+  dryLand(x: number, z: number) {
     const tx = Math.floor(x), tz = Math.floor(z);
     if (tx < 0 || tz < 0 || tx >= this.N || tz >= this.N) return false;
     const i = tz * this.N + tx;
@@ -3650,6 +3669,12 @@ export class Sim {
     }
   }
 
+  packBeasts() {
+    return packBeasts(this);
+  }
+  packDens() {
+    return packDens(this);
+  }
   static WOLF_STRIDE = 6;
   /** The wolves, for the renderer: id, where, a point it faces, its state (plus 10 for a cub). */
   packWolves(): Float32Array {
@@ -3889,6 +3914,15 @@ export class Sim {
         ref, title: w.pup ? 'Wolf cub' : 'Grey wolf', subtitle: 'Wild wolf', lines,
         notes: [`Wolves have brought down ${this.stats.wolfKills ?? 0} deer. They keep clear of people and of the camp fires, and howl at dusk.`],
         x: w.x, z: w.z, gone: !w.alive,
+      };
+    }
+    if (ref.kind === 'beast') {
+      const b = this.beasts.find((q) => q.id === ref.id);
+      if (!b) return null;
+      const c = beastCard(this, b);
+      return {
+        ref, title: c.title, subtitle: b.alive ? 'Wild' : b.killed ? 'Killed' : 'Gone', lines: c.lines.map(([k, v]) => L(k, v)),
+        notes: [c.note], x: b.x, z: b.z, gone: !b.alive,
       };
     }
     if (ref.kind === 'building') {
@@ -4439,7 +4473,7 @@ export interface SaveData {
   nextEvent: number;
   eventHash: number;
   /** (saves from before the wolves have no `wolves` stream; it starts afresh) */
-  rng: { life: number[]; ai: number[]; wild: number[]; tongue: number[]; wolves: number[] };
+  rng: { life: number[]; ai: number[]; wild: number[]; tongue: number[]; wolves: number[]; beasts: number[] };
   props: { count: number; type: string; x: string; y: string; z: string; rot: string; scale: string; alive: string; val: string; tile: string };
   propNote: Entries<number, string>;
   reserved: Entries<number, number>;
@@ -4470,6 +4504,9 @@ export interface SaveData {
   /** absent in saves from before the wolves */
   wolves?: Wolf[];
   packs?: Pack[];
+  /** absent in saves from before the boar, foxes and beavers */
+  beasts?: Beast[];
+  dens?: Den[];
 }
 
 /** Typed array bytes as base64 (works in browsers, workers and Node). */

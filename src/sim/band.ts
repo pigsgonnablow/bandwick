@@ -337,7 +337,7 @@ export interface Item {
 
 /** Anything in the world that can be clicked. */
 export interface Ref {
-  kind: 'person' | 'deer' | 'wolf' | 'building' | 'prop' | 'tile' | 'item';
+  kind: 'person' | 'deer' | 'wolf' | 'beast' | 'building' | 'prop' | 'tile' | 'item';
   id: number;
 }
 export interface CardLine {
@@ -387,6 +387,8 @@ export interface Task {
   step?: number;
   /** supplying a building site: what is carried there (absent: wood) */
   res?: Material;
+  /** hunting: the quarry is a wild boar (`ref` is a beast's id) rather than a deer */
+  boar?: boolean;
 }
 
 export interface Memory {
@@ -617,6 +619,53 @@ export interface Pack {
   prey: number;
   chaseFrom: number;
   fed: number;
+}
+
+/**
+ * The smaller wild things that share the land with the band, all kept the same way: wild boar rooting in
+ * the woods in sounders, foxes about their dens, beavers at their lodges on the rivers and lakes.
+ */
+export interface Beast {
+  id: number;
+  kind: number; // BEAST.*
+  /** the den, lodge or sounder's range it belongs to (index in Sim.dens) */
+  den: number;
+  x: number;
+  z: number;
+  tx: number;
+  tz: number;
+  /** a point it faces */
+  fx: number;
+  fz: number;
+  state: number; // BOAR.*, FOX.* or BEAVER.*
+  timer: number;
+  alive: boolean;
+  /** born this spring: a striped piglet, a cub, a kit */
+  young: boolean;
+  /** brought down by hunters (a boar) */
+  killed?: boolean;
+}
+export const BEAST = { Boar: 0, Fox: 1, Beaver: 2 } as const;
+export const BEAST_NAMES = ['boar', 'fox', 'beaver'] as const;
+export const BOAR = { Stand: 0, Walk: 1, Run: 2, Root: 3, Lie: 4, Charge: 5 } as const;
+export const FOX = { Sit: 0, Trot: 1, Run: 2, Mouse: 3, Curl: 4, Raid: 5 } as const;
+export const BEAVER = { Sit: 0, Walk: 1, Swim: 2, Gnaw: 3, Home: 4, Dive: 5 } as const;
+
+/** Where a group of beasts lives: a sounder's range, a fox's earth, a beaver lodge (and its dam). */
+export interface Den {
+  id: number;
+  kind: number; // BEAST.*
+  x: number;
+  z: number;
+  /** where the group is heading next, and when it moves on again */
+  tx: number;
+  tz: number;
+  next: number;
+  /** a beaver lodge's dam: the river tile it is built across (-1 none yet) and how far along it is (0..1) */
+  dam?: number;
+  built?: number;
+  /** the snare a fox has gone to rob (item id), if any */
+  raid?: number;
 }
 
 /** Grown deer with odd ids are stags (they wear antlers; the renderer uses the same rule), the rest are does. */

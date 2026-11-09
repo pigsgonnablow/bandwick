@@ -30,6 +30,7 @@ export type Practice =
   | 'sew' // a cloak sewn by the fire
   | 'dig_stick' // a trip's digging done with a digging stick
   | 'wolves' // a hunt with a wolf pack close by, or an evening hearing them howl round camp
+  | 'boar' // a hunt with a sounder of wild boar rooting close by
 
 /**
  * What someone has to be before they can have an idea. Only skill levels for now; a new kind of
@@ -273,6 +274,14 @@ export const DISCOVERIES: Discovery[] = [
     practice: { wolves: 1 }, odds: 9,
     found: 'took in a wolf cub left behind by its pack, raised it on scraps by the fire, and it grew up to hunt at their side: the first dog',
     taught: 'raise dogs to hunt with', memory: 'Raised the first dog from a wolf cub.',
+  },
+  {
+    // (a hunter out after deer keeps crossing the sounders' rooting and their wallows, and works out how to
+    // close in on a boar in the thickets with the spear braced: a dangerous quarry, but a lot of meat)
+    key: 'boar', label: 'Boar hunting', needs: [], requires: [skill(SK.hunt, 10)],
+    practice: { boar: 1 }, odds: 14,
+    found: 'learned to follow a sounder of wild boar into the thickets and take one on the braced spear',
+    taught: 'hunt the wild boar', memory: 'Brought down the first wild boar.',
   },
   {
     // (hidework is learned at the drying rack, so it can't be what leads to it)

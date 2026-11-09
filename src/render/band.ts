@@ -11,6 +11,8 @@ import { FishLayer } from './fish';
 import { BirdLayer } from './birds';
 import { TrackLayer } from './tracks';
 import { WolfLayer, Keeper } from './wolves';
+import { BeastLayer } from './beasts';
+import { BEAST } from '../sim/band';
 import { WorldData, WATER, STEP } from '../sim/types';
 import { addCommon } from './shaderlib';
 import { U } from './env';
@@ -244,6 +246,8 @@ export class BandLayer {
   tracks = new TrackLayer();
   /** wolf packs from the simulation, and each keeper's dog at their heels */
   wolves: WolfLayer;
+  /** wild boar, foxes and beavers, and the beavers' lodges and dams */
+  beasts: BeastLayer;
   private keepers: Keeper[] = [];
   /** anyone robbing a nest (kind 0) or smoking out a hive (kind 1) this frame, at the tree */
   private gleaners: { id: number; kind: number; x: number; z: number; y: number }[] = [];
@@ -284,7 +288,15 @@ export class BandLayer {
     this.fish = new FishLayer(world, geoms, (x, z, y, size, drops) => this.waterMark(x, z, y, size, drops));
     this.birds = new BirdLayer(world, (x, z) => this.groundAt(x, z), geoms);
     this.wolves = new WolfLayer(geoms, (x, z) => this.groundAt(x, z), this.tracks);
-    this.group.add(this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh, this.birds.group, this.tracks.mesh, this.wolves.group);
+    this.beasts = new BeastLayer(geoms, world, (x, z) => this.groundAt(x, z), this.tracks, (x, z, y, size, drops) => this.waterMark(x, z, y, size, drops),
+      (x, y, z, n, [r, g, b], up) => {
+        for (let k = 0; k < n; k++) {
+          const a = Math.random() * Math.PI * 2, sp = 0.05 + Math.random() * 0.12;
+          this.bits.push({ x, y, z, vx: Math.cos(a) * sp, vy: up * (0.5 + Math.random()), vz: Math.sin(a) * sp, age: 0, life: 0.6,
+            size: 0.006 + Math.random() * 0.005, r, g, b, floor: this.groundAt(x, z) });
+        }
+      });
+    this.group.add(this.beasts.group, this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh, this.birds.group, this.tracks.mesh, this.wolves.group);
     // carried things
     const carryNames: [number, string][] = [
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
@@ -948,6 +960,7 @@ export class BandLayer {
     }
     for (const [id, d] of this.deer) if (d.seen !== seen) this.deer.delete(id);
     if (f.wolves) this.wolves.setWolves(f.wolves, now, this.tickMs, seen);
+    if (f.beasts) this.beasts.setBeasts(f.beasts, f.dens, now, this.tickMs, seen);
   }
 
   private alpha(now: number) {
@@ -1431,8 +1444,10 @@ export class BandLayer {
       this.keepers.push({ id, x: s.dx, y: s.y, z: s.dz, angle: s.angle, indoors: s.indoors, pup: (s.dress & 128) !== 0, hunting: s.task === HUNT_TASK });
     }
     this.wolves.update(dt, now, follow, this.keepers);
-    // hares and finches take fright at wolves and dogs as well as at people
-    const scary = this.wolves.visible.length || this.wolves.dogSpots.length ? [...this.visible, ...this.wolves.visible, ...this.wolves.dogSpots] : this.visible;
+    this.beasts.update(dt, now, follow, camTarget);
+    // hares and finches take fright at wolves, dogs and foxes as well as at people (and the finches at the boar)
+    const foxes = this.beasts.visible.filter((v) => v.kind === BEAST.Fox || v.kind === BEAST.Boar);
+    const scary = this.wolves.visible.length || this.wolves.dogSpots.length || foxes.length ? [...this.visible, ...this.wolves.visible, ...this.wolves.dogSpots, ...foxes] : this.visible;
     this.hares.update(paced, camTarget, this.viewZoom, scary);
     this.tracks.update(paced);
     // fish scatter from anyone in the water and from a spear going in

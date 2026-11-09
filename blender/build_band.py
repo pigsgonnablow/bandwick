@@ -11,6 +11,10 @@ Conventions (read by src/render/band.ts):
   fish__{body,tail}                                                a brown trout in two parts, bent in the shader as it swims and leaps.
   wolf__{body,head,jaw,tail,legFL,legFR,legBL,legBR}, dog__{...the same}   a grey wolf and a tawny dog, posed in the shader.
   carcass__deer                                                     a deer pulled down by wolves, lying on its side, torn open.
+  fox__{...as the wolf}                                             a red fox from the same build, with its brush and black stockings.
+  boar__{body,head,tail,legFL,legFR,legBL,legBR,stripes}            a wild boar, posed in the shader (a piglet's stripes shown on the young).
+  beaver__{body,head,tail,legFL,legFR,legBL,legBR}                  a beaver, posed in the shader (waddling, swimming, gnawing).
+  lodge__beaver, dam__beaver                                        a beaver lodge, and a dam across a river (along x), origin at the water.
   hare__{body,head,ears,fore,hind}                                 a brown hare in parts, posed in the shader (hopping, sitting up, nibbling).
   carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,basket,basketFull,hare} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
@@ -750,7 +754,7 @@ for name, x, y in (("legFL", -0.035, -0.09), ("legFR", 0.035, -0.09), ("legBL", 
 # hanging behind, and a smaller tawny dog with a white chest and blaze, a shorter muzzle and its tail
 # curled up over its back. In parts, posed in the shader: trotting and galloping legs, the head (a nod at
 # the shoulders and at the poll), a lower jaw that opens to howl, bark or eat, and the tail.
-def canid(prefix, s, cols, curl, blaze):
+def canid(prefix, s, cols, curl, blaze, fox=False):
     coat, back, pale, dark, nose = cols
     V = lambda x, y, z: (x * s, y * s, z * s)
 
@@ -774,7 +778,7 @@ def canid(prefix, s, cols, curl, blaze):
     q = Part()  # neck with a thick ruff, a broad skull, a tapering muzzle, a dark nose, eyes, pointed ears
     neck = [(V(0, -0.080, 0.165), 0.027 * s, 0.033 * s), (V(0, -0.100, 0.188), 0.024 * s, 0.027 * s), (V(0, -0.116, 0.205), 0.019 * s, 0.021 * s)]
     sweep(q, neck, 8, lambda c: pale if c.z / s < 0.178 and c.y / s < -0.095 else coat, caps=(True, False))
-    mz = 0.75 if blaze else 1.0  # a dog's muzzle is shorter
+    mz = 0.75 if blaze else 1.12 if fox else 1.0  # a dog's muzzle is shorter, a fox's long and fine
     head = [(V(0, -0.113, 0.210), 0.019 * s, 0.019 * s), (V(0, -0.128, 0.213), 0.021 * s, 0.019 * s), (V(0, -0.143, 0.209), 0.015 * s, 0.0135 * s),
             (V(0, -0.143 - 0.020 * mz, 0.203), 0.0098 * s, 0.0088 * s), (V(0, -0.143 - 0.036 * mz, 0.2005), 0.0072 * s, 0.0064 * s)]
 
@@ -796,12 +800,16 @@ def canid(prefix, s, cols, curl, blaze):
         # ears: a tall pointed wolf's ear, a smaller one tipped over on a dog
         base = Vector(V(ex * 0.0115, -0.120, 0.226))
         tip = Vector(V(ex * 0.016, -0.118, 0.250)) if not blaze else Vector(V(ex * 0.019, -0.127, 0.240))
-        a = base + Vector(V(0, -0.007, -0.002)); b = base + Vector(V(0, 0.007, -0.002))
+        ew = 0.007
+        if fox:  # a fox's ears: big, broad and black-backed
+            tip = Vector(V(ex * 0.019, -0.117, 0.258))
+            ew = 0.0095
+        a = base + Vector(V(0, -ew, -0.002)); b = base + Vector(V(0, ew, -0.002))
         th = Vector((ex * 0.0018 * s, 0, 0))
-        solid(q, [a, b, tip, a + th, b + th, tip + th * 0.5], [(0, 1, 2), (5, 4, 3), (0, 3, 4, 1), (1, 4, 5, 2), (2, 5, 3, 0)], coat, raw=False)
+        solid(q, [a, b, tip, a + th, b + th, tip + th * 0.5], [(0, 1, 2), (5, 4, 3), (0, 3, 4, 1), (1, 4, 5, 2), (2, 5, 3, 0)], dark if fox else coat, raw=False)
         ia, ib, it = a + Vector((0, -0.0012 * s, 0.0025 * s)), b + Vector((0, 0.0012 * s, 0.0025 * s)), base.lerp(tip, 0.8)
         solid(q, [ia - th * 0.4, ib - th * 0.4, it - th * 0.4, ia + th * 0.2, ib + th * 0.2, it + th * 0.2],
-              [(0, 1, 2), (5, 4, 3), (0, 3, 4, 1), (1, 4, 5, 2), (2, 5, 3, 0)], dark if not blaze else pale, raw=False)
+              [(0, 1, 2), (5, 4, 3), (0, 3, 4, 1), (1, 4, 5, 2), (2, 5, 3, 0)], pale if (blaze or fox) else dark, raw=False)
     q.finish(f"{prefix}__head")
 
     q = Part()  # lower jaw: hidden while shut, dropped open to howl, bark or tear at a kill
@@ -813,7 +821,11 @@ def canid(prefix, s, cols, curl, blaze):
     q.finish(f"{prefix}__jaw")
 
     q = Part()  # the tail: a wolf's hangs low and bushy with a dark tip, a dog's curls up over its back
-    if curl:
+    if fox:  # the brush: long, full and carried out level behind, with a white tip
+        tail = [(V(0, 0.104, 0.170), 0.0085 * s, 0.0095 * s), (V(0, 0.124, 0.162), 0.0150 * s, 0.0160 * s), (V(0, 0.150, 0.150), 0.0185 * s, 0.0185 * s),
+                (V(0, 0.176, 0.140), 0.0165 * s, 0.0165 * s), (V(0, 0.196, 0.134), 0.0105 * s, 0.0105 * s), (V(0, 0.206, 0.132), 0.003 * s, 0.003 * s)]
+        sweep(q, tail, 8, lambda c: pale if c.y / s > 0.186 else dark if c.z / s < 0.142 and c.y / s < 0.15 else coat)
+    elif curl:
         tail = [(V(0, 0.104, 0.170), 0.0075 * s, 0.0085 * s), (V(0, 0.120, 0.188), 0.0095 * s, 0.0095 * s), (V(0, 0.124, 0.212), 0.0092 * s, 0.0092 * s),
                 (V(0, 0.110, 0.228), 0.0075 * s, 0.0075 * s), (V(0, 0.094, 0.226), 0.003 * s, 0.003 * s)]
         sweep(q, tail, 7, lambda c: pale if c.z / s > 0.222 else coat)
@@ -832,14 +844,186 @@ def canid(prefix, s, cols, curl, blaze):
             path = [((x, y - 0.004, 0.168), 0.0155, 0.022), ((x, y + 0.008, 0.123), 0.012, 0.014), ((x, y + 0.022, 0.083), 0.0072, 0.008),
                     ((x, y + 0.014, 0.042), 0.0056, 0.006), ((x, y + 0.006, 0.012), 0.006, 0.0062)]
         path = [(V(*p), rx * s, rz * s) for (p, rx, rz) in path]
-        sweep(q, path, 6, lambda c: pale if c.z / s < 0.06 or (y < 0 and c.y / s < y - 0.004) else coat)
+        if fox:  # black stockings
+            sweep(q, path, 6, lambda c: dark if c.z / s < 0.095 else coat)
+        else:
+            sweep(q, path, 6, lambda c: pale if c.z / s < 0.06 or (y < 0 and c.y / s < y - 0.004) else coat)
         py = path[-1][0][1] - 0.004 * s
-        q.box((x * s, py, 0.004 * s), (0.013 * s, 0.017 * s, 0.008 * s), pale if blaze else (90, 80, 70), rnd, 0.0, taper=0.8)  # paw
+        q.box((x * s, py, 0.004 * s), (0.013 * s, 0.017 * s, 0.008 * s), pale if blaze else dark if fox else (90, 80, 70), rnd, 0.0, taper=0.8)  # paw
         q.finish(f"{prefix}__{name}")
 
 
 canid("wolf", 1.0, ((128, 120, 108), (78, 72, 66), (204, 198, 184), (52, 48, 44), (30, 26, 24)), curl=False, blaze=False)
 canid("dog", 0.82, ((176, 128, 76), (140, 98, 56), (232, 224, 208), (96, 66, 40), (34, 28, 24)), curl=True, blaze=True)
+canid("fox", 0.70, ((198, 96, 42), (182, 84, 36), (238, 232, 220), (40, 30, 26), (26, 20, 18)), curl=False, blaze=False, fox=True)
+
+
+# ---------------------------------------------------------------- wild boar
+# A wild boar: a deep, heavy forequarter high at the withers and a crest of dark bristles down the spine,
+# the back falling away to a narrow rump; a long wedge of a head ending in a flat pink-grey snout disc,
+# small eyes, pricked hairy ears and tusks curling up from the corners of the mouth; short stout legs on
+# small dark trotters and a thin tufted tail. In parts, posed in the shader like the wolves, plus the pale
+# stripes of a piglet (shown on the young only). The young are the same model drawn smaller.
+BOAR_COAT, BOAR_DARK, BOAR_PALE = (82, 70, 60), (44, 37, 32), (112, 98, 84)
+BOAR_SNOUT, BOAR_TUSK, BOAR_HOOF = (122, 98, 92), (232, 222, 196), (30, 26, 24)
+rnd = random.Random(71)
+BOAR_BODY = [(-0.112, 0.022, 0.028, 0.128), (-0.098, 0.042, 0.050, 0.122), (-0.070, 0.054, 0.062, 0.116), (-0.030, 0.056, 0.058, 0.112),
+             (0.012, 0.054, 0.053, 0.110), (0.050, 0.050, 0.050, 0.110), (0.082, 0.043, 0.044, 0.112), (0.106, 0.030, 0.032, 0.114),
+             (0.120, 0.012, 0.013, 0.116)]
+
+
+def boar_rx(y):
+    """The body's half-width along it (for laying a piglet's stripes on the flank)."""
+    return smooth([(r[0], r[1]) for r in BOAR_BODY], y)
+
+
+def boar_col(c):
+    if c.z < 0.066:
+        return BOAR_PALE  # the belly, a shade lighter
+    if c.z > 0.160 and c.y < 0.05:
+        return BOAR_DARK  # the bristly ridge of the back
+    return BOAR_COAT
+
+
+q = Part()
+loft_y(q, BOAR_BODY, 12, boar_col)
+# the crest of long dark bristles from the nape back along the spine
+sweep(q, [((0, -0.118, 0.160), 0.006, 0.010), ((0, -0.090, 0.178), 0.008, 0.012), ((0, -0.050, 0.182), 0.008, 0.011),
+          ((0, -0.005, 0.174), 0.006, 0.009), ((0, 0.040, 0.164), 0.004, 0.006)], 6, lambda c: BOAR_DARK)
+q.finish("boar__body")
+
+q = Part()  # head: the thick neck, the long wedge of the face, the snout disc, eyes, ears and tusks
+head = [((0, -0.098, 0.134), 0.034, 0.040), ((0, -0.124, 0.126), 0.029, 0.033), ((0, -0.148, 0.112), 0.021, 0.024),
+        ((0, -0.170, 0.099), 0.0145, 0.016), ((0, -0.186, 0.092), 0.0115, 0.0115)]
+sweep(q, head, 10, lambda c: BOAR_DARK if c.z > 0.147 else BOAR_PALE if c.z < 0.097 and c.y > -0.15 else BOAR_COAT)
+q.blob((0, -0.1885, 0.092), (0.0125, 0.003, 0.0115), BOAR_SNOUT, rnd, 0.03)  # the disc of the snout
+for ex in (-1, 1):
+    q.box((ex * 0.0045, -0.1915, 0.093), (0.003, 0.0012, 0.004), (40, 30, 30), rnd, 0.0)  # nostrils
+    q.box((ex * 0.0185, -0.137, 0.130), (0.003, 0.004, 0.003), (24, 18, 16), rnd, 0.0, rot=Matrix.Rotation(ex * 0.5, 3, "Z"))  # eye
+    # ears: pricked, hairy, a little forward
+    base = Vector((ex * 0.016, -0.112, 0.162))
+    a, b, tip = base + Vector((0, -0.008, -0.002)), base + Vector((0, 0.008, -0.002)), Vector((ex * 0.027, -0.108, 0.188))
+    th = Vector((ex * 0.003, 0, 0))
+    solid(q, [a, b, tip, a + th, b + th, tip + th * 0.5], [(0, 1, 2), (5, 4, 3), (0, 3, 4, 1), (1, 4, 5, 2), (2, 5, 3, 0)], BOAR_DARK, raw=False)
+    # tusks: out of the corner of the mouth and curling up and back
+    pts = [Vector((ex * 0.010, -0.172, 0.084)), Vector((ex * 0.016, -0.176, 0.092)), Vector((ex * 0.019, -0.173, 0.101)), Vector((ex * 0.018, -0.166, 0.107))]
+    for k, (a_, b_) in enumerate(zip(pts, pts[1:])):
+        q.cyl(5, 0.0026 - k * 0.0006, 0.002 - k * 0.0006, a_, b_, BOAR_TUSK, rnd, 0.0)
+q.finish("boar__head")
+
+q = Part()  # the tail: thin, hanging, a dark tuft at the end
+sweep(q, [((0, 0.118, 0.128), 0.004, 0.004), ((0, 0.126, 0.112), 0.003, 0.003), ((0, 0.128, 0.090), 0.0025, 0.0025)], 5, lambda c: BOAR_COAT)
+q.blob((0, 0.128, 0.084), (0.004, 0.004, 0.008), BOAR_DARK, rnd, 0.04)
+q.finish("boar__tail")
+
+for name, x, y in (("legFL", -0.028, -0.070), ("legFR", 0.028, -0.070), ("legBL", -0.028, 0.076), ("legBR", 0.028, 0.076)):
+    q = Part()
+    if y < 0:  # foreleg: a thick forearm, straight down to the trotter
+        path = [((x, y, 0.098), 0.017, 0.022), ((x, y - 0.002, 0.064), 0.012, 0.0135), ((x, y - 0.002, 0.036), 0.0085, 0.0095),
+                ((x, y - 0.004, 0.016), 0.0075, 0.008)]
+    else:  # hind leg: a heavy ham, the hock, the shank forward to the trotter
+        path = [((x, y - 0.004, 0.104), 0.021, 0.028), ((x, y + 0.006, 0.072), 0.014, 0.017), ((x, y + 0.010, 0.044), 0.009, 0.0095),
+                ((x, y + 0.004, 0.024), 0.0078, 0.008), ((x, y, 0.014), 0.0075, 0.0078)]
+    sweep(q, path, 7, lambda c: BOAR_DARK if c.z < 0.042 else BOAR_COAT)
+    py = path[-1][0][1]
+    for sx in (-1, 1):  # the two claws of the trotter
+        q.box((x + sx * 0.0034, py - 0.003, 0.006), (0.0062, 0.013, 0.012), BOAR_HOOF, rnd, 0.0, taper=0.7)
+    q.finish(f"boar__{name}")
+
+q = Part()  # a piglet's stripes: pale bands along each flank and down the back, standing just off the coat
+STRIPE = (204, 178, 128)
+for ex in (-1, 1):
+    for z0 in (0.154, 0.130, 0.104, 0.080):
+        path = []
+        for k in range(7):
+            y = -0.085 + k * 0.028
+            ring = min(BOAR_BODY, key=lambda r: abs(r[0] - y))
+            # the point on the ring at this height
+            dz = (z0 - ring[3]) / ring[2]
+            if abs(dz) >= 0.97:
+                continue
+            path.append(((ex * (boar_rx(y) * math.sqrt(1 - dz * dz) + 0.0015), y, z0), 0.0028, 0.0028))
+        if len(path) >= 3:
+            sweep(q, path, 4, lambda c: STRIPE)
+sweep(q, [((0, -0.10, 0.178), 0.003, 0.002), ((0, -0.03, 0.174), 0.003, 0.002), ((0, 0.05, 0.162), 0.003, 0.002), ((0, 0.10, 0.148), 0.0025, 0.002)], 4, lambda c: STRIPE)
+q.finish("boar__stripes")
+
+
+# ---------------------------------------------------------------- beaver
+# A beaver: a heavy pear of a body in dark glossy brown, low to the ground; a blunt head with small round
+# ears, a dark nose and the orange chisel teeth showing; small forepaws and big webbed hind feet; and the
+# broad flat scaly tail. In parts, posed in the shader: waddling and paddling legs, the head (gnawing), the
+# tail (sculling, and slapped on the water), and sitting up on the haunches to gnaw round a trunk.
+BEAVER_FUR, BEAVER_BACK, BEAVER_BELLY = (100, 66, 42), (74, 48, 30), (128, 92, 62)
+BEAVER_TAIL, BEAVER_SCALE, BEAVER_FOOT = (56, 50, 48), (42, 38, 36), (52, 40, 32)
+rnd = random.Random(72)
+q = Part()
+BEAVER_BODY = [(-0.050, 0.010, 0.012, 0.034), (-0.042, 0.020, 0.020, 0.036), (-0.026, 0.028, 0.027, 0.036), (0.000, 0.036, 0.033, 0.036),
+               (0.024, 0.040, 0.035, 0.036), (0.044, 0.035, 0.030, 0.034), (0.058, 0.020, 0.018, 0.030), (0.064, 0.006, 0.007, 0.028)]
+loft_y(q, BEAVER_BODY, 12, lambda c: BEAVER_BELLY if c.z < 0.016 else BEAVER_BACK if c.z > 0.058 else BEAVER_FUR)
+q.finish("beaver__body")
+
+q = Part()  # head
+sweep(q, [((0, -0.040, 0.044), 0.020, 0.020), ((0, -0.058, 0.046), 0.018, 0.017), ((0, -0.072, 0.042), 0.0125, 0.0115),
+          ((0, -0.081, 0.038), 0.0085, 0.0075)], 9, lambda c: BEAVER_BACK if c.z > 0.058 else BEAVER_FUR)
+q.blob((0, -0.0845, 0.040), (0.0055, 0.003, 0.0035), (28, 22, 20), rnd, 0.0)  # nose
+q.box((0, -0.0815, 0.029), (0.0065, 0.0022, 0.0062), (216, 124, 44), rnd, 0.0)  # the orange incisors
+for ex in (-1, 1):
+    q.box((ex * 0.0115, -0.066, 0.051), (0.0026, 0.003, 0.0026), (20, 14, 12), rnd, 0.0)  # eye
+    q.blob((ex * 0.0150, -0.050, 0.060), (0.0042, 0.0028, 0.0042), BEAVER_BACK, rnd, 0.03)  # ear
+q.finish("beaver__head")
+
+q = Part()  # the tail: a broad flat paddle, scaly, on a short furred root
+q.blob((0, 0.068, 0.024), (0.009, 0.010, 0.006), BEAVER_FUR, rnd, 0.03)
+vs = q.blob((0, 0.104, 0.018), (0.022, 0.036, 0.0045), BEAVER_TAIL, rnd, 0.05)
+for k in range(5):  # a darker cross-hatch of scales
+    q.box((0, 0.084 + k * 0.010, 0.0225), (0.030 - abs(k - 2) * 0.004, 0.0012, 0.0008), BEAVER_SCALE, rnd, 0.0)
+q.finish("beaver__tail")
+
+for name, x, y in (("legFL", -0.019, -0.030), ("legFR", 0.019, -0.030), ("legBL", -0.026, 0.030), ("legBR", 0.026, 0.030)):
+    q = Part()
+    if y < 0:  # small forelegs with clawed, hand-like paws
+        sweep(q, [((x, y, 0.028), 0.0065, 0.0075), ((x, y - 0.003, 0.010), 0.004, 0.0045)], 6, lambda c: BEAVER_FUR)
+        q.box((x, y - 0.006, 0.003), (0.008, 0.009, 0.005), BEAVER_FOOT, rnd, 0.0, taper=0.8)
+    else:  # the haunch, and a big webbed hind foot
+        sweep(q, [((x, y, 0.034), 0.011, 0.013), ((x, y - 0.002, 0.014), 0.007, 0.007)], 6, lambda c: BEAVER_FUR)
+        q.box((x, y - 0.010, 0.0025), (0.016, 0.028, 0.004), BEAVER_FOOT, rnd, 0.0, taper=0.6)
+    q.finish(f"beaver__{name}")
+
+
+# ---------------------------------------------------------------- the lodge and the dam
+# The lodge: a dome of mud and sticks heaped up in the water against the bank, peeled pale sticks poking
+# out of it. The dam: a long bank of mud, stones and sticks laid crosswise, one tile wide, across a river
+# (along x; the game turns it to the river). Origins at the water's surface.
+STICK, STICK_PEEL, MUD_DARK, MUD_WET = (104, 82, 60), (176, 150, 112), (78, 62, 48), (62, 52, 42)
+rnd = random.Random(73)
+q = Part()
+q.blob((0, 0, -0.03), (0.25, 0.22, 0.16), MUD_DARK, rnd, 0.08, noise=0.10, subdiv=2)
+q.blob((0, 0, -0.05), (0.29, 0.26, 0.05), MUD_WET, rnd, 0.06, noise=0.12, subdiv=2)  # the wet skirt at the waterline
+for k in range(70):
+    # sticks laid over the dome, mostly lying along its surface, a few peeled pale ones
+    a = rnd.uniform(0, math.tau)
+    up = rnd.uniform(0.0, 0.92)
+    n = Vector((math.cos(a) * math.sqrt(1 - up * up), math.sin(a) * math.sqrt(1 - up * up), up))
+    p = Vector((n.x * 0.25, n.y * 0.22, -0.03 + n.z * 0.16)) + n * 0.004
+    t = n.cross(Vector((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-1, 1)))).normalized()
+    d = t * rnd.uniform(0.05, 0.11)
+    q.cyl(4, 0.0055, 0.0040, p - d * 0.5 - n * 0.006, p + d * 0.5 + n * 0.012, STICK_PEEL if rnd.random() < 0.3 else STICK, rnd, 0.06)
+q.finish("lodge__beaver")
+
+q = Part()
+for k in range(14):
+    x = -0.52 + k * 0.08
+    q.blob((x, rnd.uniform(-0.01, 0.01), -0.03), (0.06, 0.07, 0.045), MUD_DARK if k % 2 else MUD_WET, rnd, 0.08, noise=0.12)
+for k in range(90):
+    # sticks laid mostly across the flow, heaped along the crest, a few along it
+    x = rnd.uniform(-0.55, 0.55)
+    across = rnd.random() < 0.7
+    d = Vector((rnd.uniform(-0.3, 0.3), 1, rnd.uniform(-0.15, 0.15))) if across else Vector((1, rnd.uniform(-0.2, 0.2), rnd.uniform(-0.05, 0.05)))
+    d = d.normalized() * rnd.uniform(0.05, 0.11)
+    p = Vector((x, rnd.uniform(-0.04, 0.04), rnd.uniform(0.0, 0.02)))
+    q.cyl(4, 0.0045, 0.0032, p - d * 0.5, p + d * 0.5, STICK_PEEL if rnd.random() < 0.3 else STICK, rnd, 0.06)
+q.finish("dam__beaver")
 
 
 # a deer the wolves have pulled down: lying on its side, legs out, head along the ground, a raw wound
