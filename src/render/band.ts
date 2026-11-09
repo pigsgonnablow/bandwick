@@ -11,6 +11,7 @@ import { FishLayer } from './fish';
 import { BirdLayer } from './birds';
 import { TrackLayer } from './tracks';
 import { WolfLayer, Keeper } from './wolves';
+import { RemainsLayer } from './remains';
 import { BeastLayer } from './beasts';
 import { BEAST } from '../sim/band';
 import { WorldData, WATER, STEP } from '../sim/types';
@@ -18,7 +19,7 @@ import { addCommon } from './shaderlib';
 import { U } from './env';
 import gait from '../assets/gait.json';
 
-const P_STRIDE = 17;
+const P_STRIDE = 18;
 /** Poses only the renderer chooses (the simulation just says where people are). */
 const SWIM = 19, TREAD = 20;
 const FISH_TASK = TASK_KINDS.indexOf('fish') + 1;
@@ -200,6 +201,8 @@ interface Shown {
   tool: number;
   /** what they wear (the sim's dress flags: 1 cloak, 2 hat, 4 shoes, 8 reed cape, 16 bag, 32 mittens), and 64 a dog with them (128 a pup) */
   dress: number;
+  /** someone dead and unburied: what is left of them (REMAINS stage plus the way to the next) */
+  remains: number;
   /** where the axe swing had got to last frame; whether this stab has hit the water yet */
   swing: number; splashed: boolean;
 }
@@ -247,6 +250,7 @@ export class BandLayer {
   tracks = new TrackLayer();
   /** wolf packs from the simulation, and each keeper's dog at their heels */
   wolves: WolfLayer;
+  remains: RemainsLayer;
   /** wild boar, foxes and beavers, and the beavers' lodges and dams */
   beasts: BeastLayer;
   private keepers: Keeper[] = [];
@@ -289,6 +293,7 @@ export class BandLayer {
     this.fish = new FishLayer(world, geoms, (x, z, y, size, drops) => this.waterMark(x, z, y, size, drops));
     this.birds = new BirdLayer(world, (x, z) => this.groundAt(x, z), geoms);
     this.wolves = new WolfLayer(geoms, (x, z) => this.groundAt(x, z), this.tracks);
+    this.remains = new RemainsLayer(geoms);
     this.beasts = new BeastLayer(geoms, world, (x, z) => this.groundAt(x, z), this.tracks, (x, z, y, size, drops) => this.waterMark(x, z, y, size, drops),
       (x, y, z, n, [r, g, b], up) => {
         for (let k = 0; k < n; k++) {
@@ -297,7 +302,7 @@ export class BandLayer {
             size: 0.006 + Math.random() * 0.005, r, g, b, floor: this.groundAt(x, z) });
         }
       });
-    this.group.add(this.beasts.group, this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh, this.birds.group, this.tracks.mesh, this.wolves.group);
+    this.group.add(this.beasts.group, this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh, this.birds.group, this.tracks.mesh, this.wolves.group, this.remains.group);
     // carried things
     const carryNames: [number, string][] = [
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
@@ -895,7 +900,7 @@ export class BandLayer {
       if (!s) {
         s = { x: P[o + 1], z: P[o + 2], px: P[o + 1], pz: P[o + 2], y: this.groundAt(P[o + 1], P[o + 2]), angle: 0, act: 0, indoors: false, age: 0, sex: 0, look: 0, seen, task: 0,
           dx: P[o + 1], dz: P[o + 2], want: 0, phase: (id * 0.37) % 1, run: 0, shownAct: P[o + 5], prevAct: P[o + 5], actAt: -1e9, still: 0,
-          flash: P[o + 13], gesture: null, gestAt: 0, gestCarry: 0, carry: P[o + 6], fx: P[o + 3], fz: P[o + 4], swing: 0, splashed: false, band: P[o + 14], tool: P[o + 15], dress: P[o + 16] };
+          flash: P[o + 13], gesture: null, gestAt: 0, gestCarry: 0, carry: P[o + 6], fx: P[o + 3], fz: P[o + 4], swing: 0, splashed: false, band: P[o + 14], tool: P[o + 15], dress: P[o + 16], remains: P[o + 17] };
         s.angle = s.want = Math.atan2(P[o + 3] - P[o + 1], P[o + 4] - P[o + 2]) || 0;
         this.people.set(id, s);
       } else {
@@ -913,6 +918,7 @@ export class BandLayer {
       s.band = P[o + 14];
       s.tool = P[o + 15];
       s.dress = P[o + 16];
+      s.remains = P[o + 17];
       const fx = P[o + 3] - P[o + 1], fz = P[o + 4] - P[o + 2];
       if (fx * fx + fz * fz > 1e-4) s.want = Math.atan2(fx, fz);
       s.act = P[o + 5];
@@ -1028,6 +1034,7 @@ export class BandLayer {
     const carryCount = new Map<number, number>();
     const col = new THREE.Color();
     let n = 0;
+    this.remains.begin();
     this.visible.length = 0;
     this.gleaners.length = 0;
     this.swimmers.length = 0;
@@ -1109,6 +1116,15 @@ export class BandLayer {
       // face where they're going while moving, otherwise what the simulation says; turn smoothly
       const want = playing ? ringAngle : walking && moved > 0.002 * dt * 60 && ov?.angle === undefined ? Math.atan2(x - ox, z - oz) : s.want;
       s.angle += shortest(s.angle, want) * (1 - Math.exp(-dt * (walking || playing ? 12 : 8)));
+      // past the first days, someone left unburied is drawn as what is left of them
+      if (s.act === ACT.Dead && s.remains >= 1) {
+        col.set(CLOTH[(s.look >>> 8) % CLOTH.length]).convertSRGBToLinear();
+        this.remains.add(s.remains, x, s.y, z, s.angle, scale, col);
+        this.visible.push({ id, x, y: s.y + 0.42 * scale, z, child: s.age < 14 });
+        if (id === this.selected) Object.assign(sel, { x, y: s.y, z });
+        if (id === this.hovered) Object.assign(hov, { x, y: s.y, z });
+        continue;
+      }
       pos.set(x, s.y, z);
       q.setFromAxisAngle(up, s.angle);
       scl.setScalar(scale);
@@ -1268,6 +1284,7 @@ export class BandLayer {
       if (id === this.hovered) Object.assign(hov, { x, y: s.y, z });
     }
     this.villagers.count = n;
+    this.remains.end();
     // chips and drops: thrown up, falling back, gone
     {
       const bm4 = new THREE.Matrix4(), bc = new THREE.Color();

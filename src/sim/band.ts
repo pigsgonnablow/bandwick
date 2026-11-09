@@ -76,6 +76,21 @@ export const ACT = {
   Play: 15, Tend: 16, Rack: 17, Warm: 18,
 } as const;
 /** One-off moves the renderer plays when a person's `flash` changes (low two bits). */
+/**
+ * What is left of someone nobody buried. A body rots with the warmth (hardly at all while it lies
+ * frozen), until only the bones are left; the bones lie for years, are scattered, and at last are
+ * lost in the grass. `decay` counts warm days (a day at 15 C is one); the bones go by years.
+ */
+export const REMAINS = { Fresh: 0, Rotting: 1, Bones: 2, Scattered: 3, Gone: 4 } as const;
+export const ROT_FROM = 1.5, BONES_FROM = 10, SCATTER_YEARS = 2, GONE_YEARS = 10;
+export function remainsStage(p: Person, tick: number, ticksPerYear: number) {
+  if (p.bonesAt !== undefined) {
+    const years = (tick - p.bonesAt) / ticksPerYear;
+    return years >= GONE_YEARS ? REMAINS.Gone : years >= SCATTER_YEARS ? REMAINS.Scattered : REMAINS.Bones;
+  }
+  return (p.decay ?? 0) >= ROT_FROM ? REMAINS.Rotting : REMAINS.Fresh;
+}
+
 export const FLASH = { Thrust: 1, Stab: 2 } as const;
 export const ACT_NAMES = Object.keys(ACT);
 
@@ -447,6 +462,10 @@ export interface Person {
   death: number;
   cause: string;
   buried: boolean;
+  /** how far an unburied body has rotted, in warm days (it hardly changes while frozen); see REMAINS */
+  decay?: number;
+  /** when an unburied body was down to bare bones (tick) */
+  bonesAt?: number;
   x: number;
   z: number;
   fx: number; // facing target

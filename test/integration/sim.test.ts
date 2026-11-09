@@ -5,6 +5,7 @@ import { TICKS_PER_DAY, TICKS_PER_YEAR, START_TICK, DAYS_PER_SEASON, seasonOf } 
 import { FAR_GRAVE, completeBuilding, standOn } from '../../src/sim/ai';
 import { runChecked } from '../../tools/lib/invariants';
 import { sim, world, runTo, runYears } from '../helpers';
+import { REMAINS, remainsStage } from '../../src/sim/band';
 
 describe('a new band', () => {
   it('arrives with ten people, a hearth and a stockpile', () => {
@@ -307,6 +308,48 @@ describe('the dead', () => {
       expect(s.people.some((q) => q.alive && q.task?.kind === 'bury' && q.task.ref === p.id)).toBe(false);
     }
     expect(p.buried).toBe(false);
+  });
+});
+
+describe('the unburied dead', () => {
+  // (someone of no band here: nobody comes to bury them)
+  const leave = (s: Sim) => {
+    const p = s.members().find((q) => s.age(q) >= 20)!;
+    s.kill(p, 'wolves');
+    p.band = -1;
+    return p;
+  };
+
+  it('rot through a summer to the bones, which are lost in the grass after some years', () => {
+    const s = sim(1);
+    while (seasonOf(s.tick) !== 1) runTo(s, s.tick + 200);
+    const p = leave(s);
+    expect(remainsStage(p, s.tick, TICKS_PER_YEAR)).toBe(REMAINS.Fresh);
+    runTo(s, s.tick + 3 * TICKS_PER_DAY);
+    expect(remainsStage(p, s.tick, TICKS_PER_YEAR)).toBe(REMAINS.Rotting);
+    runTo(s, s.tick + DAYS_PER_SEASON * TICKS_PER_DAY);
+    expect(remainsStage(p, s.tick, TICKS_PER_YEAR)).toBe(REMAINS.Bones);
+    // the renderer is told
+    const P = s.packPeople(), o = P.findIndex((v, i) => i % Sim.PERSON_STRIDE === 0 && v === p.id);
+    expect(Math.floor(P[o + 17])).toBe(REMAINS.Bones);
+    // years later the bones are scattered, and at last gone
+    p.bonesAt = s.tick - 3 * TICKS_PER_YEAR;
+    expect(remainsStage(p, s.tick, TICKS_PER_YEAR)).toBe(REMAINS.Scattered);
+    p.bonesAt = s.tick - 11 * TICKS_PER_YEAR;
+    runTo(s, s.tick + 20);
+    expect(p.buried).toBe(true);
+    expect(s.packPeople().some((v, i) => i % Sim.PERSON_STRIDE === 0 && v === p.id)).toBe(false);
+  });
+
+  it('hardly change while they lie frozen', () => {
+    const s = sim(1);
+    while (seasonOf(s.tick) !== 3) runTo(s, s.tick + 200);
+    const p = leave(s);
+    for (let t = 0; t < 4 * TICKS_PER_DAY; t++) {
+      s.anomaly = -16;
+      s.step();
+    }
+    expect(remainsStage(p, s.tick, TICKS_PER_YEAR)).toBe(REMAINS.Fresh);
   });
 });
 

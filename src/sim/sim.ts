@@ -10,7 +10,7 @@ const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
   Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Wolf, Pack, WOLF, Beast, Den, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, FURS_PER_CLOAK, FURS_KEPT, BEAST, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
-  BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT,
+  BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, REMAINS, ROT_FROM, BONES_FROM, remainsStage,
 } from './band';
 import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
@@ -1383,6 +1383,7 @@ export class Sim {
   // ------------------------------------------------------------------ hourly & daily
   private hourly() {
     for (const c of this.liveCamps()) this.burn(this.hearth(c));
+    this.rot();
     // the evening of the feast: the call goes round, and whoever has turned in early gets up again
     if (Math.round(hourOf(this.tick)) === 17)
       for (const c of this.liveCamps()) if (c.feastDay === dayOf(this.tick)) for (const p of this.members(c)) if (p.task?.kind !== 'feast' && !delivering(p)) p.nextThink = this.tick;
@@ -1394,6 +1395,30 @@ export class Sim {
         if (c > 0 && this.fish[i] < c) this.fish[i] = Math.min(c, this.fish[i] + (FISH_REGROW * c * (1 - this.fish[i] / (c * 1.05)) + 0.02) * slow);
       }
       this.fishVersion++;
+    }
+  }
+
+  /** An unburied body's stage, plus how far it has got toward the next (under 1), for the renderer. */
+  remainsShown(p: Person) {
+    const st = remainsStage(p, this.tick, TICKS_PER_YEAR);
+    const d = p.decay ?? 0;
+    const k = st === REMAINS.Fresh ? d / ROT_FROM : st === REMAINS.Rotting ? (d - ROT_FROM) / (BONES_FROM - ROT_FROM) : 0;
+    return st + Math.min(0.99, Math.max(0, k));
+  }
+
+  /** The unburied dead rot where they lie, faster the warmer it is; then the bones weather and are lost. */
+  private rot() {
+    for (const p of this.people) {
+      if (p.alive || p.buried) continue;
+      // (while someone carries the body to its grave, nothing changes)
+      if (p.indoors) continue;
+      if (p.bonesAt === undefined) {
+        p.decay = (p.decay ?? 0) + Math.max(0, this.tempAt(p) - 2) / 13 / 24;
+        if (p.decay >= BONES_FROM) p.bonesAt = this.tick;
+      } else if (remainsStage(p, this.tick, TICKS_PER_YEAR) === REMAINS.Gone) {
+        // nothing left to bury
+        p.buried = true;
+      }
     }
   }
 
@@ -3724,7 +3749,7 @@ export class Sim {
   }
 
   // ------------------------------------------------------------------ snapshots for the renderer
-  static PERSON_STRIDE = 17;
+  static PERSON_STRIDE = 18;
   packPeople(): Float32Array {
     const list = this.people.filter((p) => p.alive || !p.buried);
     const out = new Float32Array(list.length * Sim.PERSON_STRIDE);
@@ -3752,6 +3777,8 @@ export class Sim {
       // a hide cloak over the shoulders
       // what they wear, and the dog that goes about with them (128: still a pup)
       out[o + 16] = this.dressFlags(p) | (p.dog !== undefined ? 64 + (this.hasDog(p) ? 0 : 128) : 0);
+      // what is left of someone nobody buried (REMAINS), and how far it has gone toward the next stage (0..1)
+      out[o + 17] = p.alive ? 0 : this.remainsShown(p);
     });
     return out;
   }
@@ -4340,6 +4367,7 @@ export class Sim {
     return {
       id: p.id, name: p.name, sex: p.sex, age: this.age(p), alive: p.alive, cause: p.cause,
       death: p.death, birth: p.birth,
+      remains: p.alive || p.buried ? null : remainsStage(p, this.tick, TICKS_PER_YEAR),
       needs: { food: p.food, rest: p.rest, warmth: p.warmth, belonging: p.belonging, safety: p.safety },
       health: p.health, mood: p.mood, sick: p.alive && p.sick > 0, pregnant: p.alive && p.pregnantUntil > 0,
       traits: p.traits.slice(),
