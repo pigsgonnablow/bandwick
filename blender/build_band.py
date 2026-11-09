@@ -11,6 +11,8 @@ Conventions (read by src/render/band.ts):
   fish__{body,tail}                                                a brown trout in two parts, bent in the shader as it swims and leaps.
   wolf__{body,head,jaw,tail,legFL,legFR,legBL,legBR}, dog__{...the same}   a grey wolf and a tawny dog, posed in the shader.
   carcass__deer                                                     a deer pulled down by wolves, lying on its side, torn open.
+  corpse__{rot,rotBare,bones,bonesRags,scatter}                     someone left unburied, rotting, a skeleton, then scattered bones
+      (rot and bonesRags region-coded like the villager; the rest real colours).
   fox__{...as the wolf}                                             a red fox from the same build, with its brush and black stockings.
   boar__{body,head,tail,legFL,legFR,legBL,legBR,stripes}            a wild boar, posed in the shader (a piglet's stripes shown on the young).
   beaver__{body,head,tail,legFL,legFR,legBL,legBR}                  a beaver, posed in the shader (waddling, swimming, gnawing).
@@ -1047,6 +1049,195 @@ for _k in range(4):
     _y = -0.022 + _k * 0.013
     q.cyl(5, 0.0026, 0.0022, (-0.018, _y - 0.002, 0.100), (0.024, _y + 0.004, 0.103), RIB, rnd, 0.03)
 q.finish("carcass__deer")
+
+
+# ---------------------------------------------------------------- the unburied dead
+# Someone nobody buried, as they go back to the land (the game shows each in turn, see REMAINS in the sim):
+# fresh, they are the villager itself lying on its back; then
+#   corpse__rot (region-coded like the villager) + corpse__rotBare (real colours): the same body, the
+#       arms and legs fallen a little apart, bone showing at the face, the chest and a shin, a dark stain beneath;
+#   corpse__bones (real colours) + corpse__bonesRags (region-coded rags): a skeleton in the same place;
+#   corpse__scatter (real colours): years on, the bones pulled apart, greyed and half sunk in the grass.
+# All lie as the dead villager does: on the back, head to +Y (behind where they faced), feet at y = -0.18.
+LIE = Matrix.Translation((0, -0.18, 0.036)) @ Matrix.Rotation(-math.pi / 2, 4, "X")
+DRY_BONE, DRY_BONE_DK = (216, 205, 178), (176, 162, 134)
+WEATHERED = (196, 192, 178)
+WET_BONE = (180, 164, 128)  # bone just showing through, still stained
+HOLLOW = (40, 30, 24)
+STAIN, STAIN_WET = (74, 58, 38), (58, 44, 30)
+TEETH = (232, 224, 196)
+
+
+def g2b(x, h, f=0.0, lift=0.0):
+    """A point on the standing villager (x across, h up, f forward, game units) where it lies dead, in Blender space."""
+    return (x, h - 0.18, f + 0.036 + lift)
+
+
+def lie_part(q, name, M):
+    me = bpy.data.objects[name].data.copy()
+    me.transform(M)
+    q.bm.from_mesh(me)
+    bpy.data.meshes.remove(me)
+
+
+def lie_bounds(name, M):
+    pts = [M @ v.co for v in bpy.data.objects[name].data.vertices]
+    return Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts))), Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
+
+
+def about_z(a, at):
+    at = Vector(at)
+    return Matrix.Translation(at) @ Matrix.Rotation(a, 4, "Z") @ Matrix.Translation(-at)
+
+
+# the limbs fall a little apart as the body slackens (about the shoulders and hips, flat on the ground)
+SPLAY = {}
+for side, sx in (("L", -1), ("R", 1)):
+    SPLAY[f"arm{side}"] = SPLAY[f"fore{side}"] = about_z(sx * 0.22, g2b(sx * 0.069, 0.272)) @ LIE
+    SPLAY[f"thigh{side}"] = SPLAY[f"shin{side}"] = about_z(sx * 0.09, g2b(sx * 0.031, 0.150)) @ LIE
+SPLAY["torso"] = SPLAY["head"] = LIE
+# the head lolls to one side
+SPLAY["head"] = Matrix.Translation(g2b(0, 0.292)) @ Matrix.Rotation(0.35, 4, "Y") @ Matrix.Translation(-Vector(g2b(0, 0.292))) @ LIE
+
+q = Part()
+for nm, M in SPLAY.items():
+    lie_part(q, f"villager__{nm}", M)
+# the flesh is falling in: lower everything over the middle of the body toward the ground
+for v in q.bm.verts:
+    if v.co.z > 0.02:
+        mid = max(0.0, 1 - abs(v.co.y - 0.03) / 0.16)
+        v.co.z = 0.02 + (v.co.z - 0.02) * (1 - 0.28 * mid)
+q.finish("corpse__rot")
+
+crr = random.Random(87)
+q = Part()
+t0, t1 = lie_bounds("villager__torso", LIE)
+h0, h1 = lie_bounds("villager__head", SPLAY["head"])
+chest = (t1.z - 0.02) * (1 - 0.28 * 0.6) + 0.02  # the chest's top, fallen in as above
+# a dark stain soaked into the ground under and around the body
+for k in range(7):
+    c = (crr.uniform(-0.03, 0.03), -0.15 + k * 0.05 + crr.uniform(-0.01, 0.01), -0.0006)
+    q.blob(c, (crr.uniform(0.035, 0.06), crr.uniform(0.04, 0.06), 0.0016), STAIN if k % 2 else STAIN_WET, crr, 0.08, noise=0.25)
+# ribs through the rotted cloth over the chest
+for k in range(4):
+    y = 0.095 - k * 0.016
+    for sx in (-1, 1):
+        a = (sx * 0.006, y, chest + 0.001)
+        m = (sx * 0.026, y - 0.004, chest - 0.002)
+        b = (sx * 0.042, y - 0.010, chest - 0.010)
+        q.cyl(5, 0.0032, 0.0028, a, m, WET_BONE, crr, 0.05)
+        q.cyl(5, 0.0028, 0.0022, m, b, WET_BONE, crr, 0.05)
+q.blob((0, 0.07, chest + 0.001), (0.006, 0.04, 0.0025), (150, 134, 104), crr, 0.04)
+# the face gone to the bone: brow, cheekbones, the sockets and the teeth
+hx, hy, hz = (h0.x + h1.x) / 2, (h0.y + h1.y) / 2, h1.z
+q.blob((hx, hy + 0.004, hz - 0.004), (0.020, 0.024, 0.008), WET_BONE, crr, 0.05, noise=0.08, subdiv=2)
+for sx in (-1, 1):
+    q.blob((hx + sx * 0.0085, hy + 0.004, hz + 0.002), (0.0055, 0.0050, 0.0035), HOLLOW, crr, 0.02)
+q.blob((hx, hy - 0.006, hz + 0.001), (0.0028, 0.0035, 0.0025), HOLLOW, crr, 0.02)
+for k in range(6):
+    q.box((hx - 0.0075 + k * 0.003, hy - 0.016, hz - 0.001), (0.0024, 0.0028, 0.004), TEETH, crr, 0.04)
+# a shin bared, and the finger bones of one hand
+s0, s1 = lie_bounds("villager__shinL", SPLAY["shinL"])
+sx_, sy0, sy1 = (s0.x + s1.x) / 2, s0.y + 0.03, s1.y - 0.008
+q.cyl(6, 0.0042, 0.0036, (sx_, sy0, s1.z - 0.003), (sx_ + 0.001, sy1, s1.z - 0.002), WET_BONE, crr, 0.05)
+f0, f1 = lie_bounds("villager__foreR", SPLAY["foreR"])
+fx, fy = (f0.x + f1.x) / 2, f0.y + 0.004
+for k in range(4):
+    a = Vector((fx - 0.006 + k * 0.004, fy + 0.004, 0.006))
+    q.cyl(4, 0.0016, 0.0012, a, a + Vector(((k - 1.5) * 0.002, -0.016, -0.002)), WET_BONE, crr, 0.05)
+q.finish("corpse__rotBare")
+
+
+def skeleton(q, rr, color, sink=0.0, scatter=0.0):
+    """A skeleton lying on its back (head to +Y); `scatter` pulls the bones apart, `sink` lowers them into the turf."""
+    def jig(p, amt=1.0):
+        return Vector((p[0] + rr.uniform(-1, 1) * scatter * amt, p[1] + rr.uniform(-1, 1) * scatter * amt, max(0.0, p[2] - sink)))
+
+    def bone(a, b, r0, r1, amt=1.0, segs=6):
+        off = Vector((rr.uniform(-1, 1), rr.uniform(-1, 1), 0)) * scatter * amt
+        A, B = jig(a, 0.2) + off, jig(b, 0.2) + off
+        q.cyl(segs, r0, r1, A, B, color, rr, 0.06)
+        # the knobbed ends
+        q.box(A, (r0 * 2.6, r0 * 2.6, r0 * 2.2), color, rr, 0.05)
+        q.box(B, (r1 * 2.6, r1 * 2.6, r1 * 2.2), color, rr, 0.05)
+
+    z = 0.012
+    # the skull, face up, turned a little; the jaw dropped below it
+    skull = jig((0.004, 0.170, 0.026), 1.6)
+    q.blob(skull, (0.026, 0.031, 0.025), color, rr, 0.05, noise=0.04, subdiv=2)
+    q.blob(skull + Vector((0, -0.014, -0.004)), (0.019, 0.016, 0.019), color, rr, 0.05, subdiv=2)
+    for sx in (-1, 1):
+        q.blob(skull + Vector((sx * 0.0095, -0.012, 0.016)), (0.0065, 0.0055, 0.004), HOLLOW, rr, 0.02)
+        q.blob(skull + Vector((sx * 0.0215, -0.006, 0.004)), (0.004, 0.012, 0.008), color, rr, 0.04)  # cheekbones
+    q.blob(skull + Vector((0, -0.024, 0.012)), (0.003, 0.004, 0.003), HOLLOW, rr, 0.02)
+    for k in range(6):
+        q.box(skull + Vector((-0.0075 + k * 0.003, -0.032, 0.004)), (0.0024, 0.003, 0.0045), TEETH if not sink else color, rr, 0.04)
+    jaw = jig((0.004, 0.128, 0.014), 2.5)
+    for sx in (-1, 1):
+        q.cyl(5, 0.0032, 0.0028, jaw + Vector((sx * 0.003, 0, 0)), jaw + Vector((sx * 0.017, 0.018, 0.004)), color, rr, 0.05)
+    # the spine, and the collarbones
+    for k in range(13):
+        y = 0.128 - k * 0.0125
+        q.box(jig((0, y, z - 0.002), 0.6), (0.009, 0.007, 0.007), color, rr, 0.06)
+    for sx in (-1, 1):
+        bone((sx * 0.008, 0.106, z + 0.012), (sx * 0.058, 0.099, z + 0.006), 0.0026, 0.0024, 0.8, 5)
+    # the ribs, fallen flat across the spine; with the years only a few are left
+    for k in range(7):
+        if scatter and rr.random() < 0.5:
+            continue
+        y = 0.098 - k * 0.0135
+        w = 0.030 + 0.008 * math.sin(k / 6 * math.pi)
+        for sx in (-1, 1):
+            off = Vector((rr.uniform(-1, 1), rr.uniform(-1, 1), 0)) * scatter * 1.2
+            pts = [Vector((sx * 0.005, y, z)), Vector((sx * (w * 0.75), y - 0.003, z + 0.008)), Vector((sx * w, y - 0.010, z + 0.004)), Vector((sx * (w * 0.8), y - 0.020, z + 0.012))]
+            for a, b in zip(pts, pts[1:]):
+                q.cyl(4, 0.0022, 0.0020, jig(a + off, 0.1), jig(b + off, 0.1), color, rr, 0.05)
+    q.blob(jig((0, 0.072, z + 0.012), 0.8), (0.006, 0.03, 0.0025), color, rr, 0.05)  # breastbone
+    # the pelvis: two wings and the sacrum between
+    pel = jig((0, -0.034, z), 0.7)
+    for sx in (-1, 1):
+        q.blob(pel + Vector((sx * 0.022, 0.006, 0.004)), (0.018, 0.016, 0.006), color, rr, 0.05, noise=0.1, subdiv=2)
+        q.blob(pel + Vector((sx * 0.012, -0.012, 0.002)), (0.009, 0.007, 0.005), color, rr, 0.05)
+    q.blob(pel + Vector((0, 0.002, 0.001)), (0.008, 0.014, 0.005), color, rr, 0.05)
+    # arms, a little out from the sides, and the hands' small bones
+    for sx in (-1, 1):
+        sh, el, wr = (sx * 0.066, 0.094, z), (sx * 0.084, 0.026, z), (sx * 0.090, -0.040, z)
+        bone(sh, el, 0.0042, 0.0036)
+        bone((el[0] - sx * 0.002, el[1], z), (wr[0] - sx * 0.002, wr[1], z), 0.0028, 0.0026)
+        bone((el[0] + sx * 0.003, el[1], z), (wr[0] + sx * 0.004, wr[1], z), 0.0026, 0.0024, segs=5)
+        for k in range(4):
+            a = (wr[0] - 0.006 + k * 0.004, wr[1] - 0.006, z - 0.004)
+            b = (a[0] + (k - 1.5) * 0.002, a[1] - 0.015, a[2])
+            q.cyl(4, 0.0016, 0.0012, jig(a, 1.4), jig(b, 1.4), color, rr, 0.05)
+    # legs, the feet fallen outward
+    for sx in (-1, 1):
+        hp, kn, an = (sx * 0.030, -0.040, z), (sx * 0.038, -0.097, z), (sx * 0.042, -0.166, z)
+        bone(hp, kn, 0.0055, 0.0048)
+        q.blob(jig((kn[0], kn[1] - 0.002, z + 0.006)), (0.006, 0.006, 0.004), color, rr, 0.05)  # kneecap
+        bone((kn[0] - sx * 0.002, kn[1] - 0.004, z), (an[0] - sx * 0.002, an[1], z), 0.0042, 0.0034)
+        bone((kn[0] + sx * 0.005, kn[1] - 0.006, z), (an[0] + sx * 0.005, an[1], z), 0.0022, 0.0020, segs=5)
+        for k in range(4):
+            a = (an[0] + sx * (0.002 + k * 0.003), an[1] - 0.004, z - 0.004)
+            b = (a[0] + sx * 0.012, a[1] - 0.014 + k * 0.002, a[2])
+            q.cyl(4, 0.0018, 0.0014, jig(a, 1.4), jig(b, 1.4), color, rr, 0.05)
+
+
+q = Part()
+skeleton(q, random.Random(88), DRY_BONE)
+q.finish("corpse__bones")
+
+# what is left of the clothes: rags at the hips and over the ribs (region-coded: the wearer's cloth)
+q = Part()
+rr = random.Random(89)
+q.blob((0.0, -0.040, 0.006), (0.045, 0.030, 0.0035), CLOTH, rr, 0.0, noise=0.3, raw=True, subdiv=2)
+q.blob((-0.022, 0.050, 0.005), (0.022, 0.036, 0.003), CLOTH, rr, 0.0, noise=0.35, raw=True, subdiv=2)
+q.blob((0.032, 0.080, 0.004), (0.014, 0.020, 0.003), CLOTH, rr, 0.0, noise=0.35, raw=True)
+q.blob((0.044, -0.170, 0.008), (0.014, 0.018, 0.007), DARK, rr, 0.0, noise=0.2, raw=True)  # a shoe, still on a foot
+q.finish("corpse__bonesRags")
+
+q = Part()
+skeleton(q, random.Random(90), WEATHERED, sink=0.006, scatter=0.035)
+q.finish("corpse__scatter")
 
 
 HARE_COAT = (148, 112, 74)

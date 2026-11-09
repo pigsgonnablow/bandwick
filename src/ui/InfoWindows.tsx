@@ -13,6 +13,8 @@ import { useCollapsed, CollapseBtn } from './Collapse';
 import { NEED_TIPS, SKILL_TIPS, SKILLS_NOTE, TRAIT_TIPS, SLOT_TIPS, GEAR_ROW_TIPS, WARMTH_TIP, PERSON_ROW_TIPS, CARD_TIPS } from './tips';
 
 const METERS_PER_UNIT = 6;
+/** What is left of someone nobody has buried, by stage (REMAINS in the sim). */
+const REMAINS_WORDS = ['lies unburied where they fell', 'rotting where they fell', 'only bones are left', 'their bones lie scattered in the grass'];
 
 const DOING: Record<string, string> = {
   eat: 'Eating by the fire', eatwild: 'Eating berries off the bush', sleep: 'Asleep', warm: 'Warming up by the fire',
@@ -285,6 +287,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
     <>
       <div class="win-sub sub">
         {p.alive ? `${age}, ${ageWord} of ${p.bandName}` : `Died ${when(p.death)}, aged ${age} (${p.cause})`}
+        {p.remains !== null && ` · ${REMAINS_WORDS[p.remains] ?? ''}`}
         {p.pregnant && ' · with child'}
         {p.sick && ' · feverish'}
         {p.home ? ` · lives in a ${p.home.toLowerCase()}` : p.alive && p.age >= 2 ? ' · no home yet' : ''}
