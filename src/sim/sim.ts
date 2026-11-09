@@ -33,6 +33,8 @@ export const CONES = 1;
 export const STAGE_WORD = ['sapling', 'young', 'mature', 'old'];
 /** Damp firewood (autumn and winter, no roof over the woodpile) burns this much faster. */
 export const DAMP_BURN = 1.2;
+/** The most wood a fire holds at once (more piled on would only burn away to no purpose). */
+export const FIRE_HOLDS = 12;
 /** How far a fire's warmth reaches, and with a windbreak behind it. */
 export const WARM_RADIUS = 2.6;
 /** the crafts beyond the everyday ones, and the discovery that gives the band a use for each (pottery has none yet) */
@@ -44,9 +46,22 @@ export const WINTER_FISH = 0.25;
 /** a winter catch, against a catch the rest of the year */
 export const WINTER_CATCH = 0.5;
 /** rationing starts when the stores hold less than this share of what would last to spring */
-export const RATION_BELOW = 0.7;
+export const RATION_BELOW = 0.85;
 /** in a bitter winter, a catch against an ordinary winter's, and how fast the fish come back */
 export const BITTER_CATCH = 0.6;
+/** how fast fished water fills up again: a share of what it holds when left alone, every six hours (a busy
+ *  camp's fishing places thin out, so a band that grows has to look to other food too) */
+export const FISH_REGROW = 0.03;
+/** the chance of a lean year, when a late frost takes the berry flowers and the fish run thin, and how
+ *  fast the fish come back that year */
+export const LEAN_YEAR = 0.08;
+export const LEAN_FISH = 0.35;
+export const LEAN_CROP = 0.4;
+/** in a bitter winter, how much faster people go hungry (keeping warm takes food) */
+export const BITTER_HUNGER = 1.25;
+/** what the planner reckons a grown-up and a child eat in a day, in stored food (about what they do eat, cooked) */
+export const DAILY_ADULT = 1.35;
+export const DAILY_CHILD = 0.85;
 /** The jobs whose `ref` is a prop (a tree, a bush, a stand of reeds, a pile of logs). */
 export const PROP_TASKS: TaskKind[] = ['eatwild', 'forage', 'reap', 'fell', 'deadwood', 'haul', 'roots', 'nuts', 'herbs', 'eggs', 'honey', 'mushrooms'];
 /** winters in a row a band has had to ration before it thinks of finding better land */
@@ -178,6 +193,8 @@ export interface Camp {
   leanWinters?: number;
   /** the day someone last set out on the round of the band's traps */
   trapRound?: number;
+  /** winter days running the band's fire has been out with no wood to light it */
+  coldDays?: number;
   /** the day an elder last told a story by the band's fire */
   storyNight?: number;
   /** the day of this winter's midwinter feast, if the stores allow one (absent: none) */
@@ -816,16 +833,18 @@ export class Sim {
     }
     if (best < 0) return null;
     const cx = best % N, cz = (best / N) | 0;
-    const camp = this.foundCamp(best, { berries: 14, meat: 14, fish: 0, preserved: 0, wood: 8, fiber: 4, cordage: 2, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0 }, -1, -1);
+    // (they come with what they could carry: enough to see them to their first harvests)
+    const camp = this.foundCamp(best, { berries: 14, meat: 14, fish: 0, preserved: 16, wood: 20, fiber: 4, cordage: 2, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0 }, -1, -1);
     camp.origin = strangers ? 'strangers' : 'first';
     const giveAxes = () => (camp.knows.includes('axe') ? 2 : 0);
     // strangers bring some of what is known in the world by now, more the later they come
     if (strangers) {
       const known = new Set(this.camps.flatMap((o) => o.knows));
       const share = Math.min(0.8, 0.2 + yearOf(this.tick) * 0.03);
-      // shelter, once anyone knows it, they all know: no band gets through many winters without it
+      // shelter and the axe, once anyone knows them, they all know: no band gets through many winters without a
+      // roof, and a camp chosen for its timber is no use to a band that can only hack at saplings
       for (const d of DISCOVERIES)
-        if (known.has(d.key) && d.needs.every((k) => camp.knows.includes(k)) && (d.key === 'huts' || this.rLife.chance(share))) this.learn(camp, d.key, 'strangers');
+        if (known.has(d.key) && d.needs.every((k) => camp.knows.includes(k)) && (d.key === 'huts' || d.key === 'axe' || this.rLife.chance(share))) this.learn(camp, d.key, 'strangers');
     }
     // a couple of hand choppers, and axes and a digging stick if they know how to make them
     this.giveTools(camp, { chopper: 2, axe: giveAxes(), stick: camp.knows.includes('digstick') ? 1 : 0, snare: camp.knows.includes('snares') ? 2 : 0 });
@@ -1190,7 +1209,7 @@ export class Sim {
     if (p.food < starveAt && !foodInHand && !graveDug && k !== 'eat' && k !== 'eatwild' && k !== 'fuel' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
     const woodRun = (k === 'fell' || k === 'haul' || k === 'deadwood') && this.hearth().fuel < 2;
     // (feeding the fire is how they get warm: nobody turns away from it to go and sit by it cold)
-    if (p.warmth < (woodRun ? 8 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel') return true;
+    if (p.warmth < (woodRun ? 5 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel') return true;
     // the fire keeper wakes in the night when the fire will not last till morning
     if (k === 'sleep' && isDark(this.tick) && this.fireShort() && !this.fuelOnHand(this.camp) && this.fireKeeper() === p) return true;
     // worn out on the way home with a load: the bed is at camp, where they're going anyway
@@ -1208,7 +1227,7 @@ export class Sim {
   private needs(p: Person) {
     const age = this.age(p);
     const working = p.act === ACT.Chop || p.act === ACT.Build || p.act === ACT.Hunt || p.act === ACT.Dig;
-    p.food -= (working ? 0.27 : 0.2) * (age < 12 ? 0.8 : 1) * (this.has(p, 'greedy') ? 1.1 : 1);
+    p.food -= (working ? 0.27 : 0.2) * (age < 12 ? 0.8 : 1) * (this.has(p, 'greedy') ? 1.1 : 1) * (this.bitterWinter() ? BITTER_HUNGER : 1);
     // a long walk in hide shoes is easier on the feet; the shoes wear with the walking
     const walking = p.act === ACT.Walk || p.act === ACT.Run;
     const shoes = walking && p.worn?.feet !== undefined ? this.wornIn(p, 'feet') : undefined;
@@ -1348,10 +1367,10 @@ export class Sim {
       for (const c of this.liveCamps()) if (c.feastDay === dayOf(this.tick)) for (const p of this.members(c)) if (p.task?.kind !== 'feast' && !delivering(p)) p.nextThink = this.tick;
     // fish recover slowly, and hardly at all in winter, when they go deep and lie still in the cold
     if (this.tick % (TICKS_PER_HOUR * 6) === 0) {
-      const slow = seasonOf(this.tick) === 3 ? WINTER_FISH * (this.bitterWinter() ? BITTER_CATCH : 1) : 1;
+      const slow = (seasonOf(this.tick) === 3 ? WINTER_FISH * (this.bitterWinter() ? BITTER_CATCH : 1) : 1) * (this.blightYear === yearOf(this.tick) ? LEAN_FISH : 1);
       for (let i = 0; i < this.fish.length; i++) {
         const c = this.fishCap[i];
-        if (c > 0 && this.fish[i] < c) this.fish[i] = Math.min(c, this.fish[i] + (0.06 * c * (1 - this.fish[i] / (c * 1.05)) + 0.02) * slow);
+        if (c > 0 && this.fish[i] < c) this.fish[i] = Math.min(c, this.fish[i] + (FISH_REGROW * c * (1 - this.fish[i] / (c * 1.05)) + 0.02) * slow);
       }
       this.fishVersion++;
     }
@@ -1387,7 +1406,7 @@ export class Sim {
   /** Whether the fire needs more wood to last the night, and there is wood to give it. */
   fireShort(c = this.camp) {
     const h = this.hearth(c);
-    return c.stock.wood >= 1 && h.fuel < 12 && h.fuel < this.fuelToMorning(c) + 0.5;
+    return c.stock.wood >= 1 && h.fuel < FIRE_HOLDS && h.fuel < this.fuelToMorning(c) + 0.5;
   }
 
   /**
@@ -1412,6 +1431,11 @@ export class Sim {
   }
 
   /** A winter that came in bitter (the year's weather turned well below the usual): the fish lie deeper still. */
+  /** What the wild crops (acorns, roots, the hares' young) come to this year against an ordinary one: half in a lean year. */
+  leanCrop(t = this.tick) {
+    return this.blightYear === yearOf(t) ? LEAN_CROP : 1;
+  }
+
   bitterWinter(t = this.tick) {
     return seasonOf(t) === 3 && this.anomaly < -2.5;
   }
@@ -1703,7 +1727,7 @@ export class Sim {
       if (it.kind === 'snare') {
         // hare tracks in the snow make the runs easy to find
         if (!it.catch && this.gameCap[w] > 0 && r.chance(0.32 * (this.game[w] / this.gameCap[w]) * (winter ? 1.4 : 1))) {
-          it.catch = 2;
+          it.catch = 3;
           this.game[w] = Math.max(0, this.game[w] - 1);
         }
       } else if (it.kind === 'fishtrap') {
@@ -1725,7 +1749,7 @@ export class Sim {
     }
     for (let i = 0; i < this.game.length; i++) {
       const cap = this.gameCap[i];
-      if (cap > 0 && this.game[i] < cap) this.game[i] = Math.min(cap, this.game[i] + cap / 25);
+      if (cap > 0 && this.game[i] < cap) this.game[i] = Math.min(cap, this.game[i] + (cap / 25) * this.leanCrop());
     }
     this.gameVersion++;
   }
@@ -2057,7 +2081,7 @@ export class Sim {
         // (a lone deer left over counts as hunted out: it has no one to breed with)
         const left = this.deer.filter((d) => d.alive && d.herd === h.id).length;
         if (left >= 2) continue;
-        if (this.camps.some((c) => !c.gone && hyp(h.hx - c.x, h.hz - c.z) <= 20) || !r.chance(0.3)) continue;
+        if (this.camps.some((c) => !c.gone && hyp(h.hx - c.x, h.hz - c.z) <= 10) || !r.chance(0.5)) continue;
         for (let k = left; k < 3; k++) this.spawnDeer(h, h.hx, h.hz, false);
       }
     }
@@ -2131,7 +2155,7 @@ export class Sim {
           const housed = p.home >= 0 ? 1 : 0.6;
           const crowded = pop > 70 ? 0.5 : 1;
           const plenty = this.plentyYear === yearOf(this.tick) ? 1.35 : 1;
-          const yearly = 0.62 * baby * fed * housed * crowded * plenty * (0.6 + p.mood / 250) * (age > 38 ? 0.5 : 1);
+          const yearly = 0.7 * baby * fed * housed * crowded * plenty * (0.6 + p.mood / 250) * (age > 38 ? 0.5 : 1);
           if (r.next() < yearly / DAYS_PER_YEAR) {
             p.pregnantUntil = this.tick + Math.floor(TICKS_PER_YEAR * 0.75);
             p.babyFather = partner.id;
@@ -2256,6 +2280,15 @@ export class Sim {
       if (!adults || (adults < 2 && foodTotal(c.stock) < ms.length)) {
         this.camp = c;
         this.considerMerge(c);
+        continue;
+      }
+      // a winter camp whose fire is dying with no wood left to feed it, a second morning running, gives up and goes
+      // to a neighbour's fire rather than freeze
+      const cold = isWinter(this.tick) && this.hearth(c).fuel < 3 && c.stock.wood < 2;
+      c.coldDays = cold ? (c.coldDays ?? 0) + 1 : 0;
+      if (c.coldDays >= 2) {
+        this.camp = c;
+        if (this.considerMerge(c, true)) continue;
       }
     }
     const season = seasonOf(this.tick);
@@ -2451,11 +2484,12 @@ export class Sim {
     return true;
   }
 
-  private considerMerge(c: Camp) {
+  private considerMerge(c: Camp, cold = false) {
     const ms = this.members(c);
     const adults = ms.filter((p) => this.age(p) >= 16);
-    if (adults.length >= 2 && ms.length > 3) return false;
-    const to = this.liveCamps().filter((o) => o !== c).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
+    if (!cold && adults.length >= 2 && ms.length > 3) return false;
+    // (a band whose fire has gone cold goes only to a neighbour with a fire and the wood to keep it)
+    const to = this.liveCamps().filter((o) => o !== c && (!cold || (o.stock.wood >= 30 && hyp(o.x - c.x, o.z - c.z) < 60))).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
     if (!to || !ms.length) return false;
     this.join(ms, to);
     // their tools go on the pile there, and their traps are taken up and go too
@@ -2467,8 +2501,9 @@ export class Sim {
     c.gone = this.tick;
     this.dropSites(c);
     this.hearth(c).fuel = 0;
-    for (const p of ms) this.remember(p, 'moved_camp', -8, 2, -1, `Left ${c.name}, too few to go on, for ${to.name}.`);
-    this.event('merge', `${ms.length === 1 ? `${ms[0].name}, the last of the people of ${c.name},` : `The last ${num(ms.length)} of the people of ${c.name}`} went to live at ${to.name}.`,
+    for (const p of ms) this.remember(p, 'moved_camp', -8, 2, -1, cold ? `Left ${c.name} in the dead of winter, with no wood for the fire, for the fire at ${to.name}.` : `Left ${c.name}, too few to go on, for ${to.name}.`);
+    if (cold) this.event('merge', `The people of ${c.name}, their wood gone and their fire cold, went through the snow to live at ${to.name}.`, ms.map((p) => p.id), c.x, c.z, 4);
+    else this.event('merge', `${ms.length === 1 ? `${ms[0].name}, the last of the people of ${c.name},` : `The last ${num(ms.length)} of the people of ${c.name}`} went to live at ${to.name}.`,
       ms.map((p) => p.id), c.x, c.z, 4);
     if (learned.length) {
       const what = learned.map((k) => DISCOVERY.get(k)!.taught);
@@ -2585,10 +2620,14 @@ export class Sim {
     // early summer: how the year's fruit and fish will be
     if (dayOfYear === 14) {
       const roll = this.rWild.next();
-      if (roll < 0.05) {
+      // (not in the first band's first two summers, while it is still finding its feet: that would only be cruel)
+      if (roll < LEAN_YEAR && year > 2) {
         this.blightYear = year;
-        this.event('blight', 'The berry bushes are bare this summer: a late frost took the flowers.', [], here.x, here.z, 4);
-      } else if (roll < 0.13) {
+        // (and the fish are few: the water is fished down to what a poor year holds)
+        for (let i = 0; i < this.fish.length; i++) this.fish[i] = Math.min(this.fish[i], this.fishCap[i] * 0.5);
+        this.fishVersion++;
+        this.event('blight', 'A lean year: a late frost took the berry flowers, and the fish run thin.', [], here.x, here.z, 4);
+      } else if (roll < LEAN_YEAR + 0.08) {
         this.plentyYear = year;
         for (let i = 0; i < this.fish.length; i++) this.fish[i] = this.fishCap[i];
         this.fishVersion++;
@@ -2743,7 +2782,9 @@ export class Sim {
     const living = this.members();
     const mine = this.bandBuildings();
     const pop = living.length;
-    const meals = living.reduce((s, p) => s + (this.age(p) < 12 ? 1.1 : 1.8), 0);
+    // what the band eats in a day, near enough (a grown-up a little over a portion of stored food, a child less): a
+    // band that plans for more than it eats never knows a lean winter, one that plans for less goes hungry by spring
+    const meals = living.reduce((s, p) => s + (this.age(p) < 12 ? DAILY_CHILD : DAILY_ADULT), 0);
     const s = seasonPos(this.tick);
     const daysToWinterEnd = s < 3 ? (3 - s) * 12 + 12 : (4 - s) * 12;
     const winterNow = s >= 3;
@@ -2757,7 +2798,7 @@ export class Sim {
     c.rationing = s >= 2.5 && lasting < need * RATION_BELOW;
     if (c.rationing && winterNow) c.rationedIn = yearOf(this.tick);
     // kept burning through the night, the fire eats about 9 loads a winter day: lay in enough before the cold comes
-    const fuelNeed = (winterNow ? Math.max(14, daysToWinterEnd * 9) : s > 2.0 ? 110 : s > 1.4 ? 55 : 12) * (this.hasBuilt('woodshed') ? 1 : s > 1.6 ? DAMP_BURN : 1);
+    const fuelNeed = (winterNow ? Math.max(14, daysToWinterEnd * 9) : s > 2.0 ? 110 : s > 1.4 ? 80 : s > 0.7 ? 35 : 15) * (this.hasBuilt('woodshed') ? 1 : s > 1.6 ? DAMP_BURN : 1);
     const sites = mine.filter((b) => !b.built);
     // daub can't wait on frozen ground: a site still short of mud as winter comes is raised in wood
     if (s >= 2.75) for (const b of sites) this.fallBackToWood(b);
@@ -2771,7 +2812,9 @@ export class Sim {
     // homes lived in whose grass bedding is flat or nearly so
     const bedding = this.knows('bedding') && this.bedsWanted(c) > 0;
     const fiberWant = siteFiber + 8 + (bedding ? BED_FIBER : 0);
-    const woodP = clamp01((fuelNeed + siteWood - c.stock.wood) / (fuelNeed + siteWood + 1) * 1.15, 0.08, 1.0);
+    // (from late summer, a woodpile not half what the winter will burn comes before food: the cold kills faster)
+    const woodShort = (s >= 2 || winterNow) && c.stock.wood < fuelNeed * 0.5;
+    const woodP = clamp01((fuelNeed + siteWood - c.stock.wood) / (fuelNeed + siteWood + 1) * 1.15 + (woodShort ? 0.25 : 0), 0.08, woodShort ? 1.25 : 1.0);
     const logsLying = this.countProps(LOGS);
     const make = this.toolToMake(c);
     const unarmed = !this.toolsOf(c).some((i) => i.kind === 'axe' || i.kind === 'chopper');
@@ -2820,7 +2863,8 @@ export class Sim {
       // (and clay for a pot)
       dig: (siteMud > c.stock.mud || (make === 'pot' && c.stock.mud < 2)) && !winterNow ? 0.75 : 0,
       // stone for walls, and a lump or two for knapping tools
-      quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < (RECIPES[make].uses.stone ?? 0) ? 0.5 : 0,
+      // (with nothing left to fell with, the stone for a new chopper is as urgent as the knapping)
+      quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < (RECIPES[make].uses.stone ?? 0) ? (unarmed ? 0.95 : 0.5) : 0,
       bury: this.people.some((p) => !p.alive && !p.buried && p.band === c.id) ? 1 : 0,
     };
     c.plan = [];
@@ -2847,7 +2891,10 @@ export class Sim {
       const homeless = this.householdsWithoutHome();
       if (homeless.length) {
         const head = homeless[0];
-        const kind: BuildKind = this.knows('huts') && (c.stock.wood >= 6 || s < 2.6) ? 'hut' : 'leanto';
+        // (a band in its first year, with the winter's wood still to lay in, puts up a lean-to from midsummer on
+        // and leaves the hut for spring: a hut takes the wood for a week of winter fires)
+        const young = this.tick - c.founded < TICKS_PER_YEAR;
+        const kind: BuildKind = this.knows('huts') && (young ? s < 1.5 || c.stock.wood >= fuelNeed * 0.6 : c.stock.wood >= 6 || s < 2.6) ? 'hut' : 'leanto';
         const tile = this.siteFor(kind, head);
         if (tile >= 0) {
           this.clearTile(tile);
@@ -3544,8 +3591,11 @@ export class Sim {
     for (const k of this.packs) {
       const pack = this.wolves.filter((w) => w.alive && w.pack === k.id);
       const grown = pack.filter((w) => !w.pup);
-      // cubs in late spring, grown by the autumn; a hard winter takes the odd wolf
-      if (dayOfYear === 8 && grown.length >= 2 && pack.length < 5) {
+      // cubs in late spring, grown by the autumn, but only where there are deer enough to raise them on; a hard
+      // winter takes the odd wolf, and a pack whose range has been hunted out of deer starves down
+      const prey = dayOfYear === 8 || seasonOf(this.tick) === 3 ? this.deer.filter((d) => d.alive && hyp(d.x - k.hx, d.z - k.hz) < 32).length : 0;
+      if (seasonOf(this.tick) === 3 && pack.length && prey < 3 && r.chance(0.03)) pack[r.int(0, pack.length)].alive = false;
+      if (dayOfYear === 8 && grown.length >= 2 && pack.length < 5 && prey >= 4) {
         const n = r.int(1, 3);
         for (let i = 0; i < n && pack.length + i < 6; i++) this.spawnWolf(k, k.hx + r.range(-0.6, 0.6), k.hz + r.range(-0.6, 0.6), true);
       }

@@ -37,12 +37,13 @@ describe('know-how', () => {
     const s = sim(1);
     const adult = s.members().find((p) => s.age(p) >= 20)!;
     const huts = DISCOVERY.get('huts')!;
-    adult.skills[SK.wood] = 11.9;
+    const mark = (huts.requires[0] as { level: number }).level;
+    adult.skills[SK.wood] = mark - 0.1;
     adult.skills[SK.weave] = 20;
     expect(meets(adult, huts)).toBe(-1);
     for (let i = 0; i < 5000; i++) s.practise(adult, 'night_out');
     expect(s.knows('huts')).toBe(false);
-    adult.skills[SK.wood] = 12;
+    adult.skills[SK.wood] = mark;
     expect(meets(adult, huts)).toBe(0);
     for (let i = 0; i < 5000 && !s.knows('huts'); i++) s.practise(adult, 'night_out');
     expect(s.knows('huts')).toBe(true);

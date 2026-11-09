@@ -1,7 +1,7 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
-import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS } from './sim';
+import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill } from './band';
 import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, TICKS_PER_DAY } from './time';
 import { WATER, DIRS4, treeId } from './types';
@@ -212,7 +212,10 @@ export function decide(s: Sim, p: Person) {
   else if (berriesRipe(s.tick)) add('eatwild', hunger * 1.1);
   if (dark) add('sleep', p.rest < 94 ? 1.45 + (hour > 21 || hour < 5 ? 0.3 : 0) : 0.2);
   else add('sleep', p.rest < 32 ? ((32 - p.rest) / 32) * 1.7 : 0);
-  if (temp < 11 && p.warmth < 62) add('warm', ((62 - p.warmth) / 62) * 1.7 + (dark ? 0.15 : 0));
+  // (with the fire out and no wood in the stores, sitting by the cold hearth warms nobody: those fit to fetch
+  // wood go for it first, and only the very cold, the weak and the children shelter at home)
+  const deadFire = !s.hearthLit() && c.stock.wood < 1 && age >= 13 && p.health > 25 && p.warmth > 6;
+  if (temp < 11 && p.warmth < 62) add('warm', (((62 - p.warmth) / 62) * 1.7 + (dark ? 0.15 : 0)) * (deadFire && !dark ? 0.5 : 1));
   add('socialize', p.belonging < 62 ? ((62 - p.belonging) / 62) * 0.95 + (hour > 17 && !dark ? 0.15 : 0) : 0);
   add('idle', 0.16 + (hour > 18 && !dark ? 0.15 : 0) + (s.has(p, 'lazy') ? 0.1 : 0));
   if (child && age >= 2 && !dark) add('play', 0.5 + (age < 9 ? 0.2 : 0));
@@ -295,16 +298,21 @@ export function decide(s: Sim, p: Person) {
     if (age >= 13) {
       const wood = (j.wood ?? 0.3) * drive * night * fit(p, SK.wood);
       add(logsNear ? 'haul' : 'fell', wood * crowd('fell') * crowd('haul'));
-      // fallen branches near camp: a little wood at a time, and no tree has to come down
-      add('deadwood', wood * 0.8 * crowd('deadwood'));
+      // fallen branches near camp: a little wood at a time, and no tree has to come down (and for a band with no
+      // axe, in woods grown too big for a chopper, the main way to keep the fire)
+      const axe = s.toolsOf(c).some((i) => i.kind === 'axe');
+      add('deadwood', wood * (axe ? 0.8 : 1.05) * crowd('deadwood'));
       add('build', (j.build ?? 0) * drive * night * fit(p, SK.build) * crowd('build') * 1.05);
       add('preserve', (j.preserve ?? 0) * drive * night * fit(p, SK.hide) * crowd('preserve'));
     }
-    if ((j.fuel ?? 0) > 0.5 && c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', j.fuel * (dark ? 1.1 : 1));
+    // (feeding the fire is for whoever is about camp: someone out on the land would carry the wood off with them
+    // from the stores in thought, and the fire would wait hours for it)
+    const atCamp = away < 12;
+    if (atCamp && (j.fuel ?? 0) > 0.5 && c.stock.wood >= 1 && busyWith(s, 'fuel') === 0) add('fuel', j.fuel * (dark ? 1.1 : 1));
     // from late afternoon, bank the fire with enough to see the night through (in the dark, ahead of sleep)
     // (someone bringing wood from far across the land doesn't stop those at camp from feeding it now)
     const fueling = s.fuelOnHand(c);
-    if ((dark || hour >= 15) && age >= 13 && !fueling && busyWith(s, 'fuel') < 2 && s.fireShort()) add('fuel', dark ? 2.0 : 1.0);
+    if (atCamp && (dark || hour >= 15) && age >= 13 && !fueling && busyWith(s, 'fuel') < 2 && s.fireShort()) add('fuel', dark ? 2.0 : 1.0);
     // a dying fire in the cold is everyone's problem: a few go for wood whatever the hour
     const fireLow = s.hearth().fuel < 2;
     // (even the weak: a cold hearth in a hungry winter is how a whole band dies)
@@ -709,8 +717,12 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const snow = snowLies(s.tick), dog = s.hasDog(p);
       // and a dog picks up a scent where a hunter alone would see nothing
       let best = -1, bestD = (snow ? 72 : 56) + (dog ? 16 : 0);
+      // a herd down to its last three is let be to breed again, unless the band is going hungry
+      const herds = new Map<number, number>();
+      for (const d of s.deer) if (d.alive) herds.set(d.herd, (herds.get(d.herd) ?? 0) + 1);
+      const spare = (c.jobs.food ?? 0) < 0.8;
       s.deer.forEach((d, i) => {
-        if (!d.alive) return;
+        if (!d.alive || (spare && (herds.get(d.herd) ?? 0) < 4)) return;
         const dist = hyp(d.x - c.x, d.z - c.z);
         if (dist < bestD && !s.people.some((q) => q !== p && q.alive && q.task?.kind === 'hunt' && q.task.ref === d.id)) {
           bestD = dist;
@@ -1057,7 +1069,7 @@ export function deposit(s: Sim, p: Person) {
       const put = Math.min(4, Math.floor(st.wood));
       st.wood -= put;
       s.book('burned', put);
-      h.fuel = Math.min(12, h.fuel + put);
+      h.fuel = Math.min(FIRE_HOLDS, h.fuel + put);
       s.buildingsVersion++;
       p.thought = 'Put an armful of wood straight on the dead fire.';
     }
@@ -1743,7 +1755,7 @@ export function runTask(s: Sim, p: Person) {
         c.stock.wood -= 2;
         s.book('burned', 2);
         const wasOut = h.fuel <= 0;
-        h.fuel = Math.min(12, h.fuel + 2);
+        h.fuel = Math.min(FIRE_HOLDS, h.fuel + 2);
         if (wasOut) s.buildingsVersion++;
       }
       p.act = t.timer % 14 < 7 ? ACT.Eat : ACT.Chat;
@@ -1879,7 +1891,7 @@ export function runTask(s: Sim, p: Person) {
           finish(s, p);
           return;
         }
-        const got = t.kind === 'eggs' ? 1 + skill * 0.03 : t.kind === 'honey' ? 2 + skill * 0.04 : 2.5 + skill * 0.05;
+        const got = t.kind === 'eggs' ? 1 + skill * 0.03 : t.kind === 'honey' ? 2 + skill * 0.04 : (2.5 + skill * 0.05) * s.leanCrop();
         p.carry = g.carry;
         p.carryAmt = Math.min(gleanLoad(p, t.kind), p.carryAmt + got);
         train(p, t.kind);
@@ -1919,7 +1931,7 @@ export function runTask(s: Sim, p: Person) {
         face(p, s.propX[t.ref], s.propZ[t.ref]);
         if (--t.timer > 0) return;
         // an old oak drops more than one just come to bearing
-        const got = (treeStage(s.propType[t.ref]) >= 3 ? 5 : 3.5) + p.skills[SK.forage] * 0.06;
+        const got = ((treeStage(s.propType[t.ref]) >= 3 ? 5 : 3.5) + p.skills[SK.forage] * 0.06) * s.leanCrop();
         s.nutsTaken.set(t.ref, s.tick + TICKS_PER_DAY * 40);
         s.reserved.delete(t.ref);
         p.carry = CARRY.Nuts;
@@ -1967,7 +1979,7 @@ export function runTask(s: Sim, p: Person) {
         face(p, s.propX[t.ref], s.propZ[t.ref]);
         if (--t.timer > 0) return;
         // a clump gives up its roots once a year; they grow again from what is left in the ground
-        const got = (isReeds(s.propType[t.ref]) ? 3.5 : 2.5) + p.skills[SK.forage] * 0.06;
+        const got = ((isReeds(s.propType[t.ref]) ? 3.5 : 2.5) + p.skills[SK.forage] * 0.06) * s.leanCrop();
         s.rootsTaken.set(t.ref, s.tick + TICKS_PER_DAY * 40);
         s.reserved.delete(t.ref);
         p.carry = CARRY.Roots;
@@ -2412,7 +2424,9 @@ export function runTask(s: Sim, p: Person) {
         const chance = 0.42 + p.skills[SK.fish] * 0.028 + (s.fish[w] / Math.max(1, s.fishCap[w])) * 0.18 - (seasonOf(s.tick) === 3 ? 0.12 : 0);
         flash(p, FLASH.Stab);
         if (r.next() < chance) {
-          const got = Math.min(s.fish[w], Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (seasonOf(s.tick) === 3 ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1)));
+          // (water fished down, or in a lean year, gives smaller catches: fewer fish, and smaller)
+          const stocked = s.fish[w] / Math.max(1, s.fishCap[w]);
+          const got = Math.min(s.fish[w], Math.max(1, Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (0.35 + 0.65 * stocked) * (seasonOf(s.tick) === 3 ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1))));
           s.fish[w] -= got;
           s.fishVersion++;
           train(p, 'fish.catch');
@@ -2514,8 +2528,11 @@ export function runTask(s: Sim, p: Person) {
       if (--t.timer > 0) return;
       const h = s.hearth();
       const wasOut = h.fuel <= 0;
-      s.book('burned', t.amount);
-      h.fuel = Math.min(12, h.fuel + t.amount);
+      // only what the fire has room for goes on: the rest goes back on the woodpile
+      const put = Math.max(0, Math.min(t.amount, FIRE_HOLDS - h.fuel));
+      s.book('burned', put);
+      h.fuel += put;
+      c.stock.wood += t.amount - put;
       if (s.dampWood()) s.practise(p, 'damp_fire');
       p.carry = CARRY.None;
       p.carryAmt = 0;
