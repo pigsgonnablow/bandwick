@@ -131,7 +131,9 @@ export class InvariantChecker {
       if (t?.kind === 'feast' && band && band.feastDay !== dayOf(sim.tick) && band.feastDay !== dayOf(sim.tick) - 1) flag('feasting on an ordinary day', `${at} ${p.name}`);
       if (p.task && sim.tick - p.task.started > 700 && p.task.kind !== 'sleep') flag('task stuck', `${at} ${p.name} ${p.task.kind} stage ${p.task.stage}`);
       // an adult with no task at several daily checks in a row is looping on something
-      if (sim.age(p) >= 14 && !p.task) {
+      // (someone who finished a job this very tick picks the next one up on the next: that is not idling, even
+      // when their day runs to the same clock and the job ends at the check, night after night)
+      if (sim.age(p) >= 14 && !p.task && p.nextThink !== sim.tick) {
         const n = (idleAdults.get(p.id) ?? 0) + 1;
         idleAdults.set(p.id, n);
         if (n >= 3) flag('adult without a task for days', `${at} ${p.name}`);

@@ -548,4 +548,21 @@ describe('gardens', () => {
     (s as unknown as { planGardens(c: unknown, s: number): void }).planGardens(c, 1);
     expect(s.plots(c, true).length).toBe(n);
   });
+
+  it('keep back seed for the plots they will sow, not for every plot they have dug', () => {
+    const s = sim(1);
+    const c = s.camp;
+    const p = adult(s);
+    c.knows.push('garden', 'grain');
+    c.seed = 0;
+    const want = s.plotsWanted(c);
+    const plots = Array.from({ length: want + 5 }, (_, i) => plot(s, 2 + (i % 6), 1 + Math.floor(i / 6)));
+    s.tick = dayTick(s, 30);
+    const b = plots[0];
+    for (let n = 0; n < 12; n++) {
+      Object.assign(b.plot!, { crop: CROP.Grain, growth: 1, left: 40, reaped: 0 });
+      while (b.plot!.crop) work(s, p, 'harvest', b);
+    }
+    expect(c.seed).toBeCloseTo(want * SEED_PER_PLOT, 6);
+  });
 });

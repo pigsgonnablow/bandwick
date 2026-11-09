@@ -1154,10 +1154,11 @@ export function deposit(s: Sim, p: Person) {
   if (kind) {
     st[kind] += a;
     s.book(`gathered.${kind}`, a);
-    // grain brought in: some is kept back to sow next spring, enough for every plot
+    // grain brought in: some is kept back to sow next spring, enough for the plots the band will sow (not the
+    // ones it leaves to rest)
     if (kind === 'grain') {
       const c = s.camp;
-      const keep = Math.max(0, Math.min(a * 0.35, s.plots(c).length * SEED_PER_PLOT - (c.seed ?? 0)));
+      const keep = Math.max(0, Math.min(a * 0.35, Math.min(s.plots(c).length, s.plotsWanted(c)) * SEED_PER_PLOT - (c.seed ?? 0)));
       c.seed = (c.seed ?? 0) + keep;
       st.grain -= keep;
       s.book('seed', keep);
