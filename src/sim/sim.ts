@@ -10,13 +10,13 @@ const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
   Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Wolf, Pack, WOLF, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
-  BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS,
+  BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT,
 } from './band';
 import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
   isDark, temperature, berriesRipe, freshFrozen, rutting, snowLies, isWinter, seasonPos, seasonOf, ageYears, yearOf, dayOf, hourOf,
 } from './time';
-import { decide, runTask, abandon, sendHome, delivering, FAR_GRAVE } from './ai';
+import { decide, runTask, abandon, sendHome, delivering, foodInHand, FAR_GRAVE } from './ai';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets } from './know';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
@@ -1200,16 +1200,17 @@ export class Sim {
     const gathering = k === 'hunt' || k === 'fish' || k === 'forage';
     const starveAt = 15 + Math.min(22, hyp(p.x - this.camp.x, p.z - this.camp.z) * 0.6);
     // (carrying food home, they eat from what they carry instead)
-    const foodInHand = delivering(p) && p.carryAmt >= 1 && (p.carry === CARRY.Berries || p.carry === CARRY.Meat || p.carry === CARRY.Fish);
+    const eatsFromLoad = delivering(p) && foodInHand(p);
     // (a burial far out on the land, or a grave begun, is seen through however tired they are, unless they are
     // near to starving: turning back for the night only means the whole walk again tomorrow)
     const body = k === 'bury' ? this.byId.get(p.task!.ref) : undefined;
     const graveDug = !!body && p.food >= 10 && (p.task!.stage >= 1 || hyp(body.x - this.camp.x, body.z - this.camp.z) > FAR_GRAVE);
     // (feeding the fire is a moment's work, and a band that lets its fire go out in a hungry winter freezes)
-    if (p.food < starveAt && !foodInHand && !graveDug && k !== 'eat' && k !== 'eatwild' && k !== 'fuel' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
+    if (p.food < starveAt && !eatsFromLoad && !graveDug && k !== 'eat' && k !== 'eatwild' && k !== 'fuel' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
     const woodRun = (k === 'fell' || k === 'haul' || k === 'deadwood') && this.hearth().fuel < 2;
     // (feeding the fire is how they get warm: nobody turns away from it to go and sit by it cold)
-    if (p.warmth < (woodRun ? 5 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel') return true;
+    // (someone carrying goods home is already on the way to the fire: dropping the load would not get them there sooner)
+    if (p.warmth < (woodRun ? 5 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel' && !delivering(p)) return true;
     // the fire keeper wakes in the night when the fire will not last till morning
     if (k === 'sleep' && isDark(this.tick) && this.fireShort() && !this.fuelOnHand(this.camp) && this.fireKeeper() === p) return true;
     // worn out on the way home with a load: the bed is at camp, where they're going anyway
@@ -2492,6 +2493,8 @@ export class Sim {
     const to = this.liveCamps().filter((o) => o !== c && (!cold || (o.stock.wood >= 30 && hyp(o.x - c.x, o.z - c.z) < 60))).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
     if (!to || !ms.length) return false;
     this.join(ms, to);
+    // they bring what they can carry of their stores (what was set aside for a job is back in them now)
+    this.carryStores(c, to);
     // their tools go on the pile there, and their traps are taken up and go too
     this.takeUpTraps(c);
     for (const it of this.items) if (it.band === c.id && it.holder < 0) it.band = to.id;
@@ -2511,6 +2514,27 @@ export class Sim {
         ms.map((p) => p.id), to.x, to.z, 3);
     }
     return true;
+  }
+
+  /**
+   * The last of a band going to live with another bring their stores on their backs: most of the food and
+   * wood (as a band moving camp does), and the hides, bones and trinkets the new band has room to keep.
+   * The camp left behind is empty. How much food and wood they brought.
+   */
+  private carryStores(from: Camp, to: Camp) {
+    const st = from.stock, into = to.stock;
+    const keep: Partial<Record<keyof Stock, number>> = { hides: HIDES_KEPT, bones: BONES_KEPT, trinkets: TRINKETS_KEPT };
+    let brought = 0;
+    for (const k of Object.keys(st) as (keyof Stock)[]) {
+      const cap = keep[k];
+      const n = cap !== undefined ? Math.max(0, Math.min(st[k], cap - into[k])) : st[k] * 0.8;
+      into[k] = (into[k] ?? 0) + n;
+      if (k === 'wood' || (FOODS as readonly string[]).includes(k)) brought += n;
+      st[k] = 0;
+    }
+    this.book('carried', brought, from);
+    this.book('brought', brought, to);
+    return brought;
   }
 
   /** A band that leaves its camp leaves its half-built sites to fall back to the land (what is finished stands). */

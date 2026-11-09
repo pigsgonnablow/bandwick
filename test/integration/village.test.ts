@@ -45,7 +45,7 @@ describe('acorns', () => {
     st.berries = 100;
     (s as unknown as { spoilNow(x: typeof st): void }).spoilNow(st);
     expect(100 - st.nuts).toBeLessThan((100 - st.berries) / 5);
-    expect(foodTotal({ ...st, berries: 0, fish: 0, meat: 0, roots: 0, preserved: 0 })).toBeCloseTo(st.nuts, 5);
+    expect(foodTotal({ ...st, berries: 0, fish: 0, meat: 0, roots: 0, preserved: 0, eggs: 0, honey: 0, mushrooms: 0 })).toBeCloseTo(st.nuts, 5);
   });
 
   it('are not something a band thinks of gathering before it knows them', () => {
@@ -54,6 +54,8 @@ describe('acorns', () => {
     expect(seasonOf(s.tick)).toBe(2);
     // (with the winter's wood laid in, so that the woodpile isn't what everyone turns to)
     s.camp.stock.wood = 300;
+    // (and the food stores low, so that food is what the band is after)
+    for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts', 'eggs', 'honey', 'mushrooms'] as const) s.camp.stock[k] = Math.min(s.camp.stock[k], 5);
     s.camp.knows = s.camp.knows.filter((k) => k !== 'nuts');
     s.plan();
     for (const p of s.members(s.camp).filter((q) => s.age(q) >= 12)) for (let i = 0; i < 10; i++) { p.task = null; decide(s, p); expect(kindOf(p)).not.toBe('nuts'); }

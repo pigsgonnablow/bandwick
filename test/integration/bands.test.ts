@@ -229,6 +229,25 @@ describe('the last few of a band', () => {
     expect(s.events.at(-1)!.text).toBe(`The newcomers from ${near.name} showed the people of ${home.name} how to raise huts and dry and smoke meat and fish.`);
   });
 
+  it('bring their stores with them, and leave the old camp empty', () => {
+    const s = sim(1);
+    const home = s.camp;
+    const near = neighbour(s);
+    s.camp = near;
+    grow(s, 1);
+    s.camp = home;
+    Object.assign(near.stock, { meat: 20, roots: 30, wood: 40, hides: 3, cordage: 5 });
+    const had = { meat: home.stock.meat, roots: home.stock.roots, wood: home.stock.wood, hides: home.stock.hides, cordage: home.stock.cordage };
+    expect((s as any).considerMerge(near)).toBe(true);
+    // most of what they had, as a band moving camp carries
+    expect(home.stock.meat - had.meat).toBeCloseTo(16, 6);
+    expect(home.stock.roots - had.roots).toBeCloseTo(24, 6);
+    expect(home.stock.wood - had.wood).toBeCloseTo(32, 6);
+    expect(home.stock.cordage - had.cordage).toBeCloseTo(4, 6);
+    expect(home.stock.hides - had.hides).toBe(3);
+    expect(foodTotal(near.stock) + near.stock.wood).toBe(0);
+  });
+
   it('stay where they are while they are enough to go on', () => {
     const s = sim(1);
     const home = s.camp;
@@ -393,8 +412,13 @@ describe('out on the land alone after dark', () => {
     const c = s.camp;
     const p = s.members().find((q) => s.age(q) >= 16 && s.age(q) <= 60)!;
     p.traits = [];
+    // (with no dog at their side)
+    delete p.dog;
     const spot = s.chooseSite({ from: c, min: 25, max: 50 });
     Object.assign(p, { x: (spot % s.N) + 0.5, z: Math.floor(spot / s.N) + 0.5, health: 100, carry: spear ? CARRY.Spear : CARRY.None });
+    // (and a pack about)
+    const w = s.wolves.find((q) => q.alive)!;
+    Object.assign(w, { x: p.x + 6, z: p.z });
     const r = (s as any).rWild;
     r.chance = (q: number) => q < 0.01 || q > 0.7;
     (s as any).wildAttack(p);
