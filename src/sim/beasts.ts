@@ -115,6 +115,8 @@ export function placeBeasts(s: Sim) {
         if (w.water[i] !== WATER.None || !s.grid.walkable(i)) continue;
         if (kind === BEAST.Boar ? t !== T.Forest : t !== T.Forest && t !== T.Grass) continue;
         if (!farFromCamps(x, z, kind === BEAST.Boar ? 16 : 11) || !apart(kind, x, z, kind === BEAST.Boar ? 22 : 16)) continue;
+        // foxes live alongside people, for the scraps: the first earths are dug within an evening's walk of camp
+        if (kind === BEAST.Fox && made < 2 && tries < 3000 && camps.length && !camps.some((c) => hyp(x - c.x, z - c.z) < 18)) continue;
         const den: Den = { id: s.dens.length, kind, x, z, tx: x, tz: z, next: 0 };
         s.dens.push(den);
         const m = kind === BEAST.Boar ? r.int(3, 6) : 2;
@@ -164,6 +166,16 @@ export function updateBeasts(s: Sim) {
     if (den.kind === BEAST.Boar) boars(s, den, group, people, hour);
     else if (den.kind === BEAST.Fox) foxes(s, den, group, people, dark, hour);
     else beavers(s, den, group, people, dark, hour);
+  }
+  // someone who stops to watch a fox mousing or the beavers at work on the bank may think how to take them
+  if (s.tick % 30 === 0) {
+    for (const b of s.beasts) {
+      if (!b.alive || b.young || b.kind === BEAST.Boar || (b.kind === BEAST.Beaver && b.state === BEAVER.Home)) continue;
+      for (const p of people) {
+        if (Math.abs(p.x - b.x) > 6 || Math.abs(p.z - b.z) > 6 || hyp(p.x - b.x, p.z - b.z) > 6) continue;
+        s.practise(p, 'fur', 0.15);
+      }
+    }
   }
 }
 
@@ -320,6 +332,7 @@ function foxes(s: Sim, den: Den, group: Beast[], people: Person[], dark: boolean
       if (--b.timer > 0) continue;
       // the hare is gone from the noose, and the fox off with it
       it.catch = 0;
+      it.robbed = true;
       robbed(s, it.band, at.x, at.z);
       den.raid = undefined;
       b.state = FOX.Trot;
@@ -529,6 +542,8 @@ export function beastsDaily(s: Sim, dayOfYear: number) {
     if (dayOfYear === 14 && !group.length && r.chance(0.3) && !s.liveCamps().some((c) => hyp(c.x - den.x, c.z - den.z) < 18)) {
       for (let i = 0; i < (den.kind === BEAST.Boar ? 3 : 2); i++) spawnBeast(s, den, den.x + r.range(-0.5, 0.5), den.z + r.range(-0.5, 0.5), false);
     }
+    // one left alone at an earth or a lodge (the rest trapped or dead) finds a new mate in the spring
+    if (dayOfYear === 2 && group.length === 1 && den.kind !== BEAST.Boar && r.chance(0.8)) spawnBeast(s, den, den.x, den.z, false);
     // a sow left with too few to breed is joined by a boar from elsewhere in the spring
     if (den.kind === BEAST.Boar && dayOfYear === 2 && group.length > 0 && grown.length < 2 && r.chance(0.8)) spawnBeast(s, den, group[0].x, group[0].z, false);
     // a camp set down close by drives a sounder or a fox further off
@@ -621,4 +636,70 @@ export function beastCard(s: Sim, b: Beast) {
     ] as [string, string][],
     note: 'Beavers come out at dusk to swim, to mend their dam and to fell the birches by the water. The wood they leave lying on the bank is there for the taking.',
   };
+}
+
+// ------------------------------------------------------------------ trapping for fur
+/** How close to an earth or a lodge a deadfall has to be to take anything, and how far from camp a trapper goes to set one. */
+export const DEADFALL_REACH = 3.5;
+export const DEADFALL_RANGE = 20;
+/** The fox earth or beaver lodge a deadfall on this tile is set for, while a pair or more still lives there. */
+export function denFor(s: Sim, tile: number): Den | undefined {
+  const x = (tile % s.N) + 0.5, z = Math.floor(tile / s.N) + 0.5;
+  let best: Den | undefined, bd = DEADFALL_REACH;
+  for (const d of s.dens) {
+    if (d.kind === BEAST.Boar) continue;
+    const dd = hyp(d.x - x, d.z - z);
+    if (dd > bd) continue;
+    if (s.beasts.filter((b) => b.alive && b.den === d.id).length < 2) continue;
+    best = d;
+    bd = dd;
+  }
+  return best;
+}
+/**
+ * Where to set a deadfall: on dry land at the nearest earth or lodge to camp still worth trapping (a
+ * pair or more living there), and not one already trapped. -1 if there is none within reach.
+ */
+export function deadfallSpot(s: Sim, cx: number, cz: number, taken: Set<number>, bad: (i: number) => boolean) {
+  const N = s.N;
+  const trapped = new Set<number>();
+  for (const i of taken) { const d = denFor(s, i); if (d) trapped.add(d.id); }
+  let best = -1, bd = DEADFALL_RANGE;
+  for (const d of s.dens) {
+    if (d.kind === BEAST.Boar || trapped.has(d.id)) continue;
+    const dd = hyp(d.x - cx, d.z - cz);
+    if (dd >= bd || s.beasts.filter((b) => b.alive && b.den === d.id).length < 2) continue;
+    // the earth itself, or the beavers' way up the bank beside the lodge
+    const x0 = Math.floor(d.x), z0 = Math.floor(d.z);
+    let spot = -1;
+    for (const [dx, dz] of [[0, 0], ...DIRS4, [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      const x = x0 + dx, z = z0 + dz;
+      if (x < 0 || z < 0 || x >= N || z >= N) continue;
+      const i = z * N + x;
+      if (s.world.water[i] !== WATER.None || !s.grid.walkable(i) || taken.has(i) || bad(i)) continue;
+      spot = i;
+      break;
+    }
+    if (spot < 0) continue;
+    best = spot;
+    bd = dd;
+  }
+  return best;
+}
+/** Each morning, a set deadfall may have come down on a fox or a beaver in the night. Beavers stay under the ice in winter. */
+export function deadfallNight(s: Sim, it: { tile?: number; catch?: number; pelt?: number }, r: { chance(p: number): boolean }) {
+  if (it.catch || (it.tile ?? -1) < 0) return;
+  const den = denFor(s, it.tile!);
+  if (!den) return;
+  if (den.kind === BEAST.Beaver && freshFrozen(s.tick)) return;
+  if (!r.chance(den.kind === BEAST.Fox ? 0.16 : 0.12)) return;
+  const group = s.beasts.filter((b) => b.alive && b.den === den.id && b.state !== BEAVER.Home);
+  const pool = group.length ? group : s.beasts.filter((b) => b.alive && b.den === den.id);
+  // the young of the year, new to the ways of the land, are the ones that take the bait
+  const b = pool.find((q) => q.young) ?? pool[0];
+  if (!b) return;
+  b.alive = false;
+  b.killed = true;
+  it.catch = 1;
+  it.pelt = den.kind;
 }

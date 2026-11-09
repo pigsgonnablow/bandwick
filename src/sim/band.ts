@@ -95,9 +95,9 @@ export const TASK_KINDS: TaskKind[] = [
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
-export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap'];
+export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap', 'deadfall'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
 export interface ItemSpec {
   label: string;
@@ -137,6 +137,11 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   bag: { label: 'Hide bag', uses: 80 },
   // teeth and shells strung on a cord and given to someone dear: it does not wear out, and goes into the grave with them
   necklace: { label: 'Necklace', uses: 1000 },
+  // a heavy log propped on a figure-four of sticks, at a fox's earth or on a beaver's path up the bank: the
+  // beast takes the bait, the trigger slips and the log comes down (it lasts a season or two of rain)
+  deadfall: { label: 'Deadfall', uses: 30 },
+  // fox and beaver pelts sewn fur-out into a mantle: much warmer than a hide cloak, and it lasts longer
+  furcloak: { label: 'Fur cloak', uses: 220 },
 };
 /** How much of the usual time sewing and weaving take with a bone needle and awl in the band. */
 export const NEEDLE_SPEED = 0.65;
@@ -153,10 +158,19 @@ export const MIDWINTER = 42;
 export const FEAST_MEAL = 1.5;
 /** How much of the cold a cloak keeps off, and the deer hides that go into one. */
 export const CLOAK_WARM = 0.3;
+/** A fur cloak keeps off more of the cold, and the pelts that go into one. */
+export const FURCLOAK_WARM = 0.42;
+export const FURS_PER_CLOAK = 2;
+/** Pelts kept in the stores at most. */
+export const FURS_KEPT = 9;
+/** Meat on a beaver taken in a deadfall (a fox is skinned and left: nobody eats fox). */
+export const BEAVER_MEAT = 4;
+/** A boar's tusks, kept for ornaments along with the teeth. */
+export const TUSKS_PER_BOAR = 2;
 /** Where on the body a thing is worn: one thing to each place. */
 export const SLOTS = ['body', 'head', 'hands', 'feet', 'shoulder', 'neck'] as const;
 export type Slot = (typeof SLOTS)[number];
-export type GarmentKind = 'cloak' | 'hat' | 'mittens' | 'shoes' | 'cape' | 'bag' | 'necklace';
+export type GarmentKind = 'cloak' | 'furcloak' | 'hat' | 'mittens' | 'shoes' | 'cape' | 'bag' | 'necklace';
 /**
  * What can be worn: where, how much of the cold it keeps off, and who gets one first from the pile
  * (those who feel the cold most, the ones who walk furthest, or the band's best gatherers). A necklace is
@@ -164,6 +178,7 @@ export type GarmentKind = 'cloak' | 'hat' | 'mittens' | 'shoes' | 'cape' | 'bag'
  */
 export const GARMENTS: Record<GarmentKind, { slot: Slot; warm: number; first: 'cold' | 'walkers' | 'gatherers' | 'given' }> = {
   cloak: { slot: 'body', warm: CLOAK_WARM, first: 'cold' },
+  furcloak: { slot: 'body', warm: FURCLOAK_WARM, first: 'cold' },
   cape: { slot: 'body', warm: 0.12, first: 'cold' },
   hat: { slot: 'head', warm: 0.1, first: 'cold' },
   mittens: { slot: 'hands', warm: 0.06, first: 'cold' },
@@ -225,13 +240,13 @@ export const BASKET_HOLDS = 8;
  */
 /** Fiber twisted into one length of cordage. */
 export const FIBER_PER_CORD = 3;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage into the stores, or an item onto the pile */
   makes: 'cordage' | ItemKind;
   /** what it uses from the stores */
-  uses: Partial<Record<'wood' | 'fiber' | 'cordage' | 'stone' | 'mud' | 'hides' | 'bones', number>>;
+  uses: Partial<Record<'wood' | 'fiber' | 'cordage' | 'stone' | 'mud' | 'hides' | 'bones' | 'furs', number>>;
   /** ticks of work at the fire, before skill */
   work: number;
   skill: number;
@@ -308,9 +323,18 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
     makes: 'bag', uses: { hides: 1, cordage: 1 }, work: 32, skill: SK.hide, grow: 0.06, knows: 'bags', doing: 'Sewing a hide bag',
     thought: 'Sewing a hide bag with a strap for the shoulder.', done: 'Sewed a gathering bag and laid it on the pile.',
   },
+  deadfall: {
+    // a stout log for the weight and sticks cut and notched into a figure-four: no cord to it at all
+    makes: 'deadfall', uses: { wood: 3 }, work: 28, skill: SK.tool, grow: 0.06, knows: 'furs', doing: 'Notching a deadfall trigger',
+    thought: 'Notching sticks into a figure-four trigger for a deadfall.', done: 'Made a deadfall and laid it on the pile.',
+  },
+  furcloak: {
+    makes: 'furcloak', uses: { furs: FURS_PER_CLOAK, cordage: 1 }, work: 60, skill: SK.hide, grow: 0.12, knows: 'furs', doing: 'Sewing a fur cloak',
+    thought: 'Matching fox and beaver pelts and sewing them fur-out into a cloak.', done: 'Sewed a fur cloak, the warmest thing the band has.',
+  },
 };
 /** The recipes that go faster with a bone needle and awl: sewing hides, weaving baskets and traps. */
-export const SEWN: RecipeKey[] = ['cloak', 'basket', 'fishtrap', 'snare', 'hat', 'mittens', 'shoes', 'cape', 'bag'];
+export const SEWN: RecipeKey[] = ['cloak', 'basket', 'fishtrap', 'snare', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'furcloak'];
 /** One made thing. It lies on its band's stockpile unless someone holds it, or it is set out in the land. */
 export interface Item {
   id: number;
@@ -328,6 +352,9 @@ export interface Item {
   tile?: number;
   /** a trap: what it has caught and is holding, waiting for the round (meat for a snare, fish for a fish trap) */
   catch?: number;
+  /** a deadfall: the beast it holds (a BEAST kind); a snare: a fox took the hare from it (the trapper sees the prints) */
+  pelt?: number;
+  robbed?: boolean;
   /** a thing worn: who wears it (absent: it lies on the pile) */
   wearer?: number;
   /** a thing worn: how many times it has been mended by the fire, and by whom last */
@@ -385,6 +412,8 @@ export interface Task {
   route?: number[];
   /** the trap round: which stop is next */
   step?: number;
+  /** the trap round: pelts taken from the deadfalls */
+  furs?: number;
   /** supplying a building site: what is carried there (absent: wood) */
   res?: Material;
   /** hunting: the quarry is a wild boar (`ref` is a beast's id) rather than a deer */
@@ -706,6 +735,8 @@ export interface Stock {
   eggs: number;
   honey: number;
   mushrooms: number;
+  /** fox and beaver pelts from the deadfalls (absent in older saves until restored) */
+  furs: number;
 }
 
 export interface SimEvent {
