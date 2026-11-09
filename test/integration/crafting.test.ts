@@ -11,10 +11,13 @@ describe('crafting', () => {
     s.camp.stock.fiber += 20;
     const before = new Map(s.members().map((p) => [p.id, Array.from(p.skills)]));
     const seen = new Set<string>();
+    let potsEarly = false;
     for (let d = 0; d < 48; d++) {
       for (let k = 0; k < TICKS_PER_DAY; k += 20) {
         runTo(s, s.tick + 20);
         for (const p of s.members()) if (p.task?.kind === 'craft') seen.add(RECIPE_KEYS[p.task.ref]);
+        // nobody makes pots before the band has thought of pottery (it may well do so within these weeks)
+        if (!s.knows('pottery') && s.members().some((p) => before.has(p.id) && p.skills[SK.pot] !== before.get(p.id)![SK.pot])) potsEarly = true;
       }
     }
     expect(seen.has('cordage')).toBe(true);
@@ -22,8 +25,7 @@ describe('crafting', () => {
     const grew = (k: number) => s.members().some((p) => before.has(p.id) && p.skills[k] > before.get(p.id)![k] + 0.05);
     expect(grew(SK.weave)).toBe(true);
     expect(grew(SK.tool)).toBe(true);
-    // nobody makes pots yet
-    expect(s.members().every((p) => !before.has(p.id) || p.skills[SK.pot] === before.get(p.id)![SK.pot])).toBe(true);
+    expect(potsEarly).toBe(false);
   });
 
   it('shows pottery and hidework only once the band has a use for them', () => {

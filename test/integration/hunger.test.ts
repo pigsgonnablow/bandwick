@@ -2,7 +2,8 @@
 // the winter is rationed; and the hungry and cold still keep the fire fed.
 import { describe, it, expect } from 'vitest';
 import { decide, runTask } from '../../src/sim/ai';
-import { seasonOf, hourOf, yearOf, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../../src/sim/time';
+import { CARRY } from '../../src/sim/band';
+import { seasonOf, hourOf, yearOf, isDark, daylight, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR } from '../../src/sim/time';
 import { sim, runTo } from '../helpers';
 
 describe('hunger', () => {
@@ -95,5 +96,63 @@ describe('hunger', () => {
     for (let i = 0; i < 40 && !moved; i++) moved = (s as any).considerMove(c);
     expect(moved).toBe(true);
     expect(s.events.at(-1)!.text).toContain(`The people of ${c.name} gave up their camp after hard years.`);
+  });
+
+  it('brings a half-gathered load home when nightfall, hunger or a change of mind calls them away', () => {
+    const s = sim(1);
+    const c = s.camp;
+    // an autumn evening, just dark
+    while (seasonOf(s.tick) !== 2) runTo(s, s.tick + 200);
+    while (!isDark(s.tick) || hourOf(s.tick) < 12) runTo(s, s.tick + 1);
+    if (!c.knows.includes('roots')) c.knows.push('roots');
+    const p = s.members().find((q) => s.age(q) >= 18)!;
+    // out digging roots, a few clumps into the round, the next clump still to reach
+    const out = (food: number) => {
+      Object.assign(p, { food, rest: 80, warmth: 90, health: 90, x: c.x + 9, z: c.z + 3, path: null, carry: CARRY.Roots, carryAmt: 4 });
+      p.task = { kind: 'roots', stage: 0, goal: s.tileOf({ x: c.x + 10, z: c.z + 3 }), gx: c.x + 10, gz: c.z + 3, ref: -1, timer: 0, started: s.tick, amount: 0, near: false };
+    };
+    for (const food of [70, 12]) {
+      out(food);
+      expect((s as any).urgent(p)).toBe(true);
+      decide(s, p);
+      // they turn for home with the roots, rather than dropping them where they stand
+      expect(p.task?.kind).toBe('roots');
+      expect(p.task?.homeAt).toBe(s.tick);
+      expect(p.carryAmt).toBe(4);
+      // and on the way home, hungry or cold, they see it through (a starving one eats from the load)
+      Object.assign(p, { warmth: 14 });
+      expect((s as any).urgent(p)).toBe(false);
+    }
+    const before = c.stock.roots;
+    for (let i = 0; i < 200 && p.task?.kind === 'roots'; i++) {
+      runTask(s, p);
+      if (p.task?.kind === 'roots' && i % 10 === 0) expect((s as any).urgent(p)).toBe(false);
+    }
+    expect(p.task).toBe(null);
+    expect(c.stock.roots - before).toBeGreaterThanOrEqual(3);
+  });
+
+  it('sets out after deer only when there is daylight left to reach them', () => {
+    const s = sim(1);
+    const c = s.camp;
+    while (seasonOf(s.tick) !== 1) runTo(s, s.tick + 200);
+    const hunter = s.members().find((q) => s.age(q) >= 18 && s.age(q) < 50)!;
+    // a hungry band, and the deer a long morning's walk off
+    const tries = (hour: number) => {
+      runTo(s, Math.floor(s.tick / TICKS_PER_DAY) * TICKS_PER_DAY + TICKS_PER_DAY + hour * TICKS_PER_HOUR);
+      for (const k of ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts', 'eggs', 'honey', 'mushrooms'] as const) c.stock[k] = 0;
+      s.plan();
+      for (const d of s.deer) if (d.alive) Object.assign(d, { x: c.x + 30, z: c.z + 1 });
+      let hunts = 0;
+      for (let i = 0; i < 40; i++) {
+        Object.assign(hunter, { food: 80, rest: 90, warmth: 90, health: 100, sick: 0, belonging: 90, x: c.x, z: c.z, task: null, carry: 0 });
+        decide(s, hunter);
+        if (hunter.task?.kind === 'hunt') hunts++;
+      }
+      return hunts;
+    };
+    expect(tries(7)).toBeGreaterThan(0);
+    // late in the afternoon it would be dark long before they got there: the hunt waits for morning
+    expect(tries(daylight(s.tick).sunset - 1.5)).toBe(0);
   });
 });
