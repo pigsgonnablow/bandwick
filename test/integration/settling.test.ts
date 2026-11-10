@@ -149,13 +149,28 @@ describe('gardens draw the deer', () => {
     const s = sim(3);
     plot(s);
     const h = s.herds.slice().sort((a, b) => hyp(a.hx - s.camp.x, a.hz - s.camp.z) - hyp(b.hx - s.camp.x, b.hz - s.camp.z))[0];
+    // a herd ranging out past the edge of the gardens
+    h.hx = s.camp.x + 26;
+    h.hz = s.camp.z;
+    while (!s.dryLand(h.hx, h.hz) && h.hx > s.camp.x + GARDEN_EDGE + 3) h.hx -= 1;
     const d0 = hyp(h.hx - s.camp.x, h.hz - s.camp.z);
-    expect(d0).toBeLessThan(30);
+    expect(d0).toBeGreaterThan(GARDEN_EDGE + 2);
     s.tick = morningIn(s, 1);
     for (let i = 0; i < 200; i++) herdsDaily(s, 13);
     const d1 = hyp(h.hx - s.camp.x, h.hz - s.camp.z);
     expect(d1).toBeLessThan(d0);
     expect(d1).toBeGreaterThanOrEqual(GARDEN_EDGE - 0.01);
+  });
+
+  it('keeps a herd ranging right by the camp back at the edge, mostly out of reach of the plots', () => {
+    const s = sim(3);
+    plot(s);
+    const h = s.herds[0];
+    h.hx = s.camp.x + 4;
+    h.hz = s.camp.z;
+    s.tick = morningIn(s, 1);
+    for (let i = 0; i < 200; i++) herdsDaily(s, 13);
+    expect(hyp(h.hx - s.camp.x, h.hz - s.camp.z)).toBeGreaterThan(GARDEN_EDGE - 1);
   });
 
   it('leaves the herds be where there are no gardens, and in winter', () => {

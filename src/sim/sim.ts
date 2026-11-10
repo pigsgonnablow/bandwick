@@ -75,10 +75,11 @@ export const CAMP_CLEAR = 5;
 /** each year, the chance a coppiced oak or birch stump sends up shoots (a stump left alone: see `trees`) */
 export const COPPICE_SPROUT = 0.7;
 /** Deer ranging within DEER_DRAWN of a band's gardens drift in toward them, DEER_DRIFT tiles a day through
- *  summer and autumn, as far as GARDEN_EDGE from the camp. */
+ *  summer and autumn, as far as GARDEN_EDGE from the camp: near enough for the hunters, mostly out of reach of
+ *  the plots (a herd ranging within 14 tiles of a plot raids it). */
 export const DEER_DRAWN = 30;
 export const DEER_DRIFT = 0.25;
-export const GARDEN_EDGE = 9;
+export const GARDEN_EDGE = 15;
 /** A band provided for (a year's food that keeps in the stores) gives food this weight in the day's work, and
  *  stays provided for until the stores fall below this share of a year. */
 export const PROVIDED_FOOD = 0.12;
@@ -2312,9 +2313,10 @@ export class Sim {
       for (const h of this.herds) {
         const c = this.gardenCampNear(h.hx, h.hz, DEER_DRAWN);
         if (!c) continue;
-        const d = hyp(h.hx - c.x, h.hz - c.z);
-        if (d <= GARDEN_EDGE) continue;
-        const step = Math.min(DEER_DRIFT, d - GARDEN_EDGE);
+        // (and a herd ranging nearer than that, refilled close by, is kept back to it by the people about)
+        const d = hyp(h.hx - c.x, h.hz - c.z) || 0.01;
+        if (Math.abs(d - GARDEN_EDGE) < 0.01) continue;
+        const step = Math.sign(d - GARDEN_EDGE) * Math.min(DEER_DRIFT, Math.abs(d - GARDEN_EDGE));
         const nx = h.hx - ((h.hx - c.x) / d) * step, nz = h.hz - ((h.hz - c.z) / d) * step;
         if (this.dryLand(nx, nz)) { h.hx = nx; h.hz = nz; }
       }
