@@ -22,8 +22,8 @@ describe('item windows', () => {
       expect(c.title).toBe(ITEMS[kind].label);
       expect(c.item).toBe(kind);
       expect(c.lines.find((l) => l.label === 'Lies')?.ref?.kind).toBe('building');
-      // (a necklace does not wear out, and was given rather than made for the pile)
-      expect(c.lines.map((l) => l.label)).toEqual(expect.arrayContaining(kind === 'necklace' ? ['Worn on', 'Given'] : ['Condition', 'Life left', 'Made by', 'Made']));
+      // (a necklace does not wear out, and was given rather than made for the pile; nor do beads, though someone made them)
+      expect(c.lines.map((l) => l.label)).toEqual(expect.arrayContaining(kind === 'necklace' ? ['Worn on', 'Given'] : kind === 'beads' ? ['Worn on', 'Made by', 'Made'] : ['Condition', 'Life left', 'Made by', 'Made']));
       expect(c.notes[0].length).toBeGreaterThan(20);
     }
     const p = s.people.find((q) => q.alive)!;

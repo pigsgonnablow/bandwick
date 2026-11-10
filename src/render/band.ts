@@ -260,7 +260,7 @@ export class BandLayer {
   private buildingMeshes = new Map<string, THREE.InstancedMesh>();
   private flames: THREE.InstancedMesh;
   /** what lies on each stockpile (by building id), and the meshes that show it */
-  private piles = new Map<number, { wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number }>();
+  private piles = new Map<number, { wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number; bowls?: number; beads?: number }>();
   private pileMeshes = new Map<string, THREE.InstancedMesh>();
   /** the snares and fish traps standing in the world, and their meshes (set, and holding a catch) */
   private traps: NonNullable<Frame['traps']> = [];
@@ -327,7 +327,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit']) {
+      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -351,7 +351,7 @@ export class BandLayer {
       const pm = new THREE.MeshLambertMaterial({ vertexColors: true });
       pm.onBeforeCompile = (sh) => addCommon(sh);
       pm.customProgramCacheKey = () => 'pile';
-      for (const [key, geo] of [['log', 'pile__log'], ['basket', 'carry__berries'], ['meat', 'carry__meat'], ['fish', 'carry__fish'], ['pot', 'pile__pot']] as const) {
+      for (const [key, geo] of [['log', 'pile__log'], ['basket', 'carry__berries'], ['meat', 'carry__meat'], ['fish', 'carry__fish'], ['pot', 'pile__pot'], ['bowl', 'pile__bowl'], ['beads', 'pile__beads']] as const) {
         const g = geoms.get(geo);
         if (!g) continue;
         const m = new THREE.InstancedMesh(g, pm, 64);
@@ -1657,7 +1657,7 @@ export class BandLayer {
     if (this.auras.instanceColor) this.auras.instanceColor.needsUpdate = true;
   }
 
-  setPiles(p: { id: number; wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number }[]) {
+  setPiles(p: { id: number; wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number; bowls?: number; beads?: number }[]) {
     this.piles = new Map(p.map((q) => [q.id, q]));
   }
 
@@ -1734,6 +1734,14 @@ export class BandLayer {
       for (let i = 0; i < Math.min(4, Math.ceil(p.meat / 6)); i++) items.push('meat');
       for (let i = 0; i < Math.min(4, Math.ceil(p.fish / 4)); i++) items.push('fish');
       for (let i = 0; i < Math.min(3, Math.ceil(p.preserved / 8)); i++) items.push('dried');
+      // the band's goods in a row in front of the woodpile: bowls stacked in twos, strings of beads laid beside them
+      const bowls = Math.min(8, p.bowls ?? 0), beads = Math.min(6, p.beads ?? 0);
+      for (let i = 0; i < bowls; i++) {
+        const col = Math.floor(i / 2), up = i % 2;
+        place('bowl', -0.22 + col * 0.065 + (h(i + 500) - 0.5) * 0.01, 0.008 + up * 0.018, -0.1 + (h(i + 520) - 0.5) * 0.01, 0, h(i + 540) * Math.PI * 2);
+      }
+      for (let i = 0; i < beads; i++)
+        place('beads', 0.06 + (i % 3) * 0.055 + (h(i + 600) - 0.5) * 0.01, 0.006 + Math.floor(i / 3) * 0.006, -0.1 + (h(i + 620) - 0.5) * 0.02, 0, h(i + 640) * Math.PI * 2);
       items.slice(0, 15).forEach((it, i) => {
         const col = i % 5, row = Math.floor(i / 5);
         const x = -0.2 + col * 0.1 + (h(i + 200) - 0.5) * 0.02, z = 0.05 + row * 0.085 + (h(i + 300) - 0.5) * 0.02;

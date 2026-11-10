@@ -38,6 +38,9 @@ export type Practice =
   | 'store_grain' // grain carried into the stores (per load)
   | 'far_tree' // a tree felled far out from camp, past the stumps of the near woods
   | 'sprout_tree' // a tree felled that grew up from the stump of one felled before
+  | 'gift' // a necklace strung for someone dear
+  | 'knap' // a stone knapped into a chopper or an axe head
+  | 'fire_pot' // a pot or bowl fired in the embers of the hearth (twice over when it cracks)
 
 /**
  * What someone has to be before they can have an idea. Only skill levels for now; a new kind of
@@ -351,6 +354,22 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'cut the woods near camp low so they grow back', memory: 'Began to coppice the woods near camp.',
   },
   {
+    // (a toolmaker stringing teeth and shells for someone dear, or knapping a stone, thinks of grinding the
+    // pebbles themselves smooth and boring them through: beads of any stone, as many as there are hours for)
+    key: 'beads', label: 'Beads', needs: ['huts'], requires: [skill(SK.tool, 9)],
+    practice: { gift: 1, knap: 0.2 }, odds: 120,
+    found: 'ground a pebble smooth on a slab, bored it through with a bow drill, and strung the first beads',
+    taught: 'grind and drill beads of stone', memory: 'Ground and drilled the first beads.',
+  },
+  {
+    // (a potter who has watched too many pots crack in the open embers thinks of walling the fire in clay,
+    // so the heat comes evenly and slowly)
+    key: 'kiln', label: 'Kiln', needs: ['pottery'], requires: [skill(SK.pot, 11), skill(SK.build, 6)], near: 'mud',
+    practice: { fire_pot: 1 }, odds: 22,
+    found: 'walled the firing in a dome of clay with a hole to stoke it, and the pots came out whole and ringing hard: the band\'s first kiln',
+    taught: 'build a kiln and fire their pots in it', memory: 'Built the first kiln.',
+  },
+  {
     key: 'daub', label: 'Wattle-and-daub', needs: ['huts'], requires: [skill(SK.build, 13), skill(SK.weave, 8)], near: 'mud',
     practice: { thatch: 1, build: 1 }, odds: 40,
     found: 'worked out how to weave walls of reeds and plaster them with mud',
@@ -369,7 +388,7 @@ export const DISCOVERY = new Map(DISCOVERIES.map((d) => [d.key, d]));
 /** What a band has to know to build something. */
 export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   const out: string[] = [];
-  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits' } as Partial<Record<BuildKind, string>>)[b.kind];
+  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln' } as Partial<Record<BuildKind, string>>)[b.kind];
   if (k) out.push(k);
   if (b.walls === 'daub') out.push('daub');
   if (b.walls === 'stone') out.push('stonework');
