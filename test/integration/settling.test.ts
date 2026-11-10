@@ -36,6 +36,23 @@ describe('a year in hand', () => {
     expect(s.events.filter((e) => e.kind === 'provided').length).toBe(1);
   });
 
+  it('a band that moves takes the news with it: the full stores are not told of again', () => {
+    const s = sim(3);
+    s.tick = morningIn(s, 1);
+    s.camp.stock.grain = yearOfFood(s) * 1.5;
+    s.plan();
+    const c = s.camp;
+    c.leanWinters = 3;
+    c.settled = s.tick - 3 * TICKS_PER_YEAR;
+    let moved = false;
+    for (let i = 0; i < 300 && !moved; i++) moved = (s as unknown as { considerMove(c: unknown): boolean }).considerMove(c);
+    expect(moved).toBe(true);
+    s.plan();
+    expect(s.camp).not.toBe(c);
+    expect(s.camp.provided).toBe(true);
+    expect(s.events.filter((e) => e.kind === 'provided').length).toBe(1);
+  });
+
   it('stays provided for until the stores fall well short of a year, and tells of it only the first time', () => {
     const s = sim(3);
     s.tick = morningIn(s, 1);
@@ -91,6 +108,18 @@ describe('coppiced woods', () => {
     const gone = (ks: number[]) => ks.filter((k) => !s.propAlive[k]).length;
     expect(gone(near)).toBeGreaterThan(20);
     expect(gone(far)).toBe(0);
+  });
+
+  it('leave the ground round the fire clear', () => {
+    const s = sim(3);
+    s.camp.knows = [...s.camp.knows.filter((k) => k !== 'coppice'), 'coppice'];
+    const close: number[] = [];
+    for (let i = 0; i < 40; i++) {
+      const a = (i / 40) * Math.PI * 2;
+      close.push(s.addProp(STUMP_BASE + 1, s.camp.x + Math.cos(a) * 3, 0, s.camp.z + Math.sin(a) * 3, 0, 1));
+    }
+    springs(s, 1);
+    expect(close.filter((k) => !s.propAlive[k]).length).toBe(0);
   });
 
   it('do nothing for a band that has not thought of it', () => {

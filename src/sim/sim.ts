@@ -70,6 +70,8 @@ export const PROP_TASKS: TaskKind[] = ['eatwild', 'forage', 'reap', 'fell', 'dea
  *  further out than FAR_TREE is a long walk past the stumps of the near woods. */
 export const WOODLOT = 16;
 export const FAR_TREE = 18;
+/** the ground round a camp's fire that is kept clear: no coppice there */
+export const CAMP_CLEAR = 5;
 /** each year, the chance a coppiced oak or birch stump sends up shoots (a stump left alone: see `trees`) */
 export const COPPICE_SPROUT = 0.7;
 /** Deer ranging within DEER_DRAWN of a band's gardens drift in toward them, DEER_DRIFT tiles a day through
@@ -2568,7 +2570,12 @@ export class Sim {
 
   /** Whether a spot lies in the coppiced woods of a band that knows how to coppice. */
   inWoodlot(x: number, z: number) {
-    for (const c of this.camps) if (!c.gone && c.knows.includes('coppice') && hyp(x - c.x, z - c.z) < WOODLOT) return true;
+    // (not in the camp itself: the ground round the fire and the huts is kept clear)
+    for (const c of this.camps) {
+      if (c.gone || !c.knows.includes('coppice')) continue;
+      const d = hyp(x - c.x, z - c.z);
+      if (d >= CAMP_CLEAR && d < WOODLOT) return true;
+    }
     return false;
   }
 
@@ -2736,6 +2743,8 @@ export class Sim {
     nc.knows = c.knows.slice();
     nc.learning = c.learning?.slice();
     nc.learned = c.learned?.slice();
+    // (the same people: a full store at the new camp is not news to them)
+    nc.providedOnce = c.providedOnce;
     // the gardens are left behind, but the seed goes with them
     nc.seed = c.seed;
     c.seed = 0;
@@ -3098,7 +3107,7 @@ export class Sim {
     // no longer the day's first work: a little fresh meat and fish, and the rest of the day for other things
     const keeps = c.stock.grain + c.stock.nuts + c.stock.preserved + c.stock.honey + c.stock.roots * 0.5;
     const yearOfFood = meals * DAYS_PER_YEAR;
-    const provided = lasting >= need && keeps >= yearOfFood * (c.provided ? PROVIDED_UNTIL : 1);
+    const provided = meals > 0 && lasting >= need && keeps >= yearOfFood * (c.provided ? PROVIDED_UNTIL : 1);
     if (provided && !c.provided && !c.providedOnce) {
       c.providedOnce = this.tick;
       this.event('provided', `For the first time, the stores at ${c.name} hold a whole year's food. Nobody there need go out for food today.`, [], c.x, c.z, 4);
