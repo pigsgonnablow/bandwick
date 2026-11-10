@@ -423,6 +423,8 @@ export interface Item {
   wearer?: number;
   /** how well it was made: 0 plain, 1 good, 2 fine (absent: plain) */
   quality?: number;
+  /** one of the band's goods given to someone to wear (a string of beads): who gave it */
+  giver?: number;
   /** a thing worn: how many times it has been mended by the fire, and by whom last */
   mended?: number;
   mender?: number;

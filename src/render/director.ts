@@ -27,7 +27,7 @@ export const PHRASE: Record<string, string> = {
   watch: 'is watching a grown-up at work, to learn it', tell: 'is telling a story by the fire', listen: 'is listening to a story by the fire',
   bed: 'is laying fresh grass to sleep on', roots: 'is digging roots for the winter', nuts: 'is gathering acorns under the oaks', eggs: 'is looking for eggs in the nests', honey: 'is smoking out a wild hive for honey', mushrooms: 'is picking mushrooms in the woods', mend: 'is mending something worn by the fire',
   herbs: 'is looking for healing plants', nurse: 'is nursing someone through a fever',
-  gift: 'is making a necklace for someone dear', feast: 'is feasting by the fire on the longest night',
+  gift: 'is making a gift for someone dear', feast: 'is feasting by the fire on the longest night',
   sow: 'is sowing a garden plot', tend: 'is weeding and watching over the garden', harvest: 'is bringing in the harvest',
 };
 /** How much a viewer would want to see each task. */

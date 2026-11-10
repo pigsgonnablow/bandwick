@@ -20,7 +20,7 @@ import {
 } from './time';
 import { decide, runTask, abandon, sendHome, delivering, foodInHand, FAR_GRAVE } from './ai';
 import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard, deadfallNight, DEADFALL_RANGE } from './beasts';
-import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets } from './know';
+import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets, ELITE } from './know';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 const TREE_TYPES = SPECIES.length * STAGES * TREE_VARIANTS;
@@ -1756,10 +1756,11 @@ export class Sim {
     return it;
   }
   /** One of the band's goods given to someone to wear (a string of beads): whatever they wore at the neck is put away. */
-  giveGood(p: Person, it: Item) {
+  giveGood(p: Person, it: Item, giver: number) {
     const old = this.wornIn(p, 'neck');
     if (old) this.items.splice(this.items.indexOf(old), 1);
     delete it.tile;
+    it.giver = giver;
     it.band = p.band;
     this.dress(p, it);
   }
@@ -1861,8 +1862,9 @@ export class Sim {
       if (!of.length) return '';
       const worn = of.filter((i) => i.wear >= 0.6).length;
       const name = ITEMS[k].label.toLowerCase();
-      // (mittens and shoes are already more than one)
-      return `${of.length} ${of.length === 1 || /s$/.test(name) ? name : `${name}s`}${worn ? ` (${worn} well worn)` : ''}`;
+      // (mittens and shoes are already more than one; strings of beads are strings)
+      const many = k === 'beads' ? 'strings of beads' : /s$/.test(name) ? name : `${name}s`;
+      return `${of.length} ${of.length === 1 ? name : many}${worn ? ` (${worn} well worn)` : ''}`;
     }).filter(Boolean).join(', ');
   }
   /** Whether a band could make a thing by the fire from its stores right now. */
@@ -1896,7 +1898,7 @@ export class Sim {
   }
   /** Whether someone is a master of a craft the band makes goods in: they sit down to it whenever the band can spare them. */
   isMaster(p: Person, c = this.camp) {
-    return GOODS.some((g) => { const rc = RECIPES[g as RecipeKey]; return (!rc.knows || this.knows(rc.knows, c)) && p.skills[rc.skill] >= 15; });
+    return GOODS.some((g) => { const rc = RECIPES[g as RecipeKey]; return (!rc.knows || this.knows(rc.knows, c)) && p.skills[rc.skill] >= ELITE; });
   }
   /** The crafts a person's card shows: the everyday ones, and the rest once the band has a use for them. */
   shownSkills(c = this.camp) {
@@ -2733,6 +2735,9 @@ export class Sim {
       const n = Math.min(pile.length - 1, Math.max(1, Math.round(pile.length * share)));
       for (const it of pile.slice(0, Math.max(0, n))) it.band = nc.id;
     }
+    // and their share of the band's goods (beads set aside for a gift stay with the giver's band)
+    const goods = this.goodsOf(from);
+    for (const it of goods.slice(0, Math.round(goods.length * share))) it.band = nc.id;
     // a bitter parting (a quarrelsome band, or a leader who has no love for those staying) takes a contrasting colour
     let regard = 0;
     const stayers = this.members(from).filter((q) => !group.includes(q));
@@ -4311,7 +4316,11 @@ export class Sim {
       famine: c.famine,
       knows: c.knows.map((k) => DISCOVERY.get(k)?.label ?? k),
       // (what they wear has its own line)
-      tools: this.describeTools(this.toolsOf(c).filter((i) => !isGarment(i.kind))),
+      tools: this.describeTools(this.toolsOf(c).filter((i) => !isGarment(i.kind) && !GOODS.includes(i.kind))),
+      goods: (() => {
+        const g = this.goodsOf(c), fine = g.filter((i) => i.quality === 2).length;
+        return g.length ? `${this.describeTools(g)}${fine ? ` (${fine} fine)` : ''}` : '';
+      })(),
       deer: this.deer.filter((d) => d.alive).length,
       stats: { ...this.stats },
       temp: temperature(this.tick, this.anomaly, Math.max(0, this.world.level[c.tile] - SEA - 1)),
@@ -4440,6 +4449,9 @@ export class Sim {
       if (maker) lines.push(L('Given by', maker.name, pref(maker.id)));
       lines.push(L('Given', this.when(it.made)));
     } else {
+      // (a string of beads from the band's goods: who gave it, and who made it)
+      const giver = it.giver !== undefined ? this.byId.get(it.giver) : undefined;
+      if (giver) lines.push(L('Given by', giver.name, pref(giver.id)));
       lines.push(maker ? L('Made by', maker.name, pref(maker.id)) : L('Made by', 'Someone beyond the hills: it came with the band'));
       lines.push(L('Made', this.when(it.made)));
     }
@@ -4526,11 +4538,14 @@ export class Sim {
         if (st.stone >= 0.5) lines.push(L('Stone', `${Math.floor(st.stone)} loads`));
         const owner = this.campById(b.band) ?? this.camp;
         // (what is worn is on someone's back, not on the pile)
-        const tools = this.toolsOf(owner).filter((i) => i.wearer === undefined);
+        // (and the band's goods are not tools: they have their own line)
+        const tools = this.toolsOf(owner).filter((i) => i.wearer === undefined && !GOODS.includes(i.kind));
         const out = (i: Item) => (i.tile ?? -1) !== -1;
         lines.push(L('Tools', tools.length ? this.describeTools(tools.filter((i) => i.holder < 0 && !out(i))) || 'All out in someone\'s hands' : 'None'));
         if (tools.some((i) => i.holder >= 0)) lines.push(L('Out in use', this.describeTools(tools.filter((i) => i.holder >= 0))));
         if (tools.some(out)) lines.push(L('Traps set', this.describeTools(tools.filter(out))));
+        const goods = this.goodsOf(owner);
+        if (goods.length) lines.push(L('Goods', this.describeTools(goods)));
         if (inside) lines.push(L('Food', `${Math.round(foodTotal(st))} meals, kept in the storehouse`));
         else {
           lines.push(L('Berries', `${Math.round(st.berries)} handfuls`));
@@ -4587,7 +4602,7 @@ export class Sim {
       if (b.kind === 'kiln' && b.built) {
         const at = this.people.filter((p) => p.alive && p.band === b.band && p.task?.kind === 'craft' && p.task.amount > 0 && RECIPES[RECIPE_KEYS[p.task.ref]].skill === SK.pot);
         for (const p of at) lines.push(L('Potting', p.name, pref(p.id)));
-        const goods = this.goodsOf(this.camp);
+        const goods = this.goodsOf(this.campById(b.band) ?? this.camp);
         lines.push(L('The band\'s goods', goods.length ? `${goods.length}: ${goods.filter((i) => i.quality === 2).length} fine, ${goods.filter((i) => i.quality === 1).length} good` : 'None yet'));
         notes.push(`A dome of clay over a firing pit. Pots and bowls fired in it crack ${Math.round(KILN_CRACK * 100)} times in a hundred, where the open embers crack a beginner's ${Math.round(HEARTH_CRACK * 100)}; the even heat makes them finer.`);
       }
@@ -4860,14 +4875,16 @@ export class Sim {
       gear: SLOTS.map((slot) => {
         const it = this.wornIn(p, slot);
         if (!it) return { slot, item: null };
-        const maker = this.byId.get(it.maker);
+        const given = GARMENTS[it.kind as GarmentKind]?.first === 'given';
+        // (a thing given: the gear line names who gave it)
+        const maker = this.byId.get(given ? it.giver ?? it.maker : it.maker);
         const mender = it.mender !== undefined ? this.byId.get(it.mender) : undefined;
         return {
           slot, item: {
             id: it.id, kind: it.kind, label: ITEMS[it.kind].label, wear: it.wear, condition: condition(it.wear),
             maker: maker ? { id: maker.id, name: maker.name } : null, made: it.made,
             mended: it.mended ?? 0, mender: mender ? { id: mender.id, name: mender.name } : null,
-            warm: isGarment(it.kind) ? GARMENTS[it.kind].warm : 0, given: it.kind === 'necklace',
+            warm: isGarment(it.kind) ? GARMENTS[it.kind].warm : 0, given,
           },
         };
       }),

@@ -382,7 +382,8 @@ export function decide(s: Sim, p: Person) {
       return;
     }
   }
-  // nothing to do: stand where they are a while
+  // nothing to do: stand where they are a while (putting down whatever was set aside for the old task)
+  if (p.task) abandon(s, p, true);
   p.task = null;
   p.act = ACT.Idle;
   p.nextThink = s.tick + 15;
@@ -1963,7 +1964,7 @@ export function runTask(s: Sim, p: Person) {
         t.gz = q.z;
         t.near = true;
         p.path = null;
-        p.thought = `Taking a necklace to ${q.name}.`;
+        p.thought = `Taking ${t.good !== undefined ? 'a string of beads' : 'a necklace'} to ${q.name}.`;
       }
       if (t.stage === 2) {
         if (s.tick % 8 === 0 && s.tileOf(q) !== t.goal) {
@@ -1982,10 +1983,16 @@ export function runTask(s: Sim, p: Person) {
       if (--t.timer > 0) return;
       t.amount = 0;
       const bead = t.good !== undefined ? s.items.find((i) => i.id === t.good) : undefined;
+      // (the beads they set aside are gone: there is nothing to give, and no teeth were strung)
+      if (t.good !== undefined && !bead) {
+        abandon(s, p);
+        p.nextThink = s.tick;
+        return;
+      }
       delete t.good;
       // a string of beads from the band's goods counts for more than teeth on a cord, and a fine one for most
       const worth = bead ? 1 + (bead.quality ?? 0) * 0.5 : 0;
-      if (bead) s.giveGood(q, bead);
+      if (bead) s.giveGood(q, bead, p.id);
       else {
         s.giveNecklace(q, p.id);
         s.practise(p, 'gift');
