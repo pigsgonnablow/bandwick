@@ -66,6 +66,21 @@ export const DAILY_ADULT = 1.35;
 export const DAILY_CHILD = 0.85;
 /** The jobs whose `ref` is a prop (a tree, a bush, a stand of reeds, a pile of logs). */
 export const PROP_TASKS: TaskKind[] = ['eatwild', 'forage', 'reap', 'fell', 'deadwood', 'haul', 'roots', 'nuts', 'herbs', 'eggs', 'honey', 'mushrooms'];
+/** The woods a band that coppices keeps cut low and growing back: within this far of its camp. A tree felled
+ *  further out than FAR_TREE is a long walk past the stumps of the near woods. */
+export const WOODLOT = 16;
+export const FAR_TREE = 18;
+/** each year, the chance a coppiced oak or birch stump sends up shoots (a stump left alone: see `trees`) */
+export const COPPICE_SPROUT = 0.7;
+/** Deer ranging within DEER_DRAWN of a band's gardens drift in toward them, DEER_DRIFT tiles a day through
+ *  summer and autumn, as far as GARDEN_EDGE from the camp. */
+export const DEER_DRAWN = 30;
+export const DEER_DRIFT = 0.25;
+export const GARDEN_EDGE = 9;
+/** A band provided for (a year's food that keeps in the stores) gives food this weight in the day's work, and
+ *  stays provided for until the stores fall below this share of a year. */
+export const PROVIDED_FOOD = 0.12;
+export const PROVIDED_UNTIL = 0.8;
 /** winters in a row a band has had to ration before it thinks of finding better land */
 export const LEAN_WINTERS_TO_MOVE = 3;
 export const WARM_RADIUS_SHELTERED = 3.2;
@@ -203,6 +218,9 @@ export interface Camp {
   coldDays?: number;
   /** the day an elder last told a story by the band's fire */
   storyNight?: number;
+  /** whether the stores hold a whole year's food in things that keep (set each morning), and when they first did */
+  provided?: boolean;
+  providedOnce?: number;
   /** the day of this winter's midwinter feast, if the stores allow one (absent: none) */
   feastDay?: number;
   /** grain kept back from the harvest to sow next spring, in meals (absent: none) */
@@ -1597,7 +1615,8 @@ export class Sim {
    */
   trapsWanted(c: Camp, foodP: number) {
     const ms = this.members(c).length;
-    const snare = this.knows('snares', c) ? Math.min(10, 3 + Math.floor(ms / 6) + (foodP > 0.6 ? 3 : 0) + (seasonPos(this.tick) >= 1.75 ? 2 : 0)) : 0;
+    // (a band with a year's food put by sets only a few, for fresh meat and the hides)
+    const snare = !this.knows('snares', c) ? 0 : c.provided ? 2 : Math.min(10, 3 + Math.floor(ms / 6) + (foodP > 0.6 ? 3 : 0) + (seasonPos(this.tick) >= 1.75 ? 2 : 0));
     const water = this.knows('fishtraps', c) && this.fishingSpots.some((i) => hyp((i % this.N) + 0.5 - c.x, Math.floor(i / this.N) + 0.5 - c.z) < 14);
     // a deadfall at each fox earth and beaver lodge within a day's round that still has a pair, while there are pelts to want
     const dens = this.knows('furs', c) && c.stock.furs < FURS_KEPT
@@ -2226,8 +2245,11 @@ export class Sim {
       if (type >= STUMP_BASE && type < STUMP_BASE + 3) {
         this.propVal[k] += 1;
         const sp = type - STUMP_BASE;
-        // oak and birch stumps often sprout again (coppice); pines do not
-        if (sp !== 0 && this.propVal[k] >= 2 && this.propVal[k] <= 5 && r.chance(0.18) && !this.buildings.some((b) => b.tile === this.propTile[k])) {
+        // oak and birch stumps often sprout again (coppice); pines do not. In a band's coppiced woods the stumps
+        // are cut low and kept clear, and nearly all of them send up shoots the next spring
+        const lot = sp !== 0 && this.inWoodlot(this.propX[k], this.propZ[k]);
+        const sprouts = lot ? this.propVal[k] >= 1 && this.propVal[k] <= 5 && r.chance(COPPICE_SPROUT) : this.propVal[k] >= 2 && this.propVal[k] <= 5 && r.chance(0.18);
+        if (sp !== 0 && sprouts && !this.buildings.some((b) => b.tile === this.propTile[k])) {
           const id = sp * STAGES * TREE_VARIANTS + r.int(0, 3);
           const sap = this.addProp(id, this.propX[k] + 0.08, this.propY[k], this.propZ[k] + 0.06, r.range(0, 6.28), r.range(0.85, 1.05));
           this.propNote.set(sap, `Sprouted from the stump of a felled ${SPECIES[sp]}.`);
@@ -2240,8 +2262,11 @@ export class Sim {
       if (!isTreeType(type)) continue;
       const st = treeStage(type);
       this.propVal[k] += 1;
-      const years = [3, 5, 9][st] ?? 99;
-      if (st < 3 && this.propVal[k] >= years && r.chance(0.5)) {
+      // shoots from a coppiced stump have the old roots under them: they make poles in a couple of years, and
+      // timber in a few more
+      const shoot = st < 2 && !!this.propNote.get(k)?.startsWith('Sprouted from the stump') && this.inWoodlot(this.propX[k], this.propZ[k]);
+      const years = (shoot ? [2, 3] : [3, 5, 9])[st] ?? 99;
+      if (st < 3 && this.propVal[k] >= years && r.chance(shoot ? 0.8 : 0.5)) {
         if (this.reserved.has(k) || this.chopped.has(k)) continue;
         this.propType[k] = type + TREE_VARIANTS;
         this.propVal[k] = 0;
@@ -2278,13 +2303,28 @@ export class Sim {
         if (victim) victim.alive = false;
       }
     }
-    // a hunted-out range is slowly refilled by deer drifting in from the wilds (not right beside camp)
+    // gardens draw the deer: through the summer and autumn, while there are crops standing, a herd ranging near
+    // a band's plots comes in to graze at the edge of them (no nearer: the fire and the dogs keep them off)
+    const season = seasonOf(this.tick);
+    if (season === 1 || season === 2) {
+      for (const h of this.herds) {
+        const c = this.gardenCampNear(h.hx, h.hz, DEER_DRAWN);
+        if (!c) continue;
+        const d = hyp(h.hx - c.x, h.hz - c.z);
+        if (d <= GARDEN_EDGE) continue;
+        const step = Math.min(DEER_DRIFT, d - GARDEN_EDGE);
+        const nx = h.hx - ((h.hx - c.x) / d) * step, nz = h.hz - ((h.hz - c.z) / d) * step;
+        if (this.dryLand(nx, nz)) { h.hx = nx; h.hz = nz; }
+      }
+    }
+    // a hunted-out range is slowly refilled by deer drifting in from the wilds (not right beside camp, unless
+    // there are gardens there to draw them)
     if (dayOfYear === 6) {
       for (const h of this.herds) {
         // (a lone deer left over counts as hunted out: it has no one to breed with)
         const left = this.deer.filter((d) => d.alive && d.herd === h.id).length;
         if (left >= 2) continue;
-        if (this.camps.some((c) => !c.gone && hyp(h.hx - c.x, h.hz - c.z) <= 10) || !r.chance(0.5)) continue;
+        if (this.camps.some((c) => !c.gone && hyp(h.hx - c.x, h.hz - c.z) <= 10 && !this.gardened(c)) || !r.chance(0.5)) continue;
         for (let k = left; k < 3; k++) this.spawnDeer(h, h.hx, h.hz, false);
       }
     }
@@ -2509,6 +2549,27 @@ export class Sim {
     // strangers come in spring, with a summer ahead to build and lay in stores before their first winter
     if (dayOfYear === 6) this.considerStrangers();
     if (dayOfYear % 12 === 3 && season < 3) this.considerMatches();
+  }
+
+  /** Whether a band has garden plots dug. */
+  gardened(c: Camp) {
+    return this.buildings.some((b) => b.band === c.id && b.kind === 'plot' && b.built);
+  }
+  /** The nearest band within `r` of a spot that has gardens, if any. */
+  gardenCampNear(x: number, z: number, r: number) {
+    let best: Camp | undefined, bd = r;
+    for (const c of this.camps) {
+      if (c.gone) continue;
+      const d = hyp(x - c.x, z - c.z);
+      if (d < bd && this.gardened(c)) { best = c; bd = d; }
+    }
+    return best;
+  }
+
+  /** Whether a spot lies in the coppiced woods of a band that knows how to coppice. */
+  inWoodlot(x: number, z: number) {
+    for (const c of this.camps) if (!c.gone && c.knows.includes('coppice') && hyp(x - c.x, z - c.z) < WOODLOT) return true;
+    return false;
   }
 
   private treesNear(c: Camp, r: number) {
@@ -3033,7 +3094,18 @@ export class Sim {
       + c.stock.grain + (s < 3 ? this.gardenComing(c) : 0);
     // from late summer on, the store has to carry the band through to the end of winter
     const need = meals * (winterNow ? daysToWinterEnd + 2 : s >= 1.75 ? daysToWinterEnd : Math.min(daysToWinterEnd, 20));
-    const foodP = clamp01(1.15 - (lasting / Math.max(1, need)) * 0.9, winterNow ? 0.3 : 0.1, 1.2);
+    // a whole year's food put by in things that keep (grain above all): the band is provided for, and food is
+    // no longer the day's first work: a little fresh meat and fish, and the rest of the day for other things
+    const keeps = c.stock.grain + c.stock.nuts + c.stock.preserved + c.stock.honey + c.stock.roots * 0.5;
+    const yearOfFood = meals * DAYS_PER_YEAR;
+    const provided = lasting >= need && keeps >= yearOfFood * (c.provided ? PROVIDED_UNTIL : 1);
+    if (provided && !c.provided && !c.providedOnce) {
+      c.providedOnce = this.tick;
+      this.event('provided', `For the first time, the stores at ${c.name} hold a whole year's food. Nobody there need go out for food today.`, [], c.x, c.z, 4);
+      for (const p of living) if (this.age(p) >= 14) this.remember(p, 'provided', 10, 2, -1, 'Saw the stores hold a whole year\'s food.');
+    }
+    c.provided = provided;
+    const foodP = provided ? PROVIDED_FOOD : clamp01(1.15 - (lasting / Math.max(1, need)) * 0.9, winterNow ? 0.3 : 0.1, 1.2);
     // from late autumn, a store that won't see the band through to spring is eked out: small shares, a full
     // one only for the very hungry
     c.rationing = s >= 2.5 && lasting < need * RATION_BELOW;
@@ -3114,7 +3186,8 @@ export class Sim {
       'craft.deadfall': traps.deadfall > 0 ? 0.45 : 0,
       'craft.furcloak': make === 'furcloak' ? (s >= 1.5 ? 0.6 : 0.4) : 0,
       // the round of the traps: once a day, by one person, to empty them and set out new ones
-      trap: c.trapRound !== today && this.toolsOf(c).some((i) => TRAP_KINDS.includes(i.kind)) ? 0.75 + (foodP > 0.8 ? 0.25 : 0) : 0,
+      // (provided for, the round waits until there is little else to do)
+      trap: c.trapRound !== today && this.toolsOf(c).some((i) => TRAP_KINDS.includes(i.kind)) ? (provided ? 0.4 : 0.75 + (foodP > 0.8 ? 0.25 : 0)) : 0,
       // mud and stone are fetched only for a site that needs them (mud can't be dug from frozen ground)
       // (and clay for a pot)
       dig: (siteMud > c.stock.mud || (make === 'pot' && c.stock.mud < 2)) && !winterNow ? 0.75 : 0,
@@ -3129,6 +3202,7 @@ export class Sim {
     };
     c.plan = [];
     if (c.rationing) c.plan.push('Ration the stores until spring');
+    if (provided) c.plan.push('The stores hold a year\'s food: time for other work');
     if (foodP > 0.8) c.plan.push(winterNow ? 'Find food to last the winter' : 'Store food before winter');
     if (woodP > 0.5) c.plan.push(s > 2.0 && !winterNow ? 'Lay in firewood for the winter' : 'Gather wood');
     if (siteFiber > fiberHave) c.plan.push('Cut grass and reeds for thatch and cordage');

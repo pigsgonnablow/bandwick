@@ -36,6 +36,8 @@ export type Practice =
   | 'harvest' // a load of the garden's harvest brought in
   | 'raided' // finding a garden plot raided by deer, boar or hares (each gardener)
   | 'store_grain' // grain carried into the stores (per load)
+  | 'far_tree' // a tree felled far out from camp, past the stumps of the near woods
+  | 'sprout_tree' // a tree felled that grew up from the stump of one felled before
 
 /**
  * What someone has to be before they can have an idea. Only skill levels for now; a new kind of
@@ -339,6 +341,14 @@ export const DISCOVERIES: Discovery[] = [
     practice: { store_grain: 1 }, odds: 6,
     found: 'dug a pit by the stores, lined it with clay and grass, filled it with grain and sealed it: it came out dry and sweet in spring',
     taught: 'keep grain in lined storage pits', memory: 'Dug the first storage pit for grain.',
+  },
+  {
+    // (a woodcutter walking out past the stumps of the near woods to find a tree worth felling, or cutting a
+    // straight young trunk that grew from an old stump, sees that a stump cut low grows back as poles)
+    key: 'coppice', label: 'Coppiced woods', needs: [], requires: [skill(SK.wood, 13), skill(SK.forage, 8)],
+    practice: { far_tree: 0.25, sprout_tree: 1 }, odds: 14,
+    found: 'saw the straight poles growing from an old stump, and began to cut the oaks and birches near camp low, to grow back for the fire',
+    taught: 'cut the woods near camp low so they grow back', memory: 'Began to coppice the woods near camp.',
   },
   {
     key: 'daub', label: 'Wattle-and-daub', needs: ['huts'], requires: [skill(SK.build, 13), skill(SK.weave, 8)], near: 'mud',

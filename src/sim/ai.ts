@@ -1,7 +1,7 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim } from './sim';
-import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS } from './sim';
+import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR,
   CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill } from './band';
 import { denFor, deadfallSpot } from './beasts';
@@ -2478,6 +2478,10 @@ export function runTask(s: Sim, p: Person) {
         const wood = WOOD_BY_STAGE[treeStage(type)] + (treeStage(type) >= 2 ? BARK : 0);
         const stump = s.addProp(STUMP_BASE + sp, s.propX[k], s.propY[k], s.propZ[k], s.propRot[k], s.propScale[k]);
         const what = `${STAGE_WORD[treeStage(type)]} ${['pine', 'oak', 'birch'][sp]}`;
+        // a trunk grown up from an old stump, or a long walk out past the stumps of the near woods, sets a
+        // woodcutter thinking about how the woods grow back
+        if (s.propNote.get(k)?.startsWith('Sprouted from the stump')) s.practise(p, 'sprout_tree');
+        else if (hyp(s.propX[k] - c.x, s.propZ[k] - c.z) > FAR_TREE) s.practise(p, 'far_tree');
         s.propNote.set(stump, `${art(what) === 'an' ? 'An' : 'A'} ${what}, felled by ${p.name} in the ${s.when(s.tick)}.`);
         s.removeProp(k);
         s.stats.felled++;

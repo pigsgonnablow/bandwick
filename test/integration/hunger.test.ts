@@ -93,7 +93,8 @@ describe('hunger', () => {
     c.leanWinters = 3;
     c.settled = s.tick - 3 * TICKS_PER_YEAR;
     let moved = false;
-    for (let i = 0; i < 40 && !moved; i++) moved = (s as any).considerMove(c);
+    // (a band with gardens dug is slow to give them up: it can take many springs of asking)
+    for (let i = 0; i < 150 && !moved; i++) moved = (s as any).considerMove(c);
     expect(moved).toBe(true);
     expect(s.events.at(-1)!.text).toContain(`The people of ${c.name} gave up their camp after hard years.`);
   });
