@@ -558,7 +558,7 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const st = seat(s, p, 1.45);
       const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, q.id);
       if (bead) {
-        bead.tile = -2; // set aside now, so nobody else gives it
+        bead.tile = -3; // set aside for the gift now, so nobody else gives it
         t.good = bead.id;
         p.thought = `Choosing a string of beads for ${q.name}.`;
       } else {

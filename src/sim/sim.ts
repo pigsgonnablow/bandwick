@@ -1688,7 +1688,7 @@ export class Sim {
     // the bowls on the pile are eaten from every day, and one day chip and crack
     for (const it of this.items.slice()) if (it.kind === 'bowl' && it.holder < 0 && it.wearer === undefined) this.wearTool(it);
     // beads set aside for a gift that was never given (the giver died, or the save was from mid-walk) go back with the goods
-    for (const it of this.items) if (it.kind === 'beads' && it.tile === -2 && !this.people.some((p) => p.alive && p.task?.kind === 'gift' && p.task.good === it.id)) delete it.tile;
+    for (const it of this.items) if (it.kind === 'beads' && it.tile === -3 && !this.people.some((p) => p.alive && p.task?.kind === 'gift' && p.task.good === it.id)) delete it.tile;
     for (const b of this.buildings) if ((b.bedding ?? 0) > 0) {
       b.bedding = Math.max(0, b.bedding! - 1);
       if (!b.bedding) this.buildingsVersion++;
