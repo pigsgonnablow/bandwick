@@ -701,7 +701,7 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const rc = RECIPES[key];
       // a potter with a kiln works beside it; everything else is made by the fire
       const kiln = rc.skill === SK.pot ? s.kilnOf() : undefined;
-      const st = kiln ? { x: kiln.x + 0.5 + (((p.id * 37) % 5) - 2) * 0.12, z: kiln.z + 0.5 + 0.42 } : seat(s, p, 1.45);
+      const st = kiln ? s.kilnSeat(kiln, p) : seat(s, p, 1.45);
       const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, RECIPE_KEYS.indexOf(key));
       // set aside now so others don't count it twice
       for (const [m, n] of Object.entries(rc.uses) as [keyof typeof rc.uses, number][]) c.stock[m] -= n;

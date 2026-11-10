@@ -1885,6 +1885,11 @@ export class Sim {
   kilnOf(c = this.camp) {
     return this.buildings.find((b) => b.band === c.id && b.kind === 'kiln' && b.built);
   }
+  /** Where a potter sits at the kiln: in front of its stoke hole (which turns with the kiln), a little apart from the others. */
+  kilnSeat(kiln: Building, p: Person) {
+    const a = (kiln.rot * Math.PI) / 2, side = (((p.id * 37) % 5) - 2) * 0.12;
+    return { x: kiln.x + 0.5 + Math.sin(a) * 0.42 + Math.cos(a) * side, z: kiln.z + 0.5 + Math.cos(a) * 0.42 - Math.sin(a) * side };
+  }
   /**
    * How well someone makes a thing: plain, good or fine, by how far they are into the craft (a kiln is
    * worth a few years' practice to a potter: it fires evenly).

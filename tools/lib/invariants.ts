@@ -5,7 +5,7 @@ import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, yearOf, seasonOf } from '../../src/sim/time';
 import { FAR_GRAVE } from '../../src/sim/ai';
-import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS, GARMENTS, isGarment, MEND_MAX, type RecipeKey } from '../../src/sim/band';
+import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, GOODS, GOODS_EACH, GOODS_OVER, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS, GARMENTS, isGarment, MEND_MAX, type RecipeKey } from '../../src/sim/band';
 import { dayOf } from '../../src/sim/time';
 import { knowHowFor } from '../../src/sim/know';
 
@@ -46,6 +46,18 @@ export class InvariantChecker {
       if (c.stock.bones > BONES_KEPT + 2) flag('more bones than are kept', `${at} ${c.name}: ${c.stock.bones}`);
       if (c.stock.trinkets > TRINKETS_KEPT + 2) flag('more teeth and shells than are kept', `${at} ${c.name}: ${c.stock.trinkets}`);
     }
+    // the band's goods: each made plain, good or fine; a bowl only ever on the pile; no more on the pile than the
+    // band keeps (with a little slack for a merge); one kiln to a band
+    for (const c of sim.liveCamps()) {
+      const n = sim.goodsOf(c).length, keep = sim.members(c).length * GOODS_EACH + GOODS_OVER;
+      if (n > keep * 2 + 4) flag('more goods on the pile than the band keeps', `${at} ${c.name}: ${n} of ${keep}`);
+      if (sim.buildings.filter((b) => b.band === c.id && b.kind === 'kiln').length > 1) flag('two kilns in one band', `${at} ${c.name}`);
+    }
+    for (const it of sim.items) if (GOODS.includes(it.kind)) {
+      if (it.quality !== undefined && ![0, 1, 2].includes(it.quality)) flag('goods of no known quality', `${at} ${it.kind} ${it.id} ${it.quality}`);
+      if (it.kind === 'bowl' && (it.holder >= 0 || it.wearer !== undefined || (it.tile ?? -1) !== -1)) flag('a bowl off the pile', `${at} ${it.id}`);
+      if (it.kind === 'beads' && it.holder >= 0) flag('beads in someone\'s hands', `${at} ${it.id}`);
+    }
     // a wild hive is a one-person job: two at once is a band falling over itself
     for (const c of sim.liveCamps()) if (sim.members(c).filter((p) => p.task?.kind === 'honey').length > 1) flag('two smoking out hives at once', `${at} ${c.name}`);
     for (const it of sim.items) if (it.wearer !== undefined) {
@@ -64,7 +76,8 @@ export class InvariantChecker {
       if ((it.mended ?? 0) > MEND_MAX) flag('mended past all patching', `${at} ${it.kind} ${it.id} ${it.mended}`);
       if (it.mender !== undefined && !sim.byId.get(it.mender)) flag('mended by nobody known', `${at} ${it.kind} ${it.id}`);
       const need = RECIPES[it.kind as RecipeKey]?.knows;
-      if (need && !c.knows.includes(need)) flag("tool the band doesn't know how to make", `${at} ${c.name}: ${it.kind}`);
+      // (something worn goes with its wearer to a new band, which need not know how to make it)
+      if (need && !c.knows.includes(need) && it.wearer === undefined) flag("tool the band doesn't know how to make", `${at} ${c.name}: ${it.kind}`);
       if (it.tile === -2 && !sim.people.some((p) => p.alive && p.task?.kind === 'trap' && p.task.route?.includes(it.id)))
         flag('trap in nobody\'s basket', `${at} ${it.kind} ${it.id}`);
       if (it.tile === -3 && !sim.people.some((p) => p.alive && p.task?.kind === 'gift' && p.task.good === it.id)) flag('beads set aside for a gift nobody is giving', `${at} ${it.kind} ${it.id}`);

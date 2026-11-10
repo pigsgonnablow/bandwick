@@ -522,6 +522,20 @@ describe('the band\'s goods', () => {
     expect(beads).toBeGreaterThan(0);
   });
 
+  it('sits the potter before the stoke hole whichever way the kiln was built facing', () => {
+    const s = fedBand();
+    const p = adult(s);
+    const at = (rot: number) => {
+      const kiln = { ...s.buildings.find((b) => b.band === s.camp.id && b.kind === 'stockpile')!, kind: 'kiln' as const, x: 10, z: 20, rot };
+      const st = s.kilnSeat(kiln, p);
+      return { dx: st.x - 10.5, dz: st.z - 20.5 };
+    };
+    // the stoke hole faces +z in the model; the kiln turns by quarter turns
+    const ahead = [at(0).dz, at(1).dx, -at(2).dz, -at(3).dx];
+    for (const d of ahead) expect(d).toBeCloseTo(0.42, 5);
+    for (let r = 0; r < 4; r++) expect(Math.hypot(at(r).dx, at(r).dz)).toBeLessThan(0.55);
+  });
+
   it('builds the kiln it has sited, from clay, stone and wood', () => {
     const s = fedBand();
     s.camp.knows.push('kiln');
