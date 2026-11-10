@@ -159,7 +159,7 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
   const builds = kinds('build');
   const STORY = new Set(['founding', 'discovery', 'famine', 'famine_end', 'winter', 'climate', 'hunt', 'fostering', 'injury', 'stillbirth', 'move',
     'split', 'move_camp', 'merge', 'gone', 'empty', 'exile', 'death_quarrel', 'fight', 'attack', 'epidemic', 'epidemic_end',
-    'murrain', 'blight', 'plenty', 'great_hunt', 'quiet', 'elder', 'known']);
+    'murrain', 'blight', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder', 'known']);
   const story: Seg[][] = [];
   for (const e of evs) {
     if (STORY.has(e.kind) || (e.kind === 'build' && e.weight >= 3)) story.push(linkify(e, byId));
@@ -282,7 +282,7 @@ const LANES = [
   { key: 'family', label: 'Births & bonds', color: '#199e70', kinds: ['birth', 'twins', 'pairing', 'fostering'] },
   { key: 'death', label: 'Deaths', color: '#e66767', kinds: ['death', 'stillbirth'] },
   { key: 'hard', label: 'Hard times', color: '#3987e5', kinds: ['famine', 'winter', 'climate', 'injury', 'epidemic', 'fight', 'attack', 'murrain', 'blight', 'death_quarrel'] },
-  { key: 'works', label: 'Good fortune & works', color: '#c98500', kinds: ['build', 'discovery', 'hunt', 'move', 'plenty', 'great_hunt', 'quiet', 'elder'] },
+  { key: 'works', label: 'Good fortune & works', color: '#c98500', kinds: ['build', 'discovery', 'hunt', 'move', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder'] },
   { key: 'bands', label: 'Bands', color: '#b3aa96', kinds: ['founding', 'split', 'move_camp', 'merge', 'gone', 'empty', 'exile'] },
 ];
 
