@@ -3,8 +3,10 @@
 import { describe, it, expect } from 'vitest';
 import { Building, PIG_LOST_DAYS, PIG_MEAT, PIG_MEAT_YOUNG, PIG_SOWS_KEPT } from '../../src/sim/band';
 import { DISCOVERY } from '../../src/sim/know';
-import { TICKS_PER_DAY, TICKS_PER_SEASON, TICKS_PER_YEAR } from '../../src/sim/time';
+import { TICKS_PER_DAY, TICKS_PER_SEASON, TICKS_PER_YEAR, dayOf } from '../../src/sim/time';
 import { Sim } from '../../src/sim/sim';
+import { abandon, runTask } from '../../src/sim/ai';
+import { gateOf } from '../../src/sim/pigs';
 import { addPig, feedPigs, killPig, pigsDaily, pigsOf, pigToKill, pigsWanted, packPigs, PIG_ID } from '../../src/sim/pigs';
 import { sim, runTo, runYears } from '../helpers';
 
@@ -193,5 +195,24 @@ describe('penned pigs', () => {
     const nc = s.camps.find((q) => q.parent === c.id && q.origin === 'moved')!;
     // (with whatever meat was in hand when they packed up)
     expect(nc.stock.meat).toBeGreaterThanOrEqual(meat * 0.8 - 1e-6);
+  });
+
+  it('count the day\'s round done only once they are fed: someone called away leaves it for another', () => {
+    const { s, c, pen } = keepers();
+    at(s, 3.5);
+    aged(s, addPig(s, c, pen, true, false), 2);
+    aged(s, addPig(s, c, pen, false, false), 2);
+    const p = s.members().find((q) => s.age(q) >= 18)!;
+    const gate = gateOf(pen);
+    const task = (stage: number, timer: number) => ({ kind: 'pigs' as const, stage, goal: s.tileOf(gate), gx: gate.x, gz: gate.z, ref: pen.id, timer, started: s.tick, amount: 0, near: false });
+    s.camp = c;
+    p.task = task(0, 0);
+    abandon(s, p);
+    p.task = null;
+    expect(c.pigRound).not.toBe(dayOf(s.tick));
+    p.task = task(1, 1);
+    runTask(s, p);
+    expect(c.pigRound).toBe(dayOf(s.tick));
+    expect(pigsOf(s, c).every((g) => g.fed === s.tick)).toBe(true);
   });
 });

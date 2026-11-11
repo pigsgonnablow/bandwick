@@ -297,7 +297,7 @@ export function decide(s: Sim, p: Person) {
     if (age >= 11 && !dark && (j.harvest ?? 0) > 0) add('harvest', j.harvest * drive * fit(p, SK.garden) * crowd('harvest'));
     // the pigs fed and the pen mucked out, once a day by one person: work for the older children as much as anyone
     // (and killing one for the stores is for a grown-up)
-    if (age >= 10 && !dark && (j.pigs ?? 0) > 0 && c.pigRound !== dayOf(s.tick) && busyWith(s, 'pigs') === 0)
+    if (age >= 10 && !dark && (j.pigs ?? 0) > 0 && c.pigRound !== dayOf(s.tick) && busyWith(s, 'pigs') === 0 && (age >= 16 || !pigToKill(s, c)))
       add('pigs', j.pigs * drive * fit(p, SK.garden) * (child ? 1.2 : 1));
     // grass and reeds for thatch and cordage: work the older children can do too
     if (age >= 9) add('reap', (j.fiber ?? 0) * drive * night * fit(p, SK.forage) * (child ? 1.15 : 1) * crowd('reap'));
@@ -680,7 +680,6 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
     case 'pigs': {
       const pen = s.penOf(c);
       if (!pen || !pigsOf(s, c).length) return null;
-      c.pigRound = dayOf(s.tick);
       const at = gateOf(pen);
       p.thought = 'Off to feed the pigs.';
       return newTask(s, kind, s.tileOf(at), at.x, at.z, pen.id);
@@ -822,12 +821,13 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
         p.thought = dog ? 'Taking the dog after the wild boar.' : 'Tracking wild boar through the woods.';
         const t = newTask(s, kind, s.tileOf(boar), boar.x, boar.z, boar.id, true);
         t.boar = true;
+        t.deadline = s.tick + 120 + (dog ? 30 : 0) + Math.round(hyp(boar.x - p.x, boar.z - p.z) / 0.3);
+        // (a piglet is worth a longer chase: they keep at it longer)
         if (piglets && boar.young) {
           t.alive = true;
-          t.deadline = s.tick + 160 + Math.round(hyp(boar.x - p.x, boar.z - p.z) / 0.3);
+          t.deadline += 40;
           p.thought = 'After the wild boar, to bring a piglet home alive for the pen.';
         }
-        t.deadline = s.tick + 120 + (dog ? 30 : 0) + Math.round(hyp(boar.x - p.x, boar.z - p.z) / 0.3);
         return t;
       }
       if (best < 0) return null;
@@ -2412,7 +2412,10 @@ export function runTask(s: Sim, p: Person) {
         const res = go(s, p, t);
         // (the way to the gate blocked: as near as they can get will do)
         if (res === 'fail' && !t.near) { t.near = true; p.path = null; return; }
-        if (res === 'fail') return finish(s, p);
+        if (res === 'fail') {
+          c.pigRound = dayOf(s.tick); // (no getting there today)
+          return finish(s, p);
+        }
         if (moving(res)) return;
         t.stage = 1;
         t.timer = Math.max(14, Math.round(32 * (1.2 - p.skills[SK.garden] * 0.02)));
@@ -2421,6 +2424,8 @@ export function runTask(s: Sim, p: Person) {
       p.act = t.timer % 12 < 6 ? ACT.Tend : ACT.Gather;
       face(p, pen.x + 0.5, pen.z + 0.5);
       if (--t.timer > 0) return;
+      // (the day's round done: if they are called away before this, someone else goes)
+      c.pigRound = dayOf(s.tick);
       const got = feedPigs(s, c);
       train(p, 'pigs');
       // a pig for the stores (a grown-up's work): stuck at the gate, bled, scalded and butchered there

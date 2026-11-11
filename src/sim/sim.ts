@@ -4824,7 +4824,7 @@ export class Sim {
         if (herd.length) {
           const fed = Math.max(...herd.map((g) => g.fed));
           lines.push(L('Fed', this.tick - fed < TICKS_PER_DAY * 1.2 ? 'This morning' : this.tick - fed < TICKS_PER_DAY * 3 ? 'A day or two ago' : 'Not for days: the pigs are growing thin'));
-          lines.push(L('Feed', `About ${Math.max(1, Math.round(pigFeed(this, this.camp)))} meals a day from the stores${seasonOf(this.tick) === 1 || seasonOf(this.tick) === 2 ? ' (they find most of their own in summer and autumn)' : ''}`));
+          lines.push(L('Feed', `${((f) => (f < 0.75 ? 'Less than a meal' : `About ${Math.round(f)} ${Math.round(f) === 1 ? 'meal' : 'meals'}`))(pigFeed(this, this.camp))} a day from the stores${seasonOf(this.tick) === 1 || seasonOf(this.tick) === 2 ? ' (they find most of their own in summer and autumn)' : ''}`));
         }
         const y = this.stores(this.camp).now;
         if (y.pigs.born + y.pigs.killed > 0) lines.push(L(`This year (${this.stores(this.camp).year})`, `${y.pigs.born} born, ${y.pigs.killed} killed for ${y.pigs.meat} meals of meat`));
