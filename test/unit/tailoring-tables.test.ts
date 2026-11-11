@@ -10,7 +10,7 @@ import { DISCOVERY } from '../../src/sim/know';
 import { condition } from '../../src/sim/sim';
 import { dressStyle } from '../../src/render/band';
 import { PHRASE, INTEREST } from '../../src/render/director';
-import { CARRYING, SLOT_WORDS, gearLine, warmthWords, clothesLine } from '../../src/ui/words';
+import { CARRYING, SLOT_WORDS, gearLine, warmthWords, clothesLine, TASK_PHRASE } from '../../src/ui/words';
 
 // (a necklace is worn but never made at the fire or handed out: it is given)
 const KINDS = (Object.keys(GARMENTS) as (keyof typeof GARMENTS)[]).filter((k): k is Exclude<keyof typeof GARMENTS, 'necklace'> => k !== 'necklace');
@@ -163,5 +163,11 @@ describe('what shows on a villager', () => {
     const json = JSON.parse(buf.subarray(20, 20 + len).toString('utf8'));
     const names = new Set<string>([...(json.nodes ?? []).map((n: { name: string }) => n.name), ...(json.meshes ?? []).map((m: { name: string }) => m.name)]);
     for (const k of ['villager__hat', 'villager__cape', 'villager__bag']) expect(names.has(k), k).toBe(true);
+  });
+});
+
+describe('the words over a busy head', () => {
+  it('say what each kind of work is', () => {
+    for (const k of TASK_KINDS) expect(TASK_PHRASE[k], k).toMatch(/^[a-z]/);
   });
 });

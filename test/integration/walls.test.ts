@@ -32,7 +32,8 @@ describe('walls', () => {
       }
     }
     expect(other).toBeGreaterThan(0);
-  });
+    // two worlds for eight years each: close to the usual minute on a busy machine
+  }, 180_000);
 
   it('picks wood when there is nothing else to hand', () => {
     const s = sim(3);

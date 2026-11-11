@@ -340,7 +340,7 @@ export const DISCOVERIES: Discovery[] = [
   },
   {
     // (someone carrying the grain into the stores, who has watched it go mouldy in the damp, thinks of a dry pit)
-    key: 'pits', label: 'Storage pits', needs: ['grain'], requires: [skill(SK.garden, 7), skill(SK.build, 8)],
+    key: 'pits', label: 'Storage pits', needs: ['grain'], requires: [skill(SK.garden, 7), skill(SK.build, 8)], near: 'mud',
     practice: { store_grain: 1 }, odds: 6,
     found: 'dug a pit by the stores, lined it with clay and grass, filled it with grain and sealed it: it came out dry and sweet in spring',
     taught: 'keep grain in lined storage pits', memory: 'Dug the first storage pit for grain.',

@@ -1,6 +1,6 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
-import type { Sim } from './sim';
+import type { Sim, Camp } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR,
   CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER } from './band';
@@ -459,7 +459,7 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const told = s.events.filter((e) => e.weight >= 3 && STORY_KINDS.includes(e.kind) && !/ stands\b/.test(e.text) && e.tick > p.birth + 8 * TICKS_PER_DAY * 48
         && e.tick < s.tick - 20 * TICKS_PER_DAY && e.people.some((id) => s.byId.get(id)?.band === p.band));
       const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z);
-      t.amount = told.length ? told[s.rAi.int(0, told.length - 1)].id : -1;
+      t.amount = told.length ? told[s.rAi.int(0, told.length)].id : -1;
       p.thought = `Telling ${storyOf(s, t.amount, p)}.`;
       return t;
     }
@@ -679,7 +679,7 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       // the traps to set out today go into the basket at the pile first
       let fetch = false;
       for (let k = 0; k < route.length; k += 3) {
-        const it = s.items.find((i) => i.id === route[k]);
+        const it = s.item(route[k]);
         if (route[k + 2] >= 0 && it && (it.tile ?? -1) === -1) {
           it.tile = -2;
           fetch = true;
@@ -944,7 +944,7 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
       t.amount = 0;
     }
     if (t.kind === 'gift' && t.good !== undefined) {
-      const bead = s.items.find((i) => i.id === t.good);
+      const bead = s.item(t.good);
       if (bead) delete bead.tile;
       delete t.good;
     }
@@ -1354,7 +1354,7 @@ function trapRoute(s: Sim): number[] {
   // the deadfalls first: the earths and lodges lie furthest out, and a round that ran out of daylight
   // on the near snares never reached them. Then the nearest of the rest, as many as a day allows
   // (those left over wait for tomorrow's round)
-  const isDeadfall = (st: number[]) => s.items.find((i) => i.id === st[0])?.kind === 'deadfall';
+  const isDeadfall = (st: number[]) => s.item(st[0])?.kind === 'deadfall';
   const d = [...order(checks.filter(isDeadfall), c.x, c.z), ...order(sets.filter(isDeadfall), c.x, c.z)];
   let at = d[d.length - 1];
   const a = order(checks.filter((st) => !isDeadfall(st)), at ? (at[1] % N) + 0.5 : c.x, at ? Math.floor(at[1] / N) + 0.5 : c.z);
@@ -1367,7 +1367,7 @@ function trapRoute(s: Sim): number[] {
 function untakeTraps(s: Sim, t: Task) {
   const route = t.route ?? [];
   for (let k = 0; k < route.length; k += 3) {
-    const it = s.items.find((i) => i.id === route[k]);
+    const it = s.item(route[k]);
     if (it?.tile === -2) delete it.tile;
   }
 }
@@ -1509,7 +1509,7 @@ export function runTask(s: Sim, p: Person) {
       }
       p.act = ACT.Sleep;
       // fresh grass to lie on: a deeper sleep than on the bare ground
-      const bed = p.indoors ? s.buildings.find((b) => b.id === t.ref) : undefined;
+      const bed = p.indoors ? s.building(t.ref) : undefined;
       const soft = (bed?.bedding ?? 0) > 0;
       p.rest = clamp(p.rest + (p.indoors ? 1.35 : 0.85) * (soft ? BED_REST : 1));
       p.thought = p.indoors ? (soft ? 'Asleep at home on fresh grass.' : 'Asleep at home.') : 'Asleep by the fire.';
@@ -1802,7 +1802,7 @@ export function runTask(s: Sim, p: Person) {
       return;
     }
     case 'bed': {
-      const b = s.buildings.find((q) => q.id === t.ref);
+      const b = s.building(t.ref);
       if (!b || !b.built) {
         // the grass goes back to the store (and only once)
         abandon(s, p);
@@ -1840,7 +1840,7 @@ export function runTask(s: Sim, p: Person) {
       return;
     }
     case 'sow': case 'tend': case 'harvest': {
-      const b = s.buildings.find((q) => q.id === t.ref);
+      const b = s.building(t.ref);
       const pl = b?.plot;
       if (t.stage === 2) {
         if (moving(go(s, p, t))) return;
@@ -1919,7 +1919,7 @@ export function runTask(s: Sim, p: Person) {
       return;
     }
     case 'mend': {
-      const it = s.items.find((i) => i.id === t.ref);
+      const it = s.item(t.ref);
       if (!it) return abandon(s, p);
       if (t.stage === 0) {
         if (moving(go(s, p, t))) return;
@@ -1982,7 +1982,7 @@ export function runTask(s: Sim, p: Person) {
       face(p, q.x, q.z);
       if (--t.timer > 0) return;
       t.amount = 0;
-      const bead = t.good !== undefined ? s.items.find((i) => i.id === t.good) : undefined;
+      const bead = t.good !== undefined ? s.item(t.good) : undefined;
       // (the beads they set aside are gone: there is nothing to give, and no teeth were strung)
       if (t.good !== undefined && !bead) {
         abandon(s, p);
@@ -2390,7 +2390,7 @@ export function runTask(s: Sim, p: Person) {
         p.act = ACT.Gather;
         if (--t.timer > 0) return;
         const k = (t.step ?? 0) * 3;
-        const it = s.items.find((i) => i.id === route[k]);
+        const it = s.item(route[k]);
         const action = route[k + 2];
         if (it && it.band === p.band) {
           if (action >= 0) {
@@ -2706,7 +2706,7 @@ export function runTask(s: Sim, p: Person) {
           if (s.nearestWolf(p.x, p.z).dist < 16) s.practise(p, 'wolves');
           if (boarNear(s, p, 22)) s.practise(p, 'boar');
           if (p.kills === 1) s.remember(p, 'first_kill', 18, 2, -1, 'Brought down their first deer.');
-          if (s.stats.kills === 1) s.event('hunt', `${p.name} brought down the band's first deer at ${s.camp.name}.`, [p.id], p.x, p.z, 3);
+          if (firstKill(s.camp, 'deer')) s.event('hunt', `${p.name} brought down the band's first deer at ${s.camp.name}.`, [p.id], p.x, p.z, 3);
           p.carry = CARRY.Meat;
           p.carryAmt = d.fawn ? 4 : 8;
           goStore(s, p, t, 1);
@@ -2775,7 +2775,7 @@ export function runTask(s: Sim, p: Person) {
       return;
     }
     case 'supply': {
-      const b = s.buildings.find((q) => q.id === t.ref);
+      const b = s.building(t.ref);
       if (!b || b.built) {
         // the wood goes back to the store, logs in hand included (and only once)
         abandon(s, p);
@@ -2805,7 +2805,7 @@ export function runTask(s: Sim, p: Person) {
       return;
     }
     case 'build': {
-      const b = s.buildings.find((q) => q.id === t.ref);
+      const b = s.building(t.ref);
       if (!b || b.built) return finish(s, p);
       if (t.stage === 0) {
         if (moving(go(s, p, t))) return;
@@ -2862,7 +2862,7 @@ export function runTask(s: Sim, p: Person) {
       return;
     }
     case 'preserve': {
-      const rack = s.buildings.find((q) => q.id === t.ref);
+      const rack = s.building(t.ref);
       if (!rack) {
         abandon(s, p);
         p.nextThink = s.tick;
@@ -3048,6 +3048,14 @@ function graveSpot(s: Sim) {
   return { x: c.x + 2.5, z: c.z + 2.5 };
 }
 
+/** Marks a kind of beast as hunted by this band: true the first time. */
+export function firstKill(c: Camp, kind: 'deer' | 'boar') {
+  const had = (c.hunted ??= []);
+  if (had.includes(kind)) return false;
+  had.push(kind);
+  return true;
+}
+
 export function completeBuilding(s: Sim, b: Building, p: Person) {
   b.built = true;
   b.finished = s.tick;
@@ -3137,7 +3145,7 @@ function huntBoar(s: Sim, p: Person, t: Task) {
     train(p, 'hunt.kill');
     s.practise(p, 'hunt');
     if (s.nearestWolf(p.x, p.z).dist < 16) s.practise(p, 'wolves');
-    if (s.stats.boarKills === 1) s.event('hunt', `${p.name} brought down the band's first wild boar at ${c.name}.`, [p.id], p.x, p.z, 3);
+    if (firstKill(c, 'boar')) s.event('hunt', `${p.name} brought down the band's first wild boar at ${c.name}.`, [p.id], p.x, p.z, 3);
     p.carry = CARRY.Meat;
     p.carryAmt = b.young ? 3 : 10;
     goStore(s, p, t, 1);

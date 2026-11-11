@@ -9,6 +9,7 @@ import { generateWorld } from '../../src/sim/worldgen';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, seasonOf } from '../../src/sim/time';
 import { InvariantChecker } from '../../tools/lib/invariants';
 import { sim, runTo } from '../helpers';
+import { firstKill } from '../../src/sim/ai';
 
 const empty = (): Stock => ({ berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0 });
 
@@ -337,6 +338,37 @@ describe('a feud', () => {
     expect(nc.stock.wood).toBeLessThanOrEqual(6);
   });
 
+  it('parts a killer driven out from the partner who stays behind, so each is free again', () => {
+    const s = sim(1);
+    const c = s.camp;
+    const [a, b] = s.members(c).filter((p) => s.age(p) >= 16 && p.partner < 0);
+    // a has a partner who wants nothing more to do with them
+    const w = s.members(c).find((q) => q !== a && q !== b && s.age(q) >= 16 && q.sex !== a.sex && !s.isKin(q, a))!;
+    const old = s.byId.get(w.partner);
+    if (old) old.partner = -1;
+    a.partner = w.id;
+    w.partner = a.id;
+    for (const p of [a, b]) p.traits = [];
+    a.health = 100;
+    b.health = 40;
+    a.rel.set(b.id, -90);
+    b.rel.set(a.id, -90);
+    for (const q of s.members(c)) if (q !== a && q !== b) q.rel.set(a.id, -20);
+    const r = (s as any).rLife;
+    const next = r.next;
+    r.next = () => 0.5;
+    try {
+      always(s, () => (s as any).feud(c, s.members(c)));
+    } finally {
+      r.next = next;
+    }
+    expect(a.band).not.toBe(c.id);
+    expect(w.band).toBe(c.id);
+    expect(a.partner).toBe(-1);
+    expect(w.partner).toBe(-1);
+    expect(w.memories.some((m) => m.kind === 'exiled' && m.subject === a.id)).toBe(true);
+  });
+
   it('is let lie by a band that still thinks well of the killer', () => {
     const { s, c, a, b } = feud(60);
     expect(b.alive).toBe(false);
@@ -480,5 +512,35 @@ describe('a save with several bands', () => {
     expect(b.campById(home.id)!.knows).toContain('huts');
     expect(b.campById(home.id)!.leanWinters).toBe(2);
     expect(b.events.map((e) => e.text)).toEqual(s.events.map((e) => e.text));
+  });
+});
+
+describe("a band's first kill", () => {
+  it('is its own: a second band still marks its first deer and boar after the first band has had theirs', () => {
+    const s = sim(1);
+    const a = s.camp;
+    expect(firstKill(a, 'deer')).toBe(true);
+    expect(firstKill(a, 'deer')).toBe(false);
+    expect(firstKill(a, 'boar')).toBe(true);
+    // a stranger band, owing nothing to the first
+    const b = s.foundCamp(a.tile, { ...a.stock }, -1, -1);
+    s.camp = a;
+    expect(firstKill(b, 'deer')).toBe(true);
+    expect(firstKill(b, 'boar')).toBe(true);
+    // a daughter band remembers what its parent had hunted
+    s.camp = a;
+    const d = s.foundCamp(a.tile, { ...a.stock }, a.id, -1);
+    s.camp = a;
+    expect(firstKill(d, 'deer')).toBe(false);
+  });
+
+  it('in a save from before, counts every band as having hunted what anyone had', () => {
+    const s = sim(1);
+    s.stats.kills = 3;
+    s.stats.boarKills = 0;
+    const save = JSON.parse(JSON.stringify(s.serialize())) as SaveData;
+    for (const c of save.camps!) delete c.hunted;
+    const b = new Sim(generateWorld(save.params), save);
+    expect(b.camp.hunted).toEqual(['deer']);
   });
 });
