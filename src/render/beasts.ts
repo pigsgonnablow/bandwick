@@ -28,7 +28,11 @@ const KINDS: Kind[] = [
   { name: 'boar', walk: 0.16, run: 0.42, runFrom: 0.9, runFull: 2.0, half: 0.07, size: 1, young: 0.5, print: 0.85 },
   { name: 'fox', walk: 0.17, run: 0.42, runFrom: 1.0, runFull: 2.2, half: 0.048, size: 1, young: 0.55, print: 0.5 },
   { name: 'beaver', walk: 0.07, run: 0.12, runFrom: 0.6, runFull: 1.2, half: 0.05, size: 1.6, young: 1.0, print: 0 },
+  // a penned pig, from the sim's pens (posed like the boar; a piglet in its first half-year drawn small)
+  { name: 'pig', walk: 0.15, run: 0.4, runFrom: 0.9, runFull: 2.0, half: 0.07, size: 1, young: 0.55, print: 0.85 },
 ];
+/** The kind number the sim gives a penned pig in the beasts' frame. */
+const PIG = 3;
 
 interface Shown {
   kind: number;
@@ -80,6 +84,12 @@ export class BeastLayer {
         parts: [['body', 0, [0, 0, 0]], ['head', 1, [0, 0.044, 0.040]], ['tail', 3, [0, 0.026, -0.062]], ['legFL', 4, [-0.019, 0.028, 0.030]],
           ['legFR', 5, [0.019, 0.028, 0.030]], ['legBL', 6, [-0.026, 0.034, -0.030]], ['legBR', 7, [0.026, 0.034, -0.030]]],
         hip: [0, 0.018, -0.026], poll: [0, 0.05, 0.06], pollFrom: 9, jaw: [0, 0, 0], sit: 1.15, lieDrop: 0.008, sitDrop: -0.004, stand: 0.03,
+      }),
+      // the pig is built on the boar's frame, so it moves the same (no stripes: a penned piglet is plain)
+      this.makeMesh(geoms, 'pig', 128, {
+        parts: [['body', 0, [0, 0, 0]], ['head', 1, [0, 0.130, 0.095]], ['tail', 3, [0, 0.128, -0.118]], ['legFL', 4, [-0.028, 0.098, 0.070]],
+          ['legFR', 5, [0.028, 0.098, 0.070]], ['legBL', 6, [-0.028, 0.104, -0.076]], ['legBR', 7, [0.028, 0.104, -0.076]]],
+        hip: [0, 0.104, -0.076], poll: [0, 0.14, 0.11], pollFrom: 9, jaw: [0, 0, 0], sit: 0.4, lieDrop: 0.052, sitDrop: 0.03, stand: 0.09,
       }),
     ];
     const plain = (key: string) => {
@@ -143,7 +153,7 @@ export class BeastLayer {
 
   /** Per render frame: `dt` real seconds, `cam` the middle of the view (effects only near it). */
   update(dt: number, now: number, follow: number, cam: THREE.Vector3) {
-    const n = [0, 0, 0];
+    const n = [0, 0, 0, 0];
     this.visible.length = 0;
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pq = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), xAxis = new THREE.Vector3(1, 0, 0);
     const pos = new THREE.Vector3(), scl = new THREE.Vector3();
@@ -161,7 +171,7 @@ export class BeastLayer {
       const moved = this.stride(b, K, ox, oz, dt, size);
       // the pose
       let pose: number = P.Stand, sit = 0, lie = 0, flag = 0;
-      if (b.kind === BEAST.Boar) {
+      if (b.kind === BEAST.Boar || b.kind === PIG) {
         pose = b.state === BOAR.Root ? P.Nose : b.state === BOAR.Lie ? P.Lie : b.state === BOAR.Charge ? P.Charge : b.moving > 0.1 ? P.Walk : P.Stand;
         lie = b.state === BOAR.Lie ? 1 : 0;
         flag = b.young ? 1 : 0;
@@ -309,7 +319,8 @@ export class BeastLayer {
     geo.setAttribute('iAnim2', new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4));
     const f = (x: number) => x.toFixed(4);
     const v3 = (v: number[]) => `vec3(${f(v[0])}, ${f(v[1])}, ${f(v[2])})`;
-    const kind = prefix === 'boar' ? 0 : prefix === 'fox' ? 1 : 2;
+    // (a pig is posed as a boar is)
+    const kind = prefix === 'boar' || prefix === 'pig' ? 0 : prefix === 'fox' ? 1 : 2;
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
     mat.customProgramCacheKey = () => `beast-${prefix}`;
     mat.onBeforeCompile = (sh) => {

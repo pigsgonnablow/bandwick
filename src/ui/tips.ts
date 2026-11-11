@@ -77,6 +77,7 @@ export const PERSON_ROW_TIPS: Record<string, string> = {
 
 /** Rows on the band panel on the left. */
 export const BAND_TIPS: Record<string, string> = {
+  Pigs: 'Pigs: the herd kept in the pen. They eat scraps and greens from the stores, their muck keeps the garden plots rich, and they give meat when the hunt fails.',
   Food: 'Food: how long the stores would feed everyone, with nothing more brought in. Food spoils, fastest in the warm months and out in the open; a storehouse and dried meat keep it longer.',
   Wood: 'Wood: firewood and timber at the stockpile, in loads one person can carry. The fire burns it day and night, more in winter; building uses it too.',
   Fiber: 'Fiber: grass and reeds cut for thatch and bedding, and cordage twisted from them for lashing and tools.',
@@ -127,6 +128,12 @@ export const CARD_TIPS: Record<string, string> = {
   Thread: 'Thread: hanks of nettle and grass fiber spun on a spindle by the fire, for weaving cloth at the loom.',
   Weaving: 'Weaving: who is at the loom now, and what they are weaving.',
   Cloth: 'Cloth: how many of the band have a woven tunic to wear and a blanket to sleep under.',
+  Pigs: 'Pigs: the herd in the pen. Sows farrow in spring, and in autumn the spare pigs are killed for the stores.',
+  Tending: 'Tending: who is working here today.',
+  Fed: 'Fed: when the pigs last had a full trough. Pigs left unfed for days grow thin and break out.',
+  Feed: 'Feed: greens, nuts, roots and grain the pigs eat from the stores each day. Grown pigs eat twice what piglets do.',
+  'Kept by': 'Kept by: the band whose pen this pig lives in.',
+  Pen: 'Pen: how many pigs share the pen, and how many are still young.',
   'Worn by': 'Worn by: who has it on. Clothes go to whoever needs them most when they are made.',
   'In the hands of': 'In the hands of: who is using it. It goes back on the pile when they are done.',
   Lies: 'Lies: on the stockpile, for anyone in the band to take.',

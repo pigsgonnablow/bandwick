@@ -313,6 +313,8 @@ export class BandLayer {
       // cut grass in a bundle, clay in a hide, a stone on the shoulder
       [CARRY.Fiber, 'fiber'], [CARRY.Mud, 'mud'], [CARRY.Stone, 'stone'], [CARRY.Roots, 'roots'], [CARRY.Nuts, 'nuts'], [CARRY.Herbs, 'herbs'],
       [CARRY.Eggs, 'eggs'], [CARRY.Honey, 'honey'], [CARRY.Mushrooms, 'mushrooms'], [CARRY.Grain, 'grain'], [CARRY.Greens, 'greens'],
+      // a piglet carried home from the hunt in the arms, for the pen
+      [CARRY.Piglet, 'piglet'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
@@ -329,7 +331,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom']) {
+      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -1816,6 +1818,7 @@ function carryOffset(kind: number) {
     case CARRY.Fish: p.set(0.078, 0.15, 0.02); e.set(0, Math.PI / 2, -1.2); break;
     case CARRY.Body: p.set(0, 0.215, 0.085); e.set(0, 0, 0); break; // held across the arms
     case CARRY.Baby: p.set(0, 0.23, 0.055); break;
+    case CARRY.Piglet: p.set(0, 0.225, 0.06); break; // held tight against the chest, wriggling
     case SNARE: p.set(0.075, 0.16, 0.04); break; // the coil in the fist, its stake hanging
     case FISHTRAP: p.set(0.075, 0.075, 0.04); e.set(Math.PI / 2, 0, 0); break; // by the tail, mouth down
     case BASKET: case BASKET_FULL: p.set(0.08, 0.16, 0.035); break; // hung from the fist by its handle
@@ -2028,7 +2031,7 @@ void holdCarry(inout Pose p, float act, float carry) {
   if (p.lie > 0.5 || carry < 0.5) return;
   if (carry < 1.5 || (carry > 2.5 && carry < 3.5) || (carry > 9.5 && carry < 10.5)) { p.shR = -1.55; p.elR = -1.95; } // log, meat, stone: on the right shoulder
   else if (carry > 4.5 && carry < 5.5) { p.shL = p.shR = -1.25; p.elL = p.elR = -1.35; }         // a body, in both arms
-  else if (carry > 6.5 && carry < 7.5) { p.shL = p.shR = -0.75; p.elL = p.elR = -1.45; }         // a baby, cradled
+  else if ((carry > 6.5 && carry < 7.5) || (carry > 18.5 && carry < 19.5)) { p.shL = p.shR = -0.75; p.elL = p.elR = -1.45; } // a baby, cradled (or a piglet held tight)
   else if (carry > 5.5 && carry < 6.5) {
     // a spear, held low; hunting (raised to throw) and fishing (poised over the water) hold it in their own poses
     if (!(act > 7.5 && act < 8.5) && !(act > 12.5 && act < 13.5)) { p.shR = -0.45; p.elR = -0.75; }

@@ -15,17 +15,18 @@ Conventions (read by src/render/band.ts):
       (rot and bonesRags region-coded like the villager; the rest real colours).
   fox__{...as the wolf}                                             a red fox from the same build, with its brush and black stockings.
   boar__{body,head,tail,legFL,legFR,legBL,legBR,stripes}            a wild boar, posed in the shader (a piglet's stripes shown on the young).
+  pig__{body,head,tail,legFL,legFR,legBL,legBR}                     a penned pig on the boar's frame (the same joints), posed by the same shader.
   beaver__{body,head,tail,legFL,legFR,legBL,legBR}                  a beaver, posed in the shader (waddling, swimming, gnawing).
   lodge__beaver, dam__beaver                                        a beaver lodge, and a dam across a river (along x), origin at the water.
   hare__{body,head,ears,fore,hind}                                 a brown hare in parts, posed in the shader (hopping, sitting up, nibbling).
-  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,grain,greens,basket,basketFull,hare} attached to a person's hands or shoulder.
+  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,grain,greens,piglet,basket,basketFull,hare} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
   pile__{bowl,beads,sash}                                         the band's goods on the stockpile: a patterned clay bowl, a string of beads lying coiled, a woven sash.
   boat__dugout                                                    the dugout the first band lands in (origin at the waterline, bow to -Y).
   item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace,bowl,beads,tunic,blanket,sash}  each made thing in real colours,
       for the picture in its window (the game fits it to the picture).
-  bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit,kiln,loom}  one tile footprint, centred on the origin
+  bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit,kiln,loom,pen}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
   bld__{plot,plotSown,plotRoots,plotGrain,plotRipe,plotStubble}  a garden plot through its year (bare or fallow, sown, roots in
@@ -954,6 +955,69 @@ sweep(q, [((0, -0.10, 0.178), 0.003, 0.002), ((0, -0.03, 0.174), 0.003, 0.002), 
 q.finish("boar__stripes")
 
 
+# ---------------------------------------------------------------- penned pig
+# A pig kept in a pen: bred from the wild boar and still much like one, but kept fat on scraps and acorns and
+# gone soft in the coat: a rounder, deeper barrel low to the ground, the bristly crest down to a ridge, a ginger-
+# brown coat with paler flanks and a dark saddle, a shorter face with a pink snout, bigger ears flopping forward
+# over the eyes, no tusks to speak of, and a thin tail with a curl in it. The same frame and joints as the boar,
+# so it is posed by the same shader (a piglet is the same pig drawn small; penned piglets are born plain).
+PIG_COAT, PIG_DARK, PIG_PALE = (150, 108, 72), (92, 66, 46), (196, 160, 120)
+PIG_SNOUT, PIG_EAR, PIG_HOOF = (196, 142, 128), (170, 120, 96), (52, 40, 32)
+rnd = random.Random(73)
+PIG_BODY = [(-0.112, 0.024, 0.026, 0.124), (-0.098, 0.046, 0.050, 0.118), (-0.068, 0.060, 0.062, 0.114), (-0.030, 0.064, 0.062, 0.110),
+            (0.012, 0.064, 0.060, 0.108), (0.050, 0.060, 0.056, 0.110), (0.084, 0.052, 0.050, 0.112), (0.108, 0.036, 0.036, 0.114),
+            (0.122, 0.014, 0.014, 0.116)]
+
+
+def pig_col(c):
+    if c.z < 0.066:
+        return PIG_PALE  # the belly, pale
+    if c.z > 0.150 and -0.07 < c.y < 0.06:
+        return PIG_DARK  # a dark saddle over the back
+    return PIG_COAT
+
+
+q = Part()
+loft_y(q, PIG_BODY, 12, pig_col)
+# what is left of the crest: a low ridge of bristle along the spine
+sweep(q, [((0, -0.106, 0.162), 0.004, 0.005), ((0, -0.070, 0.174), 0.005, 0.006), ((0, -0.020, 0.172), 0.004, 0.005)], 5, lambda c: PIG_DARK)
+q.finish("pig__body")
+
+q = Part()  # head: a thick neck, a shorter, dished face, the pink snout disc, eyes under big flopping ears
+head = [((0, -0.098, 0.130), 0.036, 0.040), ((0, -0.122, 0.122), 0.030, 0.032), ((0, -0.144, 0.110), 0.021, 0.022),
+        ((0, -0.162, 0.101), 0.0145, 0.0145), ((0, -0.174, 0.097), 0.0118, 0.0112)]
+sweep(q, head, 10, lambda c: PIG_DARK if c.z > 0.150 else PIG_PALE if c.z < 0.100 and c.y > -0.15 else PIG_COAT)
+q.blob((0, -0.1765, 0.097), (0.0128, 0.003, 0.0115), PIG_SNOUT, rnd, 0.03)  # the snout disc, pink
+for ex in (-1, 1):
+    q.box((ex * 0.0046, -0.1795, 0.098), (0.003, 0.0012, 0.0042), (96, 56, 52), rnd, 0.0)  # nostrils
+    q.box((ex * 0.0190, -0.132, 0.128), (0.003, 0.004, 0.003), (24, 18, 16), rnd, 0.0, rot=Matrix.Rotation(ex * 0.5, 3, "Z"))  # eye
+    # ears: broad, thin, flopping forward and out over the eyes
+    base = Vector((ex * 0.016, -0.110, 0.158))
+    a, b, tip = base + Vector((0, -0.010, 0.0)), base + Vector((0, 0.010, -0.002)), Vector((ex * 0.036, -0.140, 0.150))
+    th = Vector((0, 0, 0.003))
+    solid(q, [a, b, tip, a + th, b + th, tip + th * 0.6], [(0, 1, 2), (5, 4, 3), (0, 3, 4, 1), (1, 4, 5, 2), (2, 5, 3, 0)], PIG_EAR, raw=False)
+q.finish("pig__head")
+
+q = Part()  # the tail: thin, with a curl in it
+pts = [(0, 0.120, 0.130), (0.004, 0.128, 0.124), (0.008, 0.130, 0.114), (0.004, 0.128, 0.106), (-0.002, 0.131, 0.110), (0.0, 0.134, 0.118)]
+sweep(q, [(p_, 0.0032, 0.0032) for p_ in pts], 5, lambda c: PIG_COAT)
+q.finish("pig__tail")
+
+for name, x, y in (("legFL", -0.028, -0.070), ("legFR", 0.028, -0.070), ("legBL", -0.028, 0.076), ("legBR", 0.028, 0.076)):
+    q = Part()
+    if y < 0:  # foreleg: short and thick, down to the trotter
+        path = [((x, y, 0.098), 0.018, 0.022), ((x, y - 0.002, 0.064), 0.013, 0.014), ((x, y - 0.002, 0.036), 0.009, 0.0098),
+                ((x, y - 0.004, 0.016), 0.008, 0.0082)]
+    else:  # hind leg: a big round ham, the hock, the shank to the trotter
+        path = [((x, y - 0.004, 0.104), 0.024, 0.030), ((x, y + 0.006, 0.072), 0.015, 0.018), ((x, y + 0.010, 0.044), 0.0095, 0.0098),
+                ((x, y + 0.004, 0.024), 0.0082, 0.0082), ((x, y, 0.014), 0.008, 0.008)]
+    sweep(q, path, 7, lambda c: PIG_DARK if c.z < 0.036 else PIG_COAT)
+    py = path[-1][0][1]
+    for sx in (-1, 1):  # the two claws of the trotter
+        q.box((x + sx * 0.0036, py - 0.003, 0.006), (0.0064, 0.013, 0.012), PIG_HOOF, rnd, 0.0, taper=0.7)
+    q.finish(f"pig__{name}")
+
+
 # ---------------------------------------------------------------- beaver
 # A beaver: a heavy pear of a body in dark glossy brown, low to the ground; a blunt head with small round
 # ears, a dark nose and the orange chisel teeth showing; small forepaws and big webbed hind feet; and the
@@ -1481,6 +1545,23 @@ q = Part()
 q.blob((0, 0, 0), (0.035, 0.025, 0.03), (214, 200, 170), rnd, 0.03)
 q.blob((0, -0.03, 0.008), (0.018, 0.018, 0.018), (0, 1, 0), raw=True)
 q.finish("carry__baby")
+
+# a striped piglet carried home from the hunt, held against the chest: lying across the arms (along x), its head
+# to the left, legs tucked, the pale stripes of the wild young along its flanks
+q = Part()
+rnd = random.Random(74)
+q.blob((0, 0, 0), (0.05, 0.026, 0.028), BOAR_COAT, rnd, 0.05)
+q.blob((-0.05, -0.004, 0.006), (0.022, 0.018, 0.02), BOAR_COAT, rnd, 0.05)
+q.blob((-0.072, -0.006, 0.004), (0.008, 0.009, 0.008), BOAR_SNOUT, rnd, 0.03)
+for ex in (-1, 1):
+    q.blob((-0.044, ex * 0.012, 0.024), (0.007, 0.004, 0.009), BOAR_DARK, rnd, 0.04)  # ears
+for z0 in (-0.012, 0.0, 0.012):
+    for side in (-1, 1):
+        q.cyl(4, 0.003, 0.003, (-0.03, side * 0.0262, z0 + 0.006), (0.036, side * 0.0262, z0 + 0.004), (204, 178, 128), rnd, 0.0)
+for x in (-0.026, 0.026):
+    q.blob((x, -0.02, -0.022), (0.006, 0.006, 0.01), BOAR_DARK, rnd, 0.04)  # tucked legs
+q.cyl(4, 0.002, 0.0015, (0.048, 0, 0.004), (0.06, 0.002, -0.004), BOAR_COAT, rnd, 0.0)  # the tail
+q.finish("carry__piglet")
 
 ROPE_TIE = (120, 96, 60)
 HIDE_CARRY = (138, 104, 72)
@@ -3596,6 +3677,54 @@ for k in range(4):
 q.cyl(4, 0.0025, 0.0025, basket_at + Vector((-0.05, -0.02, 0.06)), basket_at + Vector((0.04, 0.03, 0.064)), WOOD, rnd, 0.03)
 q.cyl(8, 0.009, 0.009, basket_at + Vector((-0.036, -0.012, 0.0605)), basket_at + Vector((-0.032, -0.010, 0.0615)), LOOM_STONE[0], rnd, 0.03)  # the whorl
 q.finish("bld__loom")
+
+
+# ---------------------------------------------------------------- the pig pen
+# A pig pen by the gardens: a ring of wattle hurdles staked round the tile, with a gap at the front (-y) closed by
+# a loose hurdle for a gate. Inside, the ground trodden to mud; at the back on the right (+x, +y) a low sty, a
+# lean-to of thatch on forked posts over a bed of straw; at the front on the left a trough hollowed from a log,
+# with a scatter of acorns and greens in it.
+MUD_PEN, MUD_WET = (104, 82, 60), (84, 66, 50)
+q = Part()
+rnd = random.Random(92)
+PR = 0.46
+hurdle(q, (-PR, PR, 0), (PR, PR, 0), rnd, h=0.12)
+hurdle(q, (-PR, -PR, 0), (-PR, PR, 0), rnd, h=0.12)
+hurdle(q, (PR, -PR, 0), (PR, PR, 0), rnd, h=0.12)
+hurdle(q, (-PR, -PR, 0), (-0.1, -PR, 0), rnd, h=0.12, n=5)
+hurdle(q, (0.1, -PR, 0), (PR, -PR, 0), rnd, h=0.12, n=5)
+hurdle(q, (-0.12, -PR - 0.03, 0.0), (0.12, -PR - 0.03, 0.0), rnd, h=0.11, n=3)  # the gate, leaned across the gap
+for x in (-0.1, 0.1):
+    q.cyl(5, 0.011, 0.009, (x, -PR, -0.01), (x, -PR, 0.17), POLE, rnd)
+# the trodden mud of the pen floor, in patches, a little proud of the ground
+for k in range(9):
+    x, y = rnd.uniform(-0.32, 0.32), rnd.uniform(-0.32, 0.3)
+    q.blob((x, y, 0.0), (rnd.uniform(0.08, 0.14), rnd.uniform(0.07, 0.12), 0.006), MUD_WET if k % 3 == 0 else MUD_PEN, rnd, 0.06, noise=0.15)
+# the sty: a lean-to roof of thatch over the back right corner, high at the front, on four forked posts
+SX0, SX1, SY0, SY1 = 0.0, 0.42, 0.10, 0.42
+for x in (SX0 + 0.02, SX1 - 0.02):
+    forked_post(q, (x, SY0, 0), (x, SY0, 0.15), rnd, r=0.009)
+    forked_post(q, (x, SY1, 0), (x, SY1, 0.08), rnd, r=0.009)
+q.cyl(5, 0.008, 0.008, (SX0 - 0.02, SY0, 0.15), (SX1 + 0.02, SY0, 0.15), POLE, rnd)
+xs = [SX0 - 0.04 + (SX1 - SX0 + 0.08) * k / 6 for k in range(7)]
+ys = [SY0 - 0.05, SY0 + 0.1, SY1 + 0.02]
+sz = lambda y: 0.165 - (y - (SY0 - 0.05)) / (SY1 + 0.02 - (SY0 - 0.05)) * 0.08
+top = [[(x, y, sz(y) + (rnd.uniform(-0.004, 0.004) if i == 0 else 0)) for x in xs] for i, y in enumerate(ys)]
+bot = [[(x, y, z - 0.02) for x, y, z in row] for row in top]
+shell(q, top, bot, lambda i, k: jit(THATCH if (i + k) % 2 else THATCH_DK, rnd, 0.05), lambda i, k: THATCH_UNDER, THATCH_DK, rnd, 0.06)
+# straw bedding in under it
+for k in range(14):
+    x, y = rnd.uniform(SX0 + 0.04, SX1 - 0.04), rnd.uniform(SY0 + 0.02, SY1 - 0.03)
+    a = rnd.uniform(0, math.pi)
+    q.cyl(3, 0.003, 0.002, (x - math.cos(a) * 0.04, y - math.sin(a) * 0.04, 0.006), (x + math.cos(a) * 0.04, y + math.sin(a) * 0.04, 0.008), STRAW, rnd, 0.08, cap=False)
+q.blob(((SX0 + SX1) / 2, (SY0 + SY1) / 2, 0.0), (0.16, 0.12, 0.008), STRAW_GN, rnd, 0.06)
+# the trough: half a log, hollowed, lying along x by the gate, with a little feed in it
+TX0, TX1, TY = -0.32, -0.04, -0.2
+q.cyl(8, 0.028, 0.028, (TX0, TY, 0.022), (TX1, TY, 0.022), WOOD, rnd, 0.05)
+q.box(((TX0 + TX1) / 2, TY, 0.046), (TX1 - TX0 - 0.02, 0.036, 0.008), (64, 50, 36), rnd, 0.0)  # the hollow, dark
+for k in range(6):
+    q.blob((rnd.uniform(TX0 + 0.03, TX1 - 0.03), TY + rnd.uniform(-0.01, 0.01), 0.05), (0.008, 0.006, 0.005), (120, 92, 52) if k % 2 else (96, 120, 60), rnd, 0.05)
+q.finish("bld__pen")
 
 
 def tunic(q, rnd):

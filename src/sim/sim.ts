@@ -8,7 +8,7 @@ import {
 } from './types';
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
-  Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Wolf, Pack, WOLF, Beast, Den, Stock, SimEvent, Task, TaskKind, Memory,
+  Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Wolf, Pack, WOLF, Beast, Den, Pig, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, FURS_PER_CLOAK, FURS_KEPT, BEAST, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
   BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, REMAINS, ROT_FROM, BONES_FROM, remainsStage,
   QUALITY_WEAR, GOODS, GOODS_EACH, GOODS_OVER, WOOD_PLENTY, KILN_CRACK, HEARTH_CRACK,
@@ -21,6 +21,7 @@ import {
 } from './time';
 import { decide, runTask, abandon, sendHome, delivering, foodInHand, FAR_GRAVE } from './ai';
 import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard, deadfallNight, DEADFALL_RANGE } from './beasts';
+import { updatePigs, pigsDaily, packPigs, pigCard, penOf, pigsOf, pigsWanted, pigToKill, pigFeed, pigMeat, grown, PIG_ID } from './pigs';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets, ELITE } from './know';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
@@ -41,6 +42,8 @@ export const DAMP_BURN = 1.2;
 export const FIRE_HOLDS = 12;
 /** How far a fire's warmth reaches, and with a windbreak behind it. */
 export const WARM_RADIUS = 2.6;
+/** How far out hunters go after piglets for an empty pen (further than an everyday hunt). */
+export const PIGLET_RANGE = 55;
 /** the crafts beyond the everyday ones, and the discovery that gives the band a use for each (pottery has none yet) */
 const SKILL_SHOWN_BY: Partial<Record<number, string>> = { [SK.hide]: 'preserving', [SK.pot]: 'pottery', [SK.garden]: 'garden' };
 /** the most skill anyone starts with at anything */
@@ -228,6 +231,8 @@ export interface Camp {
   leanWinters?: number;
   /** the day someone last set out on the round of the band's traps */
   trapRound?: number;
+  /** the day someone last went out to feed the band's pigs */
+  pigRound?: number;
   /** winter days running the band's fire has been out with no wood to light it */
   coldDays?: number;
   /** the day an elder last told a story by the band's fire */
@@ -295,6 +300,8 @@ export class Sim {
   packs: Pack[] = [];
   /** wild boar, foxes and beavers, and the sounders' ranges, earths and lodges they belong to */
   beasts: Beast[] = [];
+  /** the pigs the bands keep in their pens */
+  pigs: Pig[] = [];
   dens: Den[] = [];
   /** every band that has ever had a camp, in order of founding */
   camps: Camp[] = [];
@@ -307,6 +314,7 @@ export class Sim {
   rWild: Rng;
   rWolf: Rng;
   rBeast: Rng;
+  rPig: Rng;
   anomaly = 0;
   private nextId = 1;
   /** A fresh id for a camp, building, person or thing. */
@@ -389,6 +397,7 @@ export class Sim {
     this.rWild = Rng.stream(seed, 'wild');
     this.rWolf = Rng.stream(seed, 'wolves');
     this.rBeast = Rng.stream(seed, 'beasts');
+    this.rPig = Rng.stream(seed, 'pigs');
     this.tongue = new Tongue(Rng.stream(seed, 'tongue'));
     // props
     const cap = world.propCount + 4096;
@@ -495,7 +504,7 @@ export class Sim {
       params: { ...this.world.params },
       worldHash: this.world.hash,
       tick: this.tick, anomaly: this.anomaly, nextId: this.nextId, nextEvent: this.nextEvent, eventHash: this.eventHash,
-      rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState(), wolves: this.rWolf.getState(), beasts: this.rBeast.getState() },
+      rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState(), wolves: this.rWolf.getState(), beasts: this.rBeast.getState(), pigs: this.rPig.getState() },
       props: {
         count: n,
         type: pick(this.propType), x: pick(this.propX), y: pick(this.propY), z: pick(this.propZ), rot: pick(this.propRot),
@@ -532,6 +541,7 @@ export class Sim {
       packs: this.packs.map((k) => ({ ...k })),
       beasts: this.beasts.map((b) => ({ ...b })),
       dens: this.dens.map((d) => ({ ...d })),
+      pigs: this.pigs.map((g) => ({ ...g })),
     };
   }
 
@@ -563,6 +573,7 @@ export class Sim {
     this.rWild.setState(d.rng.wild);
     if (d.rng.wolves) this.rWolf.setState(d.rng.wolves);
     if (d.rng.beasts) this.rBeast.setState(d.rng.beasts);
+    if (d.rng.pigs) this.rPig.setState(d.rng.pigs);
     this.tongue.r.setState(d.rng.tongue);
     // props: replace the freshly generated ones with the saved, lived-in set
     const n = d.props.count;
@@ -677,6 +688,8 @@ export class Sim {
       this.beasts = d.beasts;
       this.dens = d.dens;
     } else placeBeasts(this);
+    // (and from before the pigs)
+    this.pigs = d.pigs ?? [];
     this.propsVersion++;
     this.buildingsVersion++;
   }
@@ -1250,6 +1263,7 @@ export class Sim {
     this.updateDeer();
     this.updateWolves();
     updateBeasts(this);
+    updatePigs(this);
   }
 
   /** Who carries an infant about: their mother, else their father, else whoever took them in. */
@@ -2148,6 +2162,7 @@ export class Sim {
     this.packsDaily(dayOfYear);
     this.dogsDaily();
     beastsDaily(this, dayOfYear);
+    pigsDaily(this);
     this.traps();
     this.dressAndBed();
     // each band's own day: stores, births and deaths, and the morning plan
@@ -2334,7 +2349,11 @@ export class Sim {
     this.book('garden.raided', 1, c);
     if (!news) return;
     this.event('garden_raid', `${raider} got into a garden plot at ${c.name} in the night${raider === 'Wild boar' ? ' and rooted it up' : ''}.`, [], cx, cz, 1.5);
-    for (const p of this.members(c)) if (this.age(p) >= 14 && p.skills[SK.garden] >= 4) this.practise(p, 'raided');
+    for (const p of this.members(c)) if (this.age(p) >= 14 && p.skills[SK.garden] >= 4) {
+      this.practise(p, 'raided');
+      // (a sounder that comes for the roots in the plots sets a hunter among the gardeners thinking of penning one)
+      if (raider === 'Wild boar' && this.knows('boar', c)) this.practise(p, 'piglet', 0.5);
+    }
   }
 
   private berries(dayOfYear: number) {
@@ -2873,6 +2892,13 @@ export class Sim {
     const lead = this.byId.get(c.leader)?.alive && this.byId.get(c.leader)!.band === c.id ? this.byId.get(c.leader)! : adults[0] ?? ms[0];
     // wood and food set aside for a job (or carried in) go back to the stores before they are packed up
     for (const p of ms) abandon(this, p);
+    // the pigs can't be driven so far: they are killed and go with the stores
+    const herd = pigsOf(this, c);
+    if (herd.length) {
+      for (const g of herd) c.stock.meat += pigMeat(this, g);
+      this.book('pigs.killed', herd.length, c);
+      this.pigs = this.pigs.filter((g) => g.band !== c.id);
+    }
     const stock = { ...c.stock };
     for (const k of Object.keys(stock) as (keyof Stock)[]) stock[k] *= 0.8; // not everything can be carried
     const nc = this.foundCamp(site, stock, c.id, lead.id);
@@ -3217,7 +3243,7 @@ export class Sim {
       const food2 = (pre: string) => Math.round(food(pre));
       return {
         gathered: { berries: g('gathered.berries'), meat: g('gathered.meat'), fish: g('gathered.fish'), roots: g('gathered.roots'), nuts: g('gathered.nuts'), eggs: g('gathered.eggs'), honey: g('gathered.honey'), mushrooms: g('gathered.mushrooms'), grain: g('gathered.grain'), greens: g('gathered.greens'), wood: g('gathered.wood'), fiber: g('gathered.fiber') },
-        twisted: g('twisted'), spun: g('spun'), thatch: g('built.fiber'), lashed: g('built.cordage'),
+        twisted: g('twisted'), spun: g('spun'), pigs: { born: g('pigs.born'), killed: g('pigs.killed'), meat: g('pigs.meat'), fed: g('pigs.fed') }, thatch: g('built.fiber'), lashed: g('built.cordage'),
         food: food2('gathered'),
         eaten: food2('eaten'), spoiled: food2('spoiled'), dried: g('dried'), burned: g('burned'), built: g('built'),
         carried: g('carried'), brought: g('brought'),
@@ -3293,6 +3319,9 @@ export class Sim {
     // thread spun for the loom by anyone who can spin, in the hours to spare (and a few hanks to try the spindle before there is one)
     const spin = threadShort > 0 && c.stock.fiber - owed('fiber') >= FIBER_PER_THREAD && !c.rationing && !woodShort;
     const make = this.toolToMake(c);
+    // the band's pigs, and whether one is for the stores today
+    const herd = pigsOf(this, c), killPig = !!pigToKill(this, c);
+    const pigletsOut = this.knows('boar', c) && pigsWanted(this, c) && this.beasts.some((b) => b.alive && b.young && b.kind === BEAST.Boar && hyp(b.x - c.x, b.z - c.z) < PIGLET_RANGE);
     const unarmed = !this.toolsOf(c).some((i) => i.kind === 'axe' || i.kind === 'chopper');
     const traps = this.trapsWanted(c, foodP);
     const today = dayOf(this.tick);
@@ -3371,6 +3400,11 @@ export class Sim {
       tend: toTend ? 0.55 + Math.min(0.3, toTend * 0.05) : 0,
       // (a ripe crop left in the ground is food lost to the frost: it comes before almost anything)
       harvest: ripe ? 1.0 + (s > 2.6 ? 0.2 : 0) : 0,
+      // the pigs fed and the pen mucked out: once a day, by one person (more pressing in the lean months, when
+      // the pigs have only what they are given)
+      pigs: c.pigRound !== today && herd.length ? (winterNow || s < 1 ? 0.75 : 0.55) : 0,
+      // a hunter sent out after the striped piglets while the sounders have them at heel, for an empty pen
+      piglets: pigletsOut ? 0.65 : 0,
     };
     c.plan = [];
     if (c.rationing) c.plan.push('Ration the stores until spring');
@@ -3396,6 +3430,8 @@ export class Sim {
     }
     if (spin) c.plan.push(this.loomOf(c) ? 'Spin thread for the loom' : 'Spin thread on the new spindles');
     if (make === 'tunic' || make === 'blanket') c.plan.push(make === 'tunic' ? 'Weave tunics at the loom' : 'Weave blankets at the loom');
+    if (herd.length) c.plan.push(killPig ? 'Feed the pigs, and kill one for the stores' : 'Feed the pigs and muck out the pen');
+    if (pigletsOut) c.plan.push('Bring piglets home alive from the boar hunt, for the pen');
     if (woodPlenty) c.plan.push('The woodpile is full: the wood is left to the woodcutters');
 
     this.craftNames(c);
@@ -3499,6 +3535,15 @@ export class Sim {
         this.clearTile(tile);
         this.newBuilding('loom', tile, -1);
         c.plan.push('Build a loom shed for the weavers');
+      }
+    }
+    // and a pig pen by the gardens, once the band knows how to keep pigs
+    if (this.knows('pigs', c) && !this.bandBuildings(c).some((b) => b.kind === 'pen')) {
+      const tile = this.siteFor('pen', null);
+      if (tile >= 0) {
+        this.clearTile(tile);
+        this.newBuilding('pen', tile, -1);
+        c.plan.push('Build a pen for the pigs');
       }
     }
   }
@@ -3806,7 +3851,7 @@ export class Sim {
         if (this.buildings.some((b) => Math.abs(b.x - x) <= 1 && Math.abs(b.z - z) <= 1)) continue;
         if (i === this.camp.graveyard) continue;
         const d = hyp(dx, dz);
-        const want = kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'loom' ? 3.6 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
+        const want = kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'loom' ? 3.6 : kind === 'pen' ? 4.8 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
         let sc = -Math.abs(d - want) * 1.6;
         if (w.level[i] !== w.level[this.camp.tile]) sc -= 2.5;
         sc -= this.treesOnTile[i] * 1.2;
@@ -4234,11 +4279,36 @@ export class Sim {
     }
   }
 
+  /** The wild beasts, and after them the penned pigs (in the same layout, under ids of their own). */
   packBeasts() {
-    return packBeasts(this);
+    const wild = packBeasts(this);
+    if (!this.pigs.length) return wild;
+    const pigs = packPigs(this), out = new Float32Array(wild.length + pigs.length);
+    out.set(wild);
+    out.set(pigs, wild.length);
+    return out;
   }
   packDens() {
     return packDens(this);
+  }
+  /** The band's pigs in a few words: "7 pigs: 3 sows, a boar and 3 piglets" ('' for none). */
+  pigsLine(c = this.camp) {
+    const herd = pigsOf(this, c);
+    if (!herd.length) return '';
+    const sows = herd.filter((g) => g.sow && grown(this, g)).length, boars = herd.filter((g) => !g.sow && grown(this, g)).length, young = herd.length - sows - boars;
+    const n = (k: number, one: string, many: string) => (k === 1 ? `${one === 'boar' ? 'a' : 'one'} ${one}` : `${k} ${many}`);
+    const parts = [sows && n(sows, 'sow', 'sows'), boars && n(boars, 'boar', 'boars'), young && n(young, 'piglet', 'piglets')].filter(Boolean) as string[];
+    return `${herd.length} ${herd.length === 1 ? 'pig' : 'pigs'}: ${parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]}`;
+  }
+  /** The band's built pig pen, if it has one; its pigs; and whether its hunters should bring piglets home alive. */
+  penOf(c = this.camp) {
+    return penOf(this, c);
+  }
+  pigsOf(c = this.camp) {
+    return pigsOf(this, c);
+  }
+  pigsWanted(c = this.camp) {
+    return pigsWanted(this, c);
   }
   static WOLF_STRIDE = 6;
   /** The wolves, for the renderer: id, where, a point it faces, its state (plus 10 for a cub). */
@@ -4424,6 +4494,8 @@ export class Sim {
       clothes: Object.fromEntries(Object.keys(GARMENTS).map((k) => [k, living.filter((p) => this.wornBy(p).some((it) => it.kind === k)).length])) as Record<GarmentKind, number>,
       food: Math.round(food),
       foodDays: food / Math.max(1, meals),
+      /** the band's pigs, in words ('' for none) */
+      pigs: this.pigsLine(c),
       stock: { ...c.stock },
       fuel: this.hearth(c).fuel,
       homes: mine.filter((b) => (b.kind === 'hut' || b.kind === 'leanto') && b.built).length,
@@ -4498,6 +4570,12 @@ export class Sim {
         notes: [`Wolves have brought down ${this.stats.wolfKills ?? 0} deer. They keep clear of people and of the camp fires, and howl at dusk.`],
         x: w.x, z: w.z, gone: !w.alive,
       };
+    }
+    if (ref.kind === 'beast' && ref.id >= PIG_ID) {
+      const g = this.pigs.find((q) => q.id === ref.id - PIG_ID);
+      if (!g) return null;
+      const c = pigCard(this, g);
+      return { ref, title: c.title, subtitle: 'Penned pig', lines: c.lines.map(([k, v]) => L(k, v)), notes: [c.note], x: g.x, z: g.z, gone: false };
     }
     if (ref.kind === 'beast') {
       const b = this.beasts.find((q) => q.id === ref.id);
@@ -4681,6 +4759,7 @@ export class Sim {
         }
         if ((this.camp.seed ?? 0) >= 0.5) lines.push(L('Seed grain', `${Math.round(this.camp.seed!)} meals' worth, kept back to sow`));
         if (st.hides >= 0.5) lines.push(L('Hides', `${Math.floor(st.hides)}, kept for cloaks`));
+        if (this.pigsLine(this.camp)) lines.push(L('Pigs', `${this.pigsLine(this.camp)}, in the pen`));
         if (st.furs >= 0.5) lines.push(L('Pelts', `${Math.floor(st.furs)}, fox and beaver, kept for fur cloaks`));
         if (st.thread >= 0.5) lines.push(L('Thread', `${Math.floor(st.thread)} ${Math.floor(st.thread) === 1 ? 'hank' : 'hanks'}, spun for the loom`));
         if (st.herbs >= 0.5) lines.push(L('Herbs', `${Math.floor(st.herbs)} bundles, dried for fevers`));
@@ -4736,6 +4815,20 @@ export class Sim {
         const has = (k: Slot) => ms.filter((p) => p.worn?.[k] !== undefined).length;
         lines.push(L('Cloth', `${has('torso')} of ${ms.length} in tunics, ${has('bed')} with blankets`));
         notes.push(`An upright loom under a thatched roof: a beam on two posts, the threads hanging from it weighted with stones. Tunics, blankets and patterned sashes are woven here from thread spun by the fire.`);
+      }
+      if (b.kind === 'pen' && b.built) {
+        const herd = pigsOf(this, this.camp);
+        lines.push(L('Pigs', this.pigsLine(this.camp) || 'None yet: the hunters bring piglets home alive from the boar hunt'));
+        const tender = this.people.find((p) => p.alive && p.task?.kind === 'pigs' && p.task.ref === b.id);
+        if (tender) lines.push(L('Tending', tender.name, pref(tender.id)));
+        if (herd.length) {
+          const fed = Math.max(...herd.map((g) => g.fed));
+          lines.push(L('Fed', this.tick - fed < TICKS_PER_DAY * 1.2 ? 'This morning' : this.tick - fed < TICKS_PER_DAY * 3 ? 'A day or two ago' : 'Not for days: the pigs are growing thin'));
+          lines.push(L('Feed', `About ${Math.max(1, Math.round(pigFeed(this, this.camp)))} meals a day from the stores${seasonOf(this.tick) === 1 || seasonOf(this.tick) === 2 ? ' (they find most of their own in summer and autumn)' : ''}`));
+        }
+        const y = this.stores(this.camp).now;
+        if (y.pigs.born + y.pigs.killed > 0) lines.push(L(`This year (${this.stores(this.camp).year})`, `${y.pigs.born} born, ${y.pigs.killed} killed for ${y.pigs.meat} meals of meat`));
+        notes.push('A ring of wattle hurdles with a thatched sty in one corner. The pigs are fed each morning, the sows farrow in spring, and in the autumn the pigs the band can\'t keep through the winter are killed for the stores. The muck from the pen goes on the gardens, and a plot dug with it tires more slowly.');
       }
       if (b.kind === 'rack') {
         lines.push(L('Dried food', `${Math.round(this.camp.stock.preserved)} meals`));
@@ -5119,7 +5212,7 @@ export interface SaveData {
   nextEvent: number;
   eventHash: number;
   /** (saves from before the wolves have no `wolves` stream; it starts afresh) */
-  rng: { life: number[]; ai: number[]; wild: number[]; tongue: number[]; wolves: number[]; beasts: number[] };
+  rng: { life: number[]; ai: number[]; wild: number[]; tongue: number[]; wolves: number[]; beasts: number[]; pigs: number[] };
   props: { count: number; type: string; x: string; y: string; z: string; rot: string; scale: string; alive: string; val: string; tile: string };
   propNote: Entries<number, string>;
   reserved: Entries<number, number>;
@@ -5153,6 +5246,8 @@ export interface SaveData {
   /** absent in saves from before the boar, foxes and beavers */
   beasts?: Beast[];
   dens?: Den[];
+  /** absent in saves from before the pigs */
+  pigs?: Pig[];
 }
 
 /** Typed array bytes as base64 (works in browsers, workers and Node). */

@@ -6,7 +6,7 @@ export const CARRYING: Record<number, string> = {
   [CARRY.Log]: 'a log', [CARRY.Berries]: 'berries', [CARRY.Meat]: 'meat', [CARRY.Fish]: 'fish',
   [CARRY.Body]: 'the body of the dead', [CARRY.Spear]: 'a spear', [CARRY.Baby]: 'a baby', [CARRY.Fiber]: 'grass and cordage', [CARRY.Mud]: 'a basket of mud', [CARRY.Stone]: 'stone',
   [CARRY.Roots]: 'roots', [CARRY.Nuts]: 'a bag of acorns', [CARRY.Herbs]: 'healing herbs', [CARRY.Eggs]: 'eggs from a nest', [CARRY.Honey]: 'honeycomb',
-  [CARRY.Mushrooms]: 'a basket of mushrooms', [CARRY.Grain]: 'a sheaf of grain', [CARRY.Greens]: 'greens from the garden',
+  [CARRY.Mushrooms]: 'a basket of mushrooms', [CARRY.Grain]: 'a sheaf of grain', [CARRY.Greens]: 'greens from the garden', [CARRY.Piglet]: 'a piglet for the pen',
 };
 
 /** Where on the body something is worn, as the Gear tab says it. */
@@ -48,5 +48,5 @@ export const TASK_PHRASE: Record<TaskKind, string> = {
   migrate: 'on the way to camp', reap: 'cutting grass', dig: 'digging', quarry: 'quarrying stone', watch: 'watching and learning',
   tell: 'telling a story', listen: 'listening to a story', bed: 'laying fresh bedding', roots: 'digging roots', nuts: 'gathering acorns',
   herbs: 'gathering herbs', nurse: 'tending the sick', gift: 'giving a gift', feast: 'at the feast', eggs: 'looking for eggs',
-  honey: 'smoking out a hive', mushrooms: 'picking mushrooms', mend: 'mending', sow: 'sowing', tend: 'weeding the garden', harvest: 'bringing in the harvest',
+  honey: 'smoking out a hive', mushrooms: 'picking mushrooms', mend: 'mending', sow: 'sowing', tend: 'weeding the garden', harvest: 'bringing in the harvest', pigs: 'tending the pigs',
 };
