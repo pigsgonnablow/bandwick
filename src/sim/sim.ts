@@ -11,6 +11,7 @@ import {
   Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Wolf, Pack, WOLF, Beast, Den, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, FURS_PER_CLOAK, FURS_KEPT, BEAST, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
   BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, REMAINS, ROT_FROM, BONES_FROM, remainsStage,
+  QUALITY_WEAR, GOODS, GOODS_EACH, GOODS_OVER, WOOD_PLENTY, KILN_CRACK, HEARTH_CRACK,
   CROP, CROP_NAMES, newPlot, GROW_DAYS, PLOT_YIELD, SEED_PER_PLOT, GREENS_PER_DAY, GREENS_LOAD, LEAN_GARDEN, PLENTY_GARDEN, SOIL_REST, SOIL_FALLOW,
 } from './band';
 import {
@@ -19,7 +20,7 @@ import {
 } from './time';
 import { decide, runTask, abandon, sendHome, delivering, foodInHand, FAR_GRAVE } from './ai';
 import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard, deadfallNight, DEADFALL_RANGE } from './beasts';
-import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets } from './know';
+import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets, ELITE } from './know';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 const TREE_TYPES = SPECIES.length * STAGES * TREE_VARIANTS;
@@ -122,12 +123,14 @@ const ITEM_USE: Record<ItemKind, string> = {
   chopper: 'trees felled', axe: 'trees felled', stick: 'trips with it', snare: 'days set', fishtrap: 'days set',
   basket: 'trips with it', pot: 'days of holding food', cloak: 'cold days', needle: 'things sewn', hat: 'cold days',
   mittens: 'cold days', shoes: 'stretches of walking', cape: 'cold days', bag: 'loads carried', necklace: 'years worn', deadfall: 'days set', furcloak: 'cold days',
+  bowl: 'days in use', beads: 'years worn',
 };
 /** What kind of thing it is, in a few words. */
 const ITEM_ABOUT: Record<ItemKind, string> = {
   chopper: 'a tool', axe: 'a tool', stick: 'a tool', snare: 'a trap', fishtrap: 'a trap', basket: 'for gathering',
   pot: 'for the stores', cloak: 'clothing', needle: 'a tool', hat: 'clothing', mittens: 'clothing', shoes: 'clothing',
   cape: 'clothing', bag: 'for gathering', necklace: 'an ornament', deadfall: 'a trap', furcloak: 'clothing',
+  bowl: 'one of the band\'s goods', beads: 'one of the band\'s goods',
 };
 /** How it is made and how long it lasts. */
 const ITEM_NOTE: Record<ItemKind, string> = {
@@ -148,7 +151,11 @@ const ITEM_NOTE: Record<ItemKind, string> = {
   necklace: 'Teeth and shells strung on a cord and given to someone dear. It is worn for pride and remembrance, and goes into the grave with its wearer.',
   deadfall: 'A heavy log propped on a figure-four of notched sticks, baited and set at a fox earth or on a beaver path up the bank. It lasts a season or two of rain.',
   furcloak: 'Fox and beaver pelts matched and sewn fur-out into a mantle. Much warmer than a hide cloak, it lasts three or four winters.',
+  bowl: 'Clay coiled into a bowl, burnished smooth and pressed with the band\'s pattern before it was fired. It is eaten from every day, set out at the midwinter feast, given away, and laid in the graves of the dead.',
+  beads: 'Pebbles ground smooth and drilled, strung on a cord. Made in the hours the band had to spare, they are given to someone dear, worn at the neck, and go into the grave with their wearer.',
 };
+/** How well a thing was made, for its card. */
+const QUALITY_WORDS = ['Plain: the work of someone still learning the craft', 'Good: the work of someone who knows the craft', 'Fine: the work of a master of the craft'];
 const SLOT_PLACE: Record<Slot, string> = { body: 'The shoulders and back', head: 'The head', hands: 'The hands', feet: 'The feet', shoulder: 'Over the shoulder', neck: 'Around the neck' };
 const MATERIAL_ONE: Record<string, string> = { furs: 'pelt', hides: 'hide', bones: 'bone', cordage: 'cordage', stone: 'stone', wood: 'wood', fiber: 'fiber', mud: 'mud' };
 
@@ -1557,7 +1564,8 @@ export class Sim {
   }
   /** A use: a little more worn. Returns true when it breaks (and is gone). */
   wearTool(it: Item) {
-    it.wear += 1 / ITEMS[it.kind].uses;
+    // a well-made thing wears slower
+    it.wear += 1 / ITEMS[it.kind].uses / (1 + (it.quality ?? 0) * QUALITY_WEAR);
     if (it.wear < 0.999) return false;
     this.items.splice(this.items.indexOf(it), 1);
     // worn through on someone's back: they wear nothing there now
@@ -1677,6 +1685,10 @@ export class Sim {
       }
     }
     for (const c of this.liveCamps()) this.handOut(c);
+    // the bowls on the pile are eaten from every day, and one day chip and crack
+    for (const it of this.items.slice()) if (it.kind === 'bowl' && it.holder < 0 && it.wearer === undefined) this.wearTool(it);
+    // beads set aside for a gift that was never given (the giver died, or the save was from mid-walk) go back with the goods
+    for (const it of this.items) if (it.kind === 'beads' && it.tile === -3 && !this.people.some((p) => p.alive && p.task?.kind === 'gift' && p.task.good === it.id)) delete it.tile;
     for (const b of this.buildings) if ((b.bedding ?? 0) > 0) {
       b.bedding = Math.max(0, b.bedding! - 1);
       if (!b.bedding) this.buildingsVersion++;
@@ -1742,6 +1754,15 @@ export class Sim {
     this.items.push(it);
     this.dress(p, it);
     return it;
+  }
+  /** One of the band's goods given to someone to wear (a string of beads): whatever they wore at the neck is put away. */
+  giveGood(p: Person, it: Item, giver: number) {
+    const old = this.wornIn(p, 'neck');
+    if (old) this.items.splice(this.items.indexOf(old), 1);
+    delete it.tile;
+    it.giver = giver;
+    it.band = p.band;
+    this.dress(p, it);
   }
   /** Put something on someone (taking off and returning to the pile whatever they wore there). */
   dress(p: Person, it: Item) {
@@ -1841,14 +1862,48 @@ export class Sim {
       if (!of.length) return '';
       const worn = of.filter((i) => i.wear >= 0.6).length;
       const name = ITEMS[k].label.toLowerCase();
-      // (mittens and shoes are already more than one)
-      return `${of.length} ${of.length === 1 || /s$/.test(name) ? name : `${name}s`}${worn ? ` (${worn} well worn)` : ''}`;
+      // (mittens and shoes are already more than one; strings of beads are strings)
+      const many = k === 'beads' ? 'strings of beads' : /s$/.test(name) ? name : `${name}s`;
+      return `${of.length} ${of.length === 1 ? name : many}${worn ? ` (${worn} well worn)` : ''}`;
     }).filter(Boolean).join(', ');
   }
   /** Whether a band could make a thing by the fire from its stores right now. */
   canCraft(key: RecipeKey, c = this.camp) {
     const rc = RECIPES[key];
     return (!rc.knows || this.knows(rc.knows, c)) && Object.entries(rc.uses).every(([m, n]) => c.stock[m as keyof typeof rc.uses] >= n);
+  }
+  /** The band's goods lying on its pile: things made for their own sake, not set aside for a gift. */
+  goodsOf(c = this.camp) {
+    return this.items.filter((i) => GOODS.includes(i.kind) && i.band === c.id && i.holder < 0 && i.wearer === undefined && (i.tile ?? -1) === -1);
+  }
+  /** How many more goods a band would make in its free hours: about one for each of its people, and a few over. */
+  goodsWanted(c = this.camp) {
+    const making = this.people.filter((p) => p.alive && p.band === c.id && p.task?.kind === 'craft' && p.task.amount > 0 && GOODS.includes(RECIPE_KEYS[p.task.ref] as ItemKind)).length;
+    return Math.max(0, this.members(c).length * GOODS_EACH + GOODS_OVER - this.goodsOf(c).length - making);
+  }
+  /** The band's built kiln, if it has one. */
+  kilnOf(c = this.camp) {
+    return this.buildings.find((b) => b.band === c.id && b.kind === 'kiln' && b.built);
+  }
+  /** Where a potter sits at the kiln: in front of its stoke hole (which turns with the kiln), a little apart from the others. */
+  kilnSeat(kiln: Building, p: Person) {
+    const a = (kiln.rot * Math.PI) / 2, side = (((p.id * 37) % 5) - 2) * 0.12;
+    return { x: kiln.x + 0.5 + Math.sin(a) * 0.42 + Math.cos(a) * side, z: kiln.z + 0.5 + Math.cos(a) * 0.42 - Math.sin(a) * side };
+  }
+  /**
+   * How well someone makes a thing: plain, good or fine, by how far they are into the craft (a kiln is
+   * worth a few years' practice to a potter: it fires evenly).
+   */
+  qualityFor(p: Person, key: RecipeKey) {
+    const rc = RECIPES[key];
+    const lvl = p.skills[rc.skill] + (rc.skill === SK.pot && this.kilnOf() ? 3 : 0);
+    const r = this.rAi;
+    if (!r.chance(Math.min(1, Math.max(0, (lvl - 6) / 6)))) return 0;
+    return r.chance(Math.min(1, Math.max(0, (lvl - 12) / 5))) ? 2 : 1;
+  }
+  /** Whether someone is a master of a craft the band makes goods in: they sit down to it whenever the band can spare them. */
+  isMaster(p: Person, c = this.camp) {
+    return GOODS.some((g) => { const rc = RECIPES[g as RecipeKey]; return (!rc.knows || this.knows(rc.knows, c)) && p.skills[rc.skill] >= ELITE; });
   }
   /** The crafts a person's card shows: the everyday ones, and the rest once the band has a use for them. */
   shownSkills(c = this.camp) {
@@ -2685,6 +2740,9 @@ export class Sim {
       const n = Math.min(pile.length - 1, Math.max(1, Math.round(pile.length * share)));
       for (const it of pile.slice(0, Math.max(0, n))) it.band = nc.id;
     }
+    // and their share of the band's goods (beads set aside for a gift stay with the giver's band)
+    const goods = this.goodsOf(from);
+    for (const it of goods.slice(0, Math.round(goods.length * share))) it.band = nc.id;
     // a bitter parting (a quarrelsome band, or a leader who has no love for those staying) takes a contrasting colour
     let regard = 0;
     const stayers = this.members(from).filter((q) => !group.includes(q));
@@ -3140,6 +3198,12 @@ export class Sim {
     const woodShort = (s >= 2 || winterNow) && c.stock.wood < fuelNeed * 0.5;
     const woodP = clamp01((fuelNeed + siteWood - c.stock.wood) / (fuelNeed + siteWood + 1) * 1.15 + (woodShort ? 0.25 : 0), 0.08, woodShort ? 1.25 : 1.0);
     const logsLying = this.countProps(LOGS);
+    // a woodpile three times what the band wants laid in: the wood is left to those who know the woods
+    const woodPlenty = c.stock.wood > WOOD_PLENTY * (fuelNeed + siteWood);
+    // the free hours of a fed band, not short of wood or rationing: time to make things for their own sake
+    const goodsFree = !c.rationing && !woodShort && foodP < 0.75;
+    const goodsP = goodsFree ? (provided ? 0.36 : 0.27) : 0;
+    const bowls = goodsP > 0 && this.knows('pottery', c), beads = goodsP > 0 && this.knows('beads', c);
     const make = this.toolToMake(c);
     const unarmed = !this.toolsOf(c).some((i) => i.kind === 'axe' || i.kind === 'chopper');
     const traps = this.trapsWanted(c, foodP);
@@ -3196,15 +3260,19 @@ export class Sim {
       'want.deadfall': traps.deadfall,
       'craft.deadfall': traps.deadfall > 0 ? 0.45 : 0,
       'craft.furcloak': make === 'furcloak' ? (s >= 1.5 ? 0.6 : 0.4) : 0,
+      // the band's goods, made in the hours it can spare: bowls by the potters, beads by the toolmakers
+      'craft.bowl': bowls ? goodsP : 0,
+      'craft.beads': beads ? goodsP : 0,
+      woodPlenty: woodPlenty ? 1 : 0,
       // the round of the traps: once a day, by one person, to empty them and set out new ones
       // (provided for, the round waits until there is little else to do)
       trap: c.trapRound !== today && this.toolsOf(c).some((i) => TRAP_KINDS.includes(i.kind)) ? (provided ? 0.4 : 0.75 + (foodP > 0.8 ? 0.25 : 0)) : 0,
       // mud and stone are fetched only for a site that needs them (mud can't be dug from frozen ground)
       // (and clay for a pot)
-      dig: (siteMud > c.stock.mud || (make === 'pot' && c.stock.mud < 2)) && !winterNow ? 0.75 : 0,
+      dig: (siteMud > c.stock.mud || (make === 'pot' && c.stock.mud < 2)) && !winterNow ? 0.75 : bowls && c.stock.mud < 3 && !winterNow ? 0.4 : 0,
       // stone for walls, and a lump or two for knapping tools
       // (with nothing left to fell with, the stone for a new chopper is as urgent as the knapping)
-      quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < (RECIPES[make].uses.stone ?? 0) ? (unarmed ? 0.95 : 0.5) : 0,
+      quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < (RECIPES[make].uses.stone ?? 0) ? (unarmed ? 0.95 : 0.5) : beads && c.stock.stone < 2 ? 0.35 : 0,
       bury: this.people.some((p) => !p.alive && !p.buried && p.band === c.id) ? 1 : 0,
       sow: toSow ? 0.9 : 0,
       tend: toTend ? 0.55 + Math.min(0.3, toTend * 0.05) : 0,
@@ -3229,6 +3297,8 @@ export class Sim {
     if (toSow) c.plan.push(this.knows('grain') && (c.seed ?? 0) >= SEED_PER_PLOT ? 'Sow grain and set roots in the gardens' : 'Set roots in the gardens');
     if (toTend) c.plan.push('Weed and guard the gardens');
     if (ripe) c.plan.push('Bring in the harvest');
+    if (bowls || beads) c.plan.push(bowls && beads ? 'Make bowls and beads in the hours to spare' : bowls ? 'Make clay bowls in the hours to spare' : 'Grind beads in the hours to spare');
+    if (woodPlenty) c.plan.push('The woodpile is full: the wood is left to the woodcutters');
 
     this.craftNames(c);
 
@@ -3312,6 +3382,15 @@ export class Sim {
       }
     }
     this.planGardens(c, s);
+    // a potter's kiln, once someone has thought of one: the bowls and pots fired in it seldom crack
+    if (this.knows('kiln', c) && !this.bandBuildings(c).some((b) => b.kind === 'kiln')) {
+      const tile = this.siteFor('kiln', null);
+      if (tile >= 0) {
+        this.clearTile(tile);
+        this.newBuilding('kiln', tile, -1);
+        c.plan.push('Build a kiln for the potter');
+      }
+    }
   }
 
   /** New garden plots, one at a time, outside the winter; fences round them; a pit for the grain. */
@@ -3616,7 +3695,7 @@ export class Sim {
         if (this.buildings.some((b) => Math.abs(b.x - x) <= 1 && Math.abs(b.z - z) <= 1)) continue;
         if (i === this.camp.graveyard) continue;
         const d = hyp(dx, dz);
-        const want = kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
+        const want = kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
         let sc = -Math.abs(d - want) * 1.6;
         if (w.level[i] !== w.level[this.camp.tile]) sc -= 2.5;
         sc -= this.treesOnTile[i] * 1.2;
@@ -4175,7 +4254,9 @@ export class Sim {
       const st = c && !c.gone ? c.stock : { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0 };
       const inside = this.buildings.some((q) => q.band === b.band && q.kind === 'storehouse' && q.built);
       const pots = inside || !c ? 0 : this.toolsOf(c, 'pot').length;
-      return { id: b.id, wood: st.wood, berries: inside ? 0 : st.berries, meat: inside ? 0 : st.meat, fish: inside ? 0 : st.fish, preserved: inside ? 0 : st.preserved, pots };
+      const goods = c && !c.gone ? this.goodsOf(c) : [];
+      const bowls = goods.filter((i) => i.kind === 'bowl').length, beads = goods.length - bowls;
+      return { id: b.id, wood: st.wood, berries: inside ? 0 : st.berries, meat: inside ? 0 : st.meat, fish: inside ? 0 : st.fish, preserved: inside ? 0 : st.preserved, pots, bowls, beads };
     });
   }
   /** The traps standing in the world: snares and deadfalls on land, fish traps in the water (kind 0 snare, 1 fish trap, 2 deadfall). */
@@ -4240,7 +4321,11 @@ export class Sim {
       famine: c.famine,
       knows: c.knows.map((k) => DISCOVERY.get(k)?.label ?? k),
       // (what they wear has its own line)
-      tools: this.describeTools(this.toolsOf(c).filter((i) => !isGarment(i.kind))),
+      tools: this.describeTools(this.toolsOf(c).filter((i) => !isGarment(i.kind) && !GOODS.includes(i.kind))),
+      goods: (() => {
+        const g = this.goodsOf(c), fine = g.filter((i) => i.quality === 2).length;
+        return g.length ? `${this.describeTools(g)}${fine ? ` (${fine} fine)` : ''}` : '';
+      })(),
       deer: this.deer.filter((d) => d.alive).length,
       stats: { ...this.stats },
       temp: temperature(this.tick, this.anomaly, Math.max(0, this.world.level[c.tile] - SEA - 1)),
@@ -4351,8 +4436,10 @@ export class Sim {
       if (pile) { x = pile.x + 0.5; z = pile.z + 0.5; }
     }
     const pct = Math.round(it.wear * 100);
-    if (it.kind !== 'necklace') lines.push(L('Condition', `${condition(it.wear)[0].toUpperCase()}${condition(it.wear).slice(1)}: ${pct}% worn`));
-    if (it.kind !== 'necklace') lines.push(L('Life left', `About ${Math.max(1, Math.round((1 - it.wear) * spec.uses))} of ${spec.uses} ${ITEM_USE[it.kind]}`));
+    const given = isGarment(it.kind) && GARMENTS[it.kind].first === 'given';
+    if (it.quality !== undefined) lines.push(L('Workmanship', QUALITY_WORDS[it.quality]));
+    if (!given) lines.push(L('Condition', `${condition(it.wear)[0].toUpperCase()}${condition(it.wear).slice(1)}: ${pct}% worn`));
+    if (!given) lines.push(L('Life left', `About ${Math.max(1, Math.round((1 - it.wear) * spec.uses))} of ${spec.uses} ${ITEM_USE[it.kind]}`));
     if (isGarment(it.kind)) {
       const g = GARMENTS[it.kind];
       lines.push(L('Worn on', SLOT_PLACE[g.slot]));
@@ -4367,6 +4454,9 @@ export class Sim {
       if (maker) lines.push(L('Given by', maker.name, pref(maker.id)));
       lines.push(L('Given', this.when(it.made)));
     } else {
+      // (a string of beads from the band's goods: who gave it, and who made it)
+      const giver = it.giver !== undefined ? this.byId.get(it.giver) : undefined;
+      if (giver) lines.push(L('Given by', giver.name, pref(giver.id)));
       lines.push(maker ? L('Made by', maker.name, pref(maker.id)) : L('Made by', 'Someone beyond the hills: it came with the band'));
       lines.push(L('Made', this.when(it.made)));
     }
@@ -4374,7 +4464,7 @@ export class Sim {
     if (n > 0) {
       const mender = it.mender !== undefined ? this.byId.get(it.mender) : undefined;
       lines.push(L('Mended', `${n === 1 ? 'Once' : n === 2 ? 'Twice' : `${n} times`}${mender ? `, last by ${mender.name}` : ''}${n >= MEND_MAX ? '; too patched to mend again' : ''}`, mender ? pref(mender.id) : undefined));
-    } else if ((isGarment(it.kind) && it.kind !== 'necklace') || it.kind === 'basket') lines.push(L('Mended', it.wear >= MEND_AT ? 'Not yet, though it wants mending' : 'Never'));
+    } else if ((isGarment(it.kind) && !given) || it.kind === 'basket') lines.push(L('Mended', it.wear >= MEND_AT ? 'Not yet, though it wants mending' : 'Never'));
     return {
       ref, title: spec.label, subtitle: `${camp.name} · ${ITEM_ABOUT[it.kind]}`, lines, notes: [ITEM_NOTE[it.kind]],
       x, z, follow, item: it.kind,
@@ -4394,6 +4484,8 @@ export class Sim {
       case 'needle': return `Sewing and weaving at the fire take ${Math.round((1 - NEEDLE_SPEED) * 100)}% less time for the whole band`;
       case 'shoes': return `Walking: long walks tire them ${Math.round((1 - SHOES_REST) * 100)}% less`;
       case 'bag': return `Gathering: brings home ${Math.round((BAG_LOAD - 1) * 100)}% more in one trip`;
+      case 'bowl': return 'Meals, the midwinter feast, a gift to someone dear, or a grave';
+      case 'beads': return 'A gift to someone dear, worn at the neck and buried with them';
       default: return '';
     }
   }
@@ -4451,11 +4543,14 @@ export class Sim {
         if (st.stone >= 0.5) lines.push(L('Stone', `${Math.floor(st.stone)} loads`));
         const owner = this.campById(b.band) ?? this.camp;
         // (what is worn is on someone's back, not on the pile)
-        const tools = this.toolsOf(owner).filter((i) => i.wearer === undefined);
+        // (and the band's goods are not tools: they have their own line)
+        const tools = this.toolsOf(owner).filter((i) => i.wearer === undefined && !GOODS.includes(i.kind));
         const out = (i: Item) => (i.tile ?? -1) !== -1;
         lines.push(L('Tools', tools.length ? this.describeTools(tools.filter((i) => i.holder < 0 && !out(i))) || 'All out in someone\'s hands' : 'None'));
         if (tools.some((i) => i.holder >= 0)) lines.push(L('Out in use', this.describeTools(tools.filter((i) => i.holder >= 0))));
         if (tools.some(out)) lines.push(L('Traps set', this.describeTools(tools.filter(out))));
+        const goods = this.goodsOf(owner);
+        if (goods.length) lines.push(L('Goods', this.describeTools(goods)));
         if (inside) lines.push(L('Food', `${Math.round(foodTotal(st))} meals, kept in the storehouse`));
         else {
           lines.push(L('Berries', `${Math.round(st.berries)} handfuls`));
@@ -4508,6 +4603,13 @@ export class Sim {
       if (b.kind === 'pit' && b.built) {
         lines.push(L('Holding', `${Math.round(this.camp.stock.grain)} meals of grain, ${Math.round(this.camp.stock.roots)} of roots`));
         notes.push(`Lined with clay and grass and sealed: grain kept in it goes musty ${Math.round((1 - spec.keep) * 100)}% slower, and roots keep longer.`);
+      }
+      if (b.kind === 'kiln' && b.built) {
+        const at = this.people.filter((p) => p.alive && p.band === b.band && p.task?.kind === 'craft' && p.task.amount > 0 && RECIPES[RECIPE_KEYS[p.task.ref]].skill === SK.pot);
+        for (const p of at) lines.push(L('Potting', p.name, pref(p.id)));
+        const goods = this.goodsOf(this.campById(b.band) ?? this.camp);
+        lines.push(L('The band\'s goods', goods.length ? `${goods.length}: ${goods.filter((i) => i.quality === 2).length} fine, ${goods.filter((i) => i.quality === 1).length} good` : 'None yet'));
+        notes.push(`A dome of clay over a firing pit. Pots and bowls fired in it crack ${Math.round(KILN_CRACK * 100)} times in a hundred, where the open embers crack a beginner's ${Math.round(HEARTH_CRACK * 100)}; the even heat makes them finer.`);
       }
       if (b.kind === 'rack') {
         lines.push(L('Dried food', `${Math.round(this.camp.stock.preserved)} meals`));
@@ -4778,14 +4880,16 @@ export class Sim {
       gear: SLOTS.map((slot) => {
         const it = this.wornIn(p, slot);
         if (!it) return { slot, item: null };
-        const maker = this.byId.get(it.maker);
+        const given = GARMENTS[it.kind as GarmentKind]?.first === 'given';
+        // (a thing given: the gear line names who gave it)
+        const maker = this.byId.get(given ? it.giver ?? it.maker : it.maker);
         const mender = it.mender !== undefined ? this.byId.get(it.mender) : undefined;
         return {
           slot, item: {
             id: it.id, kind: it.kind, label: ITEMS[it.kind].label, wear: it.wear, condition: condition(it.wear),
             maker: maker ? { id: maker.id, name: maker.name } : null, made: it.made,
             mended: it.mended ?? 0, mender: mender ? { id: mender.id, name: mender.name } : null,
-            warm: isGarment(it.kind) ? GARMENTS[it.kind].warm : 0, given: it.kind === 'necklace',
+            warm: isGarment(it.kind) ? GARMENTS[it.kind].warm : 0, given,
           },
         };
       }),

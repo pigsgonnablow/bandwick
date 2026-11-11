@@ -21,10 +21,11 @@ Conventions (read by src/render/band.ts):
   carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,grain,greens,basket,basketFull,hare} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
+  pile__{bowl,beads}                                              the band's goods on the stockpile: a patterned clay bowl, a string of beads lying coiled.
   boat__dugout                                                    the dugout the first band lands in (origin at the waterline, bow to -Y).
-  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace}  each made thing in real colours,
+  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace,bowl,beads}  each made thing in real colours,
       for the picture in its window (the game fits it to the picture).
-  bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit}  one tile footprint, centred on the origin
+  bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit,kiln}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
   bld__{plot,plotSown,plotRoots,plotGrain,plotRipe,plotStubble}  a garden plot through its year (bare or fallow, sown, roots in
@@ -3353,6 +3354,152 @@ for j, k in enumerate(range(7, 18)):  # round the bottom: a tooth, a shell, a to
     else:  # a small shell, its back to the front
         q.blob(at + down * 0.0035, (0.0034, 0.0016, 0.0040), SHELL if j % 4 == 1 else SHELL_DK, rr, 0.06, subdiv=2)
 q.finish("item__necklace")
+
+# ---------------------------------------------------------------- the band's goods, and the potter's kiln
+BOWL = (164, 104, 68)       # burnished red-brown clay
+BOWL_DK = (92, 54, 36)      # the pressed pattern, dark where it was pushed in and filled with soot
+BOWL_FIRE = (96, 70, 54)    # a fire cloud on the side
+
+
+def bowl(q, rr, pattern=True):
+    """A clay bowl, coiled, scraped thin and burnished, wide and shallow on a small foot; a band of the
+    band's pattern pressed into it under the rim, a zigzag of dark triangles. Origin at the foot, centred."""
+    prof = [(0.0, 0.010), (0.002, 0.014), (0.006, 0.021), (0.011, 0.027), (0.016, 0.031), (0.019, 0.033), (0.020, 0.032)]
+    inner = [(0.019, 0.030), (0.015, 0.027), (0.009, 0.020), (0.005, 0.012), (0.004, 0.0)]
+    segs = 16
+    bm = q.bm
+    loops = [[bm.verts.new((math.cos(k / segs * math.tau) * r, math.sin(k / segs * math.tau) * r, z)) for k in range(segs)] for z, r in prof + inner[:-1]]
+    cloud = rr.randrange(segs)
+    for i in range(len(loops) - 1):
+        a, b = loops[i], loops[i + 1]
+        for k in range(segs):
+            f = bm.faces.new((a[k], a[(k + 1) % segs], b[(k + 1) % segs], b[k]))
+            if pattern and i in (3, 4, 7):  # the zigzag, outside under the rim and inside it: alternate faces up and down the band
+                col = BOWL_DK if (k + i) % 2 else BOWL
+            elif i < 3 and (k - cloud) % segs < 3:
+                col = BOWL_FIRE
+            else:
+                col = BOWL
+            q.paint([f], col, rr, 0.04)
+    q.paint([bm.faces.new(list(reversed(loops[0])))], BOWL_DK, rr, 0.03)
+    centre = bm.verts.new((0, 0, 0.004))
+    last = loops[-1]
+    q.paint([bm.faces.new((last[k], last[(k + 1) % segs], centre)) for k in range(segs)], BOWL, rr, 0.04)
+
+
+q = Part()
+bowl(q, random.Random(81))
+q.finish("pile__bowl")
+q = Part()
+bowl(q, random.Random(82))
+q.finish("item__bowl")
+
+BEAD = [(196, 184, 168), (150, 140, 128), (118, 108, 102), (212, 196, 160), (166, 112, 78)]  # pale, grey and dark stone, a shell, a red one
+BEAD_CORD = (112, 88, 60)
+
+
+def bead_string(q, rr, hang):
+    """A string of ground stone beads, round and barrel-shaped, on a twisted cord: hanging in a loop with
+    the knot at the top (hang), or lying coiled where it was laid down."""
+    n = 30
+    for k in range(n):
+        a = k / n * math.tau
+        if hang:
+            p = Vector((math.sin(a) * 0.028, 0, math.cos(a) * 0.033))
+        else:
+            r = 0.022 + 0.004 * math.sin(a * 2 + 0.6)
+            p = Vector((math.cos(a) * r, math.sin(a) * r, 0.0028))
+        if hang and (k < 4 or k > n - 4):  # bare cord up to the knot
+            a2 = (k + 1) / n * math.tau
+            q2 = Vector((math.sin(a2) * 0.028, 0, math.cos(a2) * 0.033))
+            q.cyl(4, 0.0009, 0.0009, p, q2, BEAD_CORD, rr, 0.03, cap=False)
+            continue
+        col = BEAD[k % 4] if k % 7 else BEAD[4]
+        q.blob(p, (0.0026, 0.0026, 0.0024) if k % 3 else (0.0022, 0.0022, 0.0030), col, rr, 0.06, subdiv=1)
+    if hang:
+        q.blob((0, 0, 0.0335), (0.0024, 0.0018, 0.0022), BEAD_CORD, rr, 0.03)
+
+
+q = Part()
+bead_string(q, random.Random(83), hang=False)
+q.finish("pile__beads")
+q = Part()
+bead_string(q, random.Random(84), hang=True)
+q.finish("item__beads")
+
+def polar(r, a, z):  # (the necklace above reuses the name `at` for a point)
+    return (math.cos(a) * r, math.sin(a) * r, z)
+
+
+# a potter's kiln: a dome of clay over a firing pit, built up in coils on a footing of stones, smoke-
+# blackened round the vent at the top and the stoke hole at the front, with an ash spill and embers before
+# it; split wood stacked at the side, a heap of wet clay under a hide, and new bowls drying on a plank
+q = Part()
+rnd = random.Random(85)
+KILN = (150, 112, 82)
+KILN_BURNT = (92, 72, 58)
+KILN_SOOT = (54, 46, 42)
+FRONT_A = -math.pi / 2  # -Y: the front, facing the game's +Z
+KR, KH = 0.15, 0.2
+
+
+def kiln_col(i, k, n=20):
+    a = k / n * math.tau
+    front = abs(math.atan2(math.sin(a - FRONT_A), math.cos(a - FRONT_A)))
+    if i >= 6:
+        return KILN_SOOT if i >= 7 else KILN_BURNT
+    if front < 0.5 and i <= 3:
+        return KILN_SOOT if i <= 2 else KILN_BURNT
+    return KILN if (i + k) % 3 else (138, 102, 74)
+
+
+n = 20
+profile = [(1.0, 0.0), (1.02, 0.02), (1.0, 0.05), (0.96, 0.09), (0.88, 0.13), (0.74, 0.165), (0.55, 0.188), (0.34, 0.198), (0.22, 0.2)]
+rings = []
+for i, (rf, zf) in enumerate(profile):
+    ring = []
+    for k in range(n):
+        a = k / n * math.tau
+        r = KR * rf * (1 + rnd.uniform(-0.02, 0.02))
+        z = zf * (KH / 0.2)
+        # the stoke hole: the lower rings pushed in at the front, so the opening reads as a dark arch
+        front = abs(math.atan2(math.sin(a - FRONT_A), math.cos(a - FRONT_A)))
+        if front < 0.36 and 1 <= i <= 3:
+            r *= 0.7
+        ring.append(polar(r, a, z))
+    rings.append(ring)
+vs = ring_loft(q, rings, lambda i, k: kiln_col(i, k), rnd, 0.06)
+# the vent: a short collar round the hole at the top, black inside
+collar = [[polar(KR * 0.22 * f, k / n * math.tau, KH + dz) for k in range(n)] for f, dz in ((1.0, 0.0), (1.05, 0.012), (0.8, 0.014), (0.6, 0.0))]
+ring_loft(q, collar, lambda i, k: KILN_BURNT if i == 0 else KILN_SOOT, rnd, 0.05)
+for k in range(9):  # the footing: stones round the base
+    a = k / 9 * math.tau + 0.2
+    if abs(math.atan2(math.sin(a - FRONT_A), math.cos(a - FRONT_A))) < 0.4:
+        continue
+    q.blob(polar(KR * 1.05, a, 0.012), (0.026, 0.02, 0.016), rnd.choice(STONES), rnd, 0.05, noise=0.2)
+# the ash spill before the stoke hole, embers glowing in it, and a log end pushed into the mouth
+q.blob((0, -KR * 1.25, 0.002), (0.07, 0.05, 0.006), ASH, rnd, 0.06, noise=0.15)
+for k in range(4):
+    q.blob((rnd.uniform(-0.03, 0.03), -KR * 1.2 + rnd.uniform(-0.02, 0.02), 0.006), (0.008, 0.007, 0.004), EMBER, rnd, 0.1)
+q.cyl(6, 0.013, 0.012, (0.01, -KR * 1.35, 0.012), (0.0, -KR * 0.85, 0.03), BARK, rnd, 0.05)
+# split wood stacked at the side
+for j in range(3):
+    for k in range(3 - j):
+        y = -0.06 + k * 0.03 + j * 0.015
+        q.cyl(5, 0.012, 0.012, (KR + 0.08, y, 0.012 + j * 0.022), (KR + 0.26, y, 0.012 + j * 0.022), (128, 98, 66) if (j + k) % 2 else (110, 84, 58), rnd, 0.06)
+# a heap of wet clay, half under a hide
+q.blob((-KR - 0.12, 0.08, 0.02), (0.07, 0.06, 0.035), CLAY_WET, rnd, 0.05, noise=0.12, subdiv=2)
+q.blob((-KR - 0.1, 0.11, 0.038), (0.06, 0.045, 0.02), (150, 118, 84), rnd, 0.05, noise=0.1, subdiv=2)  # the hide over it
+# new bowls drying on a plank, unfired and pale
+q.box((-KR - 0.08, -0.16, 0.008), (0.2, 0.05, 0.008), (132, 100, 68), rnd, 0.04)
+for x in (-0.06, 0.0, 0.06):
+    before = set(q.bm.verts)
+    bowl(q, rnd)
+    new = [v for v in q.bm.verts if v not in before]
+    for v in new:
+        v.co = v.co * 1.25 + Vector((-KR - 0.08 + x, -0.16, 0.016))
+    q.paint(q._faces_of(new), (184, 156, 120), rnd, 0.04)  # not yet fired: pale and dull
+q.finish("bld__kiln")
 
 import json
 

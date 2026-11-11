@@ -189,6 +189,7 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
             </dd>
             <dt data-tip={BAND_TIPS['Tools']}>Tools</dt>
             <dd class="small">{sum.tools || 'None'}</dd>
+            {sum.goods && <><dt data-tip={BAND_TIPS['Goods']}>Goods</dt><dd class="small">{sum.goods}</dd></>}
             {clothesLine(sum.clothes, sum.pop) && <><dt data-tip={BAND_TIPS['Clothes']}>Clothes</dt><dd class="small">{clothesLine(sum.clothes, sum.pop)}</dd></>}
             <dt data-tip={BAND_TIPS['Knows']}>Knows</dt>
             <dd class="small">

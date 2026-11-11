@@ -3,7 +3,8 @@
 import type { Sim } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR,
-  CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill } from './band';
+  CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER } from './band';
+import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
 import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, daylight, yearOf, TICKS_PER_DAY, TICKS_PER_HOUR } from './time';
 import { WATER, DIRS4, treeId } from './types';
@@ -145,8 +146,10 @@ function craftFor(s: Sim, p: Person): { key: RecipeKey; score: number } | null {
     const w = s.camp.jobs[`craft.${key}`] ?? 0;
     // the morning's plan may be met already: a tool or a trap only while the band is still short of it
     if (w <= 0 || !s.canCraft(key)) continue;
-    if (TRAP_KINDS.includes(key as ItemKind) ? !s.trapShort(key as ItemKind) : key !== 'cordage' && s.toolToMake() !== key) continue;
-    const score = w * fit(p, RECIPES[key].skill);
+    const good = GOODS.includes(key as ItemKind);
+    if (good ? false : TRAP_KINDS.includes(key as ItemKind) ? !s.trapShort(key as ItemKind) : key !== 'cordage' && s.toolToMake() !== key) continue;
+    // a master of the craft sits down to it whenever the band can spare them
+    const score = w * fit(p, RECIPES[key].skill) * (good && p.skills[RECIPES[key].skill] >= ELITE && s.camp.provided ? MASTER_CRAFT : 1);
     if (!best || score > best.score) best = { key, score };
   }
   return best;
@@ -185,6 +188,9 @@ function giftFor(s: Sim, p: Person) {
   return best;
 }
 
+/** The everyday work a master craftsman is spared while the band is fed. */
+const SPARED: TaskKind[] = ['fell', 'haul', 'deadwood', 'forage', 'fish', 'hunt', 'reap', 'dig', 'quarry', 'roots', 'nuts', 'eggs', 'mushrooms', 'trap', 'tend'];
+
 function busyWith(s: Sim, kind: TaskKind) {
   let n = 0;
   for (const q of s.people) if (q.alive && q.band === s.camp.id && q.task?.kind === kind) n++;
@@ -201,7 +207,11 @@ export function decide(s: Sim, p: Person) {
   const temp = s.tempAt(p);
   const r = s.rAi;
   const opts: Option[] = [];
+  // a master potter or toolmaker, in a band with a year's food put by, is left to their craft: the fetching
+  // and carrying and the food falls to the others
+  const master = !child && c.provided && s.isMaster(p);
   const add = (kind: TaskKind, score: number) => {
+    if (master && SPARED.includes(kind)) score *= MASTER_OTHER;
     if (score > 0.01) opts.push({ kind, score: score + r.next() * 0.07 });
   };
 
@@ -235,7 +245,7 @@ export function decide(s: Sim, p: Person) {
   if (c.feastDay === dayOf(s.tick) && hour >= 16.5 && hour < 21.5 && age >= 2 && hyp(p.x - c.x, p.z - c.z) < 24 && !p.memories.some((m) => m.kind === 'midwinter' && dayOf(m.tick) === c.feastDay))
     add('feast', 2.3);
   // a tooth or a shell strung on a cord, for a partner or a close friend, now and then
-  if (age >= 14 && !dark && c.stock.trinkets >= 1 && c.stock.fiber >= 1 && s.tick - (p.gave ?? -1e9) > GIFT_DAYS * TICKS_PER_DAY && giftFor(s, p))
+  if (age >= 14 && !dark && ((c.stock.trinkets >= 1 && c.stock.fiber >= 1) || s.goodsOf().some((i) => i.kind === 'beads')) && s.tick - (p.gave ?? -1e9) > GIFT_DAYS * TICKS_PER_DAY && giftFor(s, p))
     add('gift', 0.32 + (s.has(p, 'kind') ? 0.1 : 0) + (s.has(p, 'greedy') ? -0.15 : 0));
   // a hot afternoon: the young go down to the water to cool off
   if (!dark && temp >= 21 && age >= 4 && age < 40 && p.health > HEALTH.swim && hour > 10 && hour < 19)
@@ -304,7 +314,8 @@ export function decide(s: Sim, p: Person) {
     // logs lying within a walk of camp are fetched before another tree comes down
     const logsNear = logsNearCamp(s);
     if (age >= 13) {
-      const wood = (j.wood ?? 0.3) * drive * night * fit(p, SK.wood);
+      // with the woodpile three times what the band wants, only those who know the woods keep at it
+      const wood = (j.woodPlenty && p.skills[SK.wood] < WOODCUTTER ? 0 : j.wood ?? 0.3) * drive * night * fit(p, SK.wood);
       add(logsNear ? 'haul' : 'fell', wood * crowd('fell') * crowd('haul'));
       // fallen branches near camp: a little wood at a time, and no tree has to come down (and for a band with no
       // axe, in woods grown too big for a chopper, the main way to keep the fire)
@@ -371,7 +382,8 @@ export function decide(s: Sim, p: Person) {
       return;
     }
   }
-  // nothing to do: stand where they are a while
+  // nothing to do: stand where they are a while (putting down whatever was set aside for the old task)
+  if (p.task) abandon(s, p, true);
   p.task = null;
   p.act = ACT.Idle;
   p.nextThink = s.tick + 15;
@@ -540,14 +552,23 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
     }
     case 'gift': {
       const q = giftFor(s, p);
-      if (!q || c.stock.trinkets < 1 || c.stock.fiber < 1) return null;
-      c.stock.trinkets -= 1;
-      c.stock.fiber -= 1;
+      if (!q) return null;
+      // the finest string of beads among the band's goods, if there is one; else teeth and shells strung on a cord
+      const bead = s.goodsOf().filter((i) => i.kind === 'beads').sort((a, b) => (b.quality ?? 0) - (a.quality ?? 0) || a.id - b.id)[0];
+      if (!bead && (c.stock.trinkets < 1 || c.stock.fiber < 1)) return null;
       const st = seat(s, p, 1.45);
       const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, q.id);
-      t.amount = 1;
+      if (bead) {
+        bead.tile = -3; // set aside for the gift now, so nobody else gives it
+        t.good = bead.id;
+        p.thought = `Choosing a string of beads for ${q.name}.`;
+      } else {
+        c.stock.trinkets -= 1;
+        c.stock.fiber -= 1;
+        t.amount = 1;
+        p.thought = `Stringing a necklace for ${q.name}.`;
+      }
       p.gave = s.tick;
-      p.thought = `Stringing a necklace for ${q.name}.`;
       return t;
     }
     case 'feast': {
@@ -678,7 +699,9 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const key = recipe ?? craftFor(s, p)?.key;
       if (!key || !s.canCraft(key)) return null;
       const rc = RECIPES[key];
-      const st = seat(s, p, 1.45);
+      // a potter with a kiln works beside it; everything else is made by the fire
+      const kiln = rc.skill === SK.pot ? s.kilnOf() : undefined;
+      const st = kiln ? s.kilnSeat(kiln, p) : seat(s, p, 1.45);
       const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, RECIPE_KEYS.indexOf(key));
       // set aside now so others don't count it twice
       for (const [m, n] of Object.entries(rc.uses) as [keyof typeof rc.uses, number][]) c.stock[m] -= n;
@@ -919,6 +942,11 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
       st.trinkets += 1;
       st.fiber += 1;
       t.amount = 0;
+    }
+    if (t.kind === 'gift' && t.good !== undefined) {
+      const bead = s.items.find((i) => i.id === t.good);
+      if (bead) delete bead.tile;
+      delete t.good;
     }
     if (t.kind === 'mend' && t.amount > 0) {
       st.cordage += MEND_CORD;
@@ -1936,7 +1964,7 @@ export function runTask(s: Sim, p: Person) {
         t.gz = q.z;
         t.near = true;
         p.path = null;
-        p.thought = `Taking a necklace to ${q.name}.`;
+        p.thought = `Taking ${t.good !== undefined ? 'a string of beads' : 'a necklace'} to ${q.name}.`;
       }
       if (t.stage === 2) {
         if (s.tick % 8 === 0 && s.tileOf(q) !== t.goal) {
@@ -1954,14 +1982,30 @@ export function runTask(s: Sim, p: Person) {
       face(p, q.x, q.z);
       if (--t.timer > 0) return;
       t.amount = 0;
-      s.giveNecklace(q, p.id);
+      const bead = t.good !== undefined ? s.items.find((i) => i.id === t.good) : undefined;
+      // (the beads they set aside are gone: there is nothing to give, and no teeth were strung)
+      if (t.good !== undefined && !bead) {
+        abandon(s, p);
+        p.nextThink = s.tick;
+        return;
+      }
+      delete t.good;
+      // a string of beads from the band's goods counts for more than teeth on a cord, and a fine one for most
+      const worth = bead ? 1 + (bead.quality ?? 0) * 0.5 : 0;
+      if (bead) s.giveGood(q, bead, p.id);
+      else {
+        s.giveNecklace(q, p.id);
+        s.practise(p, 'gift');
+      }
       s.book('gifts.given', 1);
+      if (bead) s.book('gifts.beads', 1);
       const partner = q.id === p.partner;
-      s.adjust(q, p, partner ? 6 : 10);
+      s.adjust(q, p, (partner ? 6 : 10) * (1 + worth * 0.4));
       s.adjust(p, q, 3);
-      q.belonging = clamp(q.belonging + 15);
-      s.remember(q, 'gift', 8, 1, p.id, `${p.name} gave them a necklace of teeth and shells.`);
-      p.thought = `Gave ${q.name} a necklace.`;
+      q.belonging = clamp(q.belonging + 15 + worth * 5);
+      const what = bead ? `a ${bead.quality === 2 ? 'fine ' : ''}string of beads` : 'a necklace of teeth and shells';
+      s.remember(q, 'gift', 8 + worth * 3, 1, p.id, `${p.name} gave them ${what}.`);
+      p.thought = `Gave ${q.name} ${bead ? 'a string of beads' : 'a necklace'}.`;
       finish(s, p);
       return;
     }
@@ -1994,10 +2038,15 @@ export function runTask(s: Sim, p: Person) {
         if (got >= want - 1e-6) break;
       }
       p.food = clamp(p.food + 48 * got);
-      p.belonging = clamp(p.belonging + 30);
+      // the band's goods set out round the fire: the more of them, and the finer, the prouder the night
+      const goods = s.goodsOf();
+      const show = Math.min(1, goods.reduce((a, i) => a + 1 + (i.quality ?? 0), 0) / Math.max(4, s.members(c).length * 2));
+      p.belonging = clamp(p.belonging + 30 + show * 15);
       s.book('feast.ate', 1);
       for (const q of s.people) if (q !== p && q.alive && q.task?.kind === 'feast' && q.task.stage >= 1) s.adjust(p, q, 1.5);
-      s.remember(p, 'midwinter', 14, 1, -1, `Feasted by the fire at ${c.name} on the longest night.`);
+      s.remember(p, 'midwinter', 14 + Math.round(show * 8), 1, -1, show >= 0.5
+        ? `Feasted by the fire at ${c.name} on the longest night, the band's bowls and beads set out round it.`
+        : `Feasted by the fire at ${c.name} on the longest night.`);
       p.thought = 'Full, and warm, and among their own.';
       finish(s, p);
       return;
@@ -2422,18 +2471,39 @@ export function runTask(s: Sim, p: Person) {
         if (s.hearthLit()) p.thought = rc.thought.replace(/\.$/, ' by the fire.');
       }
       p.act = ACT.Sit;
-      face(p, c.x, c.z);
+      const at = rc.skill === SK.pot ? s.kilnOf() : undefined;
+      if (at) face(p, at.x + 0.5, at.z + 0.5);
+      else face(p, c.x, c.z);
       if (--t.timer > 0) return;
-      if (rc.makes === 'cordage') {
-        c.stock.cordage += 1;
-        s.book('twisted', rc.uses.fiber ?? 0);
-      } else {
-        s.items.push({ id: s.newId(), kind: rc.makes, band: p.band, holder: -1, wear: 0, made: s.tick, maker: p.id });
-        s.book(`made.${rc.makes}`, 1);
-      }
       t.amount = 0;
       trainSkill(p, rc.skill, rc.grow);
       p.thought = rc.done;
+      // clay fired in the open embers often cracks, less for a practised potter; in a kiln, hardly ever
+      const fired = rc.skill === SK.pot;
+      const kiln = fired && !!s.kilnOf();
+      const cracked = fired && r.chance(kiln ? KILN_CRACK : HEARTH_CRACK * Math.max(0.25, 1 - p.skills[SK.pot] / 20));
+      if (fired && !kiln) s.practise(p, 'fire_pot', cracked ? 2 : 1);
+      if (key === 'chopper' || key === 'axe') s.practise(p, 'knap');
+      if (rc.makes === 'cordage') {
+        c.stock.cordage += 1;
+        s.book('twisted', rc.uses.fiber ?? 0);
+      } else if (cracked) {
+        s.book(`cracked.${rc.makes}`, 1);
+        p.thought = `The ${ITEMS[rc.makes].label.toLowerCase()} cracked in the firing.`;
+      } else {
+        const quality = s.qualityFor(p, key);
+        s.items.push({ id: s.newId(), kind: rc.makes, band: p.band, holder: -1, wear: 0, made: s.tick, maker: p.id, quality });
+        s.book(`made.${rc.makes}`, 1);
+        if (GOODS.includes(rc.makes)) {
+          s.book(`goods.${QUALITY[quality]}`, 1);
+          // the pile is full: the plainest, most worn of the old goods goes into everyday use, and is soon broken
+          if (s.goodsWanted() <= 0) {
+            const old = s.goodsOf().sort((a, b) => (a.quality ?? 0) - (b.quality ?? 0) || b.wear - a.wear || a.id - b.id)[0];
+            if (old) { s.items.splice(s.items.indexOf(old), 1); s.book('goods.used', 1); }
+          }
+        }
+        if (quality === 2) p.thought = rc.done.replace(/^(\w+) a /, '$1 a fine ');
+      }
       if (key === 'cloak' || (isGarment(rc.makes) && SEWN.includes(key))) s.practise(p, 'sew');
       const needle = SEWN.includes(key) ? s.toolsOf(c, 'needle')[0] : undefined;
       if (needle) s.wearTool(needle);
@@ -2896,6 +2966,15 @@ export function runTask(s: Sim, p: Person) {
       }
       p.carry = CARRY.None;
       s.event('burial', `${p.name} laid ${body.name} to rest.`, [p.id, body.id], p.x, p.z, 1);
+      // the finest thing among the band's goods goes into the grave with them, and their kin remember it
+      const good = s.goodsOf().sort((a, b) => (b.quality ?? 0) - (a.quality ?? 0) || a.id - b.id)[0];
+      if (good && s.age(body) >= 3) {
+        s.items.splice(s.items.indexOf(good), 1);
+        s.book('goods.buried', 1);
+        const what = `${good.quality === 2 ? 'a fine' : 'a'} ${s.itemLabel(good)}`;
+        for (const q of s.people) if (q.alive && q.band === p.band && (s.isKin(q, body) || q.id === body.partner))
+          s.remember(q, 'grave_goods', 6, 2, body.id, `Saw ${body.name} buried with ${what}.`);
+      }
       s.adjust(p, body, 0);
       for (const q of s.people) if (q.alive && (s.isKin(q, body) || q.id === body.partner)) s.adjust(q, p, 6);
       finish(s, p);

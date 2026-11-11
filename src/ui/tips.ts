@@ -83,6 +83,7 @@ export const BAND_TIPS: Record<string, string> = {
   Fire: 'Fire: the camp fire. People eat, warm up and, until they have a roof, sleep beside it. If it goes out nobody can get warm.',
   Homes: 'Homes: shelters built for families. A roof keeps off a share of the cold at night.',
   Tools: 'Tools: what the band owns. Anyone can take a tool from the stockpile for the work it suits; tools wear out with use.',
+  Goods: 'Goods: the bowls and beads the band has made in its spare hours, lying at the stockpile. They are given as gifts, set out at the midwinter feast and buried with the dead; fine ones count for more.',
   Clothes: 'Clothes: what people are wearing. Warm clothes slow how fast the cold drains them.',
   Knows: 'Knows: what this band has found out for itself or learned from others, beyond the old ways. The planner only uses what the band knows.',
 };
@@ -106,6 +107,7 @@ export const CARD_TIPS: Record<string, string> = {
   Bedding: 'Bedding: fresh grass to sleep on. It goes stale and wants changing every so often.',
   Holding: 'Holding: the food in the storehouse, in meals. One meal feeds one person for about a day.',
   Tools: 'Tools: tools lying at the stockpile, ready for anyone to take.',
+  Goods: 'Goods: bowls and beads made in the band\'s spare hours, kept for gifts, the midwinter feast and the graves of the dead.',
   'Out in use': 'Out in use: tools in someone\'s hands right now.',
   'Traps set': 'Traps set: snares and fish traps out on the land, waiting to be checked.',
   Food: 'Food: meals in store. One meal feeds one person for about a day.',
