@@ -41,6 +41,9 @@ export type Practice =
   | 'gift' // a necklace strung for someone dear
   | 'knap' // a stone knapped into a chopper or an axe head
   | 'fire_pot' // a pot or bowl fired in the embers of the hearth (twice over when it cracks)
+  | 'twist' // a length of cordage twisted by the fire
+  | 'spin' // a hank of thread spun on a spindle
+  | 'weave' // a basket, a fish trap or a reed cape woven by the fire
 
 /**
  * What someone has to be before they can have an idea. Only skill levels for now; a new kind of
@@ -370,6 +373,22 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'build a kiln and fire their pots in it', memory: 'Built the first kiln.',
   },
   {
+    // (a weaver who has twisted more cord than anyone, rolling it on their thigh, hangs a stone on a stick to
+    // keep the twist going, and draws out a thread fine enough to weave)
+    key: 'spinning', label: 'Spinning', needs: ['huts'], requires: [skill(SK.weave, 11)],
+    practice: { twist: 1 }, odds: 12,
+    found: 'pushed a stick through a stone whorl, set it turning, and drew nettle fiber out into a thread finer than any cord: the first spindle',
+    taught: 'spin thread on a spindle', memory: 'Spun the first thread on a spindle.',
+  },
+  {
+    // (a skilled weaver with thread put by, weaving another basket, thinks of hanging the threads from a beam,
+    // weighted with stones, and passing the weft between them)
+    key: 'loom', label: 'Loom', needs: ['spinning'], requires: [skill(SK.weave, 14), skill(SK.build, 8)],
+    practice: { spin: 1, weave: 1, twist: 0.3 }, odds: 7,
+    found: 'hung threads from a beam, weighted each with a stone, and wove the first cloth across them: the band\'s first loom',
+    taught: 'weave cloth on a loom', memory: 'Wove the first cloth on a loom.',
+  },
+  {
     key: 'daub', label: 'Wattle-and-daub', needs: ['huts'], requires: [skill(SK.build, 13), skill(SK.weave, 8)], near: 'mud',
     practice: { thatch: 1, build: 1 }, odds: 40,
     found: 'worked out how to weave walls of reeds and plaster them with mud',
@@ -388,7 +407,7 @@ export const DISCOVERY = new Map(DISCOVERIES.map((d) => [d.key, d]));
 /** What a band has to know to build something. */
 export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   const out: string[] = [];
-  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln' } as Partial<Record<BuildKind, string>>)[b.kind];
+  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom' } as Partial<Record<BuildKind, string>>)[b.kind];
   if (k) out.push(k);
   if (b.walls === 'daub') out.push('daub');
   if (b.walls === 'stone') out.push('stonework');

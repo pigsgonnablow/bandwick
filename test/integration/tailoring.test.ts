@@ -374,7 +374,10 @@ describe('the Gear tab', () => {
     hat.mender = q.id;
     garment('shoes', p, 0.05);
     const d = s.inspect(p.id)!;
-    expect(d.gear.map((g) => g.slot)).toEqual([...SLOTS]);
+    // (the places for woven cloth only once the band knows the loom)
+    expect(d.gear.map((g) => g.slot)).toEqual(SLOTS.filter((k) => k !== 'torso' && k !== 'bed'));
+    s.camp.knows.push('loom');
+    expect(s.inspect(p.id)!.gear.map((g) => g.slot)).toEqual([...SLOTS]);
     const head = d.gear.find((g) => g.slot === 'head')!.item!;
     expect(head.label).toBe(ITEMS.hat.label);
     expect(head.condition).toBe('well worn');

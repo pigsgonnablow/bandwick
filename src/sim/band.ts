@@ -117,7 +117,7 @@ export const TASK_KINDS: TaskKind[] = [
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap', 'deadfall'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -169,12 +169,19 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   bowl: { label: 'Clay bowl', uses: 150 },
   // pebbles ground and drilled into beads, strung on a cord: given, worn at the neck, and buried with the dead
   beads: { label: 'String of beads', uses: 1000 },
+  // nettle and grass thread woven on the loom into a tunic, worn under whatever else they have: worn every cold
+  // day, it lasts three or four winters
+  tunic: { label: 'Woven tunic', uses: 300 },
+  // a heavy blanket woven on the loom, slept under on cold nights: four or five winters
+  blanket: { label: 'Woven blanket', uses: 400 },
+  // a narrow band woven in a pattern of its own, made in the free hours: it does not wear out lying with the goods
+  sash: { label: 'Woven sash', uses: 1000 },
 };
 /**
  * Things made for their own sake in the hours a fed band has free: they are the band's goods, its wealth.
  * They are given as gifts, set out at the midwinter feast and buried with the dead (and, one day, traded).
  */
-export const GOODS: ItemKind[] = ['bowl', 'beads'];
+export const GOODS: ItemKind[] = ['bowl', 'beads', 'sash'];
 /** How well something was made: by a beginner, by someone good at it, by a master. */
 export const QUALITY = ['plain', 'good', 'fine'] as const;
 /**
@@ -220,10 +227,15 @@ export const FURS_KEPT = 9;
 export const BEAVER_MEAT = 4;
 /** A boar's tusks, kept for ornaments along with the teeth. */
 export const TUSKS_PER_BOAR = 2;
-/** Where on the body a thing is worn: one thing to each place. */
-export const SLOTS = ['body', 'head', 'hands', 'feet', 'shoulder', 'neck'] as const;
+/** How much of the cold a woven tunic keeps off, worn under anything else; and a blanket, at night. */
+export const TUNIC_WARM = 0.1;
+export const BLANKET_WARM = 0.3;
+/** Under a blanket, someone sleeps off their tiredness this much faster. */
+export const BLANKET_REST = 1.15;
+/** Where on the body a thing is worn: one thing to each place (and the bed: what they sleep under). */
+export const SLOTS = ['body', 'torso', 'head', 'hands', 'feet', 'shoulder', 'neck', 'bed'] as const;
 export type Slot = (typeof SLOTS)[number];
-export type GarmentKind = 'cloak' | 'furcloak' | 'hat' | 'mittens' | 'shoes' | 'cape' | 'bag' | 'necklace' | 'beads';
+export type GarmentKind = 'cloak' | 'furcloak' | 'hat' | 'mittens' | 'shoes' | 'cape' | 'bag' | 'necklace' | 'beads' | 'tunic' | 'blanket';
 /**
  * What can be worn: where, how much of the cold it keeps off, and who gets one first from the pile
  * (those who feel the cold most, the ones who walk furthest, or the band's best gatherers). A necklace is
@@ -239,6 +251,10 @@ export const GARMENTS: Record<GarmentKind, { slot: Slot; warm: number; first: 'c
   bag: { slot: 'shoulder', warm: 0, first: 'gatherers' },
   necklace: { slot: 'neck', warm: 0, first: 'given' },
   beads: { slot: 'neck', warm: 0, first: 'given' },
+  // a tunic is worn next to the skin, under a cloak or cape
+  tunic: { slot: 'torso', warm: TUNIC_WARM, first: 'cold' },
+  // a blanket keeps off the cold only while they sleep under it (see coldKept)
+  blanket: { slot: 'bed', warm: BLANKET_WARM, first: 'cold' },
 };
 export const isGarment = (k: string): k is GarmentKind => k in GARMENTS;
 /** With a hide bag over the shoulder, a gatherer brings home this much more in a trip. */
@@ -292,15 +308,19 @@ export const BASKET_HOLDS = 8;
  * Everything made sitting by the fire is one job, crafting, with a recipe for each thing. The morning
  * plan says what the band is short of; each crafter takes the recipe they are best at among those.
  */
-/** Fiber twisted into one length of cordage. */
+/** Fiber twisted into one length of cordage, and spun into one hank of thread. */
 export const FIBER_PER_CORD = 3;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads'] as const;
+export const FIBER_PER_THREAD = 2;
+/** Hanks of thread a band spins to try the spindle before it has a loom, and keeps by at most once it has. */
+export const THREAD_TRY = 4;
+export const THREAD_KEPT = 16;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
-  /** what it makes: a length of cordage into the stores, or an item onto the pile */
-  makes: 'cordage' | ItemKind;
+  /** what it makes: a length of cordage or a hank of thread into the stores, or an item onto the pile */
+  makes: 'cordage' | 'thread' | ItemKind;
   /** what it uses from the stores */
-  uses: Partial<Record<'wood' | 'fiber' | 'cordage' | 'stone' | 'mud' | 'hides' | 'bones' | 'furs', number>>;
+  uses: Partial<Record<'wood' | 'fiber' | 'cordage' | 'stone' | 'mud' | 'hides' | 'bones' | 'furs' | 'thread', number>>;
   /** ticks of work at the fire, before skill */
   work: number;
   skill: number;
@@ -396,7 +416,28 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
     makes: 'beads', uses: { stone: 1 }, work: 110, skill: SK.tool, grow: 0.07, knows: 'beads', doing: 'Grinding beads',
     thought: 'Grinding pebbles into beads and drilling them for a string.', done: 'Strung a string of beads and set it with the band\'s goods.',
   },
+  thread: {
+    // nettle and grass fiber drawn out and twisted fine on a weighted spindle, a little at a time
+    makes: 'thread', uses: { fiber: FIBER_PER_THREAD }, work: 40, skill: SK.weave, grow: 0.05, knows: 'spinning', doing: 'Spinning thread',
+    thought: 'Drawing out nettle fiber and spinning it into thread.', done: 'Spun a hank of thread.',
+  },
+  // cloth is woven at the loom, in the loom shed (see LOOMED)
+  tunic: {
+    makes: 'tunic', uses: { thread: 3 }, work: 110, skill: SK.weave, grow: 0.08, knows: 'loom', doing: 'Weaving a tunic',
+    thought: 'Weaving cloth for a tunic at the loom.', done: 'Wove a tunic for someone to wear.',
+  },
+  blanket: {
+    makes: 'blanket', uses: { thread: 4 }, work: 130, skill: SK.weave, grow: 0.08, knows: 'loom', doing: 'Weaving a blanket',
+    thought: 'Weaving a thick blanket at the loom.', done: 'Wove a blanket for someone to sleep under.',
+  },
+  sash: {
+    // a narrow band woven with a pattern picked out in the weft: the weaver's goods
+    makes: 'sash', uses: { thread: 2 }, work: 120, skill: SK.weave, grow: 0.08, knows: 'loom', doing: 'Weaving a sash',
+    thought: 'Weaving a patterned sash at the loom.', done: 'Wove a patterned sash and set it with the band\'s goods.',
+  },
 };
+/** The recipes woven at the loom: they can't be made without a loom shed, and are made in it. */
+export const LOOMED: RecipeKey[] = ['tunic', 'blanket', 'sash'];
 /** The recipes that go faster with a bone needle and awl: sewing hides, weaving baskets and traps. */
 export const SEWN: RecipeKey[] = ['cloak', 'basket', 'fishtrap', 'snare', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'furcloak'];
 /** One made thing. It lies on its band's stockpile unless someone holds it, or it is set out in the land. */
@@ -578,7 +619,7 @@ export interface Person {
   gave?: number;
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -618,6 +659,9 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   pit: spec({ mud: 3, fiber: 3, work: 60, keep: 0.35, label: 'Storage pit' }),
   // a potter's kiln: a domed oven of clay over a firing pit, with a stoke hole, by the clay pit
   kiln: spec({ mud: 6, stone: 2, wood: 3, work: 70, label: 'Kiln' }),
+  // a thatched shed open at the front, over an upright loom: a beam on two posts, the warp threads hanging from it
+  // weighted with stones
+  loom: spec({ wood: 8, fiber: 6, cordage: 2, stone: 2, work: 70, label: 'Loom shed' }),
 };
 
 /** What a building's walls are made of. Huts and storehouses can be raised in any of these. */
@@ -878,6 +922,8 @@ export interface Stock {
   greens: number;
   /** fox and beaver pelts from the deadfalls (absent in older saves until restored) */
   furs: number;
+  /** hanks of thread spun from fiber, for the loom (absent in older saves until restored) */
+  thread: number;
 }
 
 export interface SimEvent {

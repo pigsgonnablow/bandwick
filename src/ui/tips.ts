@@ -52,6 +52,8 @@ export const SLOT_TIPS: Record<string, string> = {
   feet: `Feet: hide shoes make a long walk ${pct(1 - SHOES_REST)} less tiring, and wear out with walking.`,
   shoulder: `Shoulder: a hide bag lets a gatherer bring home ${pct(BAG_LOAD - 1)} more in a trip.`,
   neck: 'Neck: a necklace is worn for pride and remembrance; it keeps off no cold.',
+  torso: `Torso: a woven tunic, worn next to the skin under a cloak or cape, keeps off about ${pct(GARMENTS.tunic.warm)} more of the cold.`,
+  bed: `Bed: a woven blanket keeps off about ${pct(GARMENTS.blanket.warm)} of the cold while they sleep, and they sleep deeper under it.`,
 };
 export const GEAR_ROW_TIPS: Record<string, string> = {
   'In hand': 'In hand: the tool they are using. Tools belong to the band and go back to the stockpile when the work is done.',
@@ -83,7 +85,7 @@ export const BAND_TIPS: Record<string, string> = {
   Fire: 'Fire: the camp fire. People eat, warm up and, until they have a roof, sleep beside it. If it goes out nobody can get warm.',
   Homes: 'Homes: shelters built for families. A roof keeps off a share of the cold at night.',
   Tools: 'Tools: what the band owns. Anyone can take a tool from the stockpile for the work it suits; tools wear out with use.',
-  Goods: 'Goods: the bowls and beads the band has made in its spare hours, lying at the stockpile. They are given as gifts, set out at the midwinter feast and buried with the dead; fine ones count for more.',
+  Goods: 'Goods: the bowls, beads and sashes the band has made in its spare hours, lying at the stockpile. They are given as gifts, set out at the midwinter feast and buried with the dead; fine ones count for more.',
   Clothes: 'Clothes: what people are wearing. Warm clothes slow how fast the cold drains them.',
   Knows: 'Knows: what this band has found out for itself or learned from others, beyond the old ways. The planner only uses what the band knows.',
 };
@@ -107,7 +109,7 @@ export const CARD_TIPS: Record<string, string> = {
   Bedding: 'Bedding: fresh grass to sleep on. It goes stale and wants changing every so often.',
   Holding: 'Holding: the food in the storehouse, in meals. One meal feeds one person for about a day.',
   Tools: 'Tools: tools lying at the stockpile, ready for anyone to take.',
-  Goods: 'Goods: bowls and beads made in the band\'s spare hours, kept for gifts, the midwinter feast and the graves of the dead.',
+  Goods: 'Goods: bowls, beads and sashes made in the band\'s spare hours, kept for gifts, the midwinter feast and the graves of the dead.',
   'Out in use': 'Out in use: tools in someone\'s hands right now.',
   'Traps set': 'Traps set: snares and fish traps out on the land, waiting to be checked.',
   Food: 'Food: meals in store. One meal feeds one person for about a day.',
@@ -122,6 +124,9 @@ export const CARD_TIPS: Record<string, string> = {
   'Dried food': 'Dried food: meat and fish dried on the rack, in meals. Keeps for most of a year.',
   Hides: 'Hides: deer hides, kept for cloaks and other clothes.',
   Pelts: 'Pelts: fox and beaver furs from the deadfalls, kept to sew into fur cloaks.',
+  Thread: 'Thread: hanks of nettle and grass fiber spun on a spindle by the fire, for weaving cloth at the loom.',
+  Weaving: 'Weaving: who is at the loom now, and what they are weaving.',
+  Cloth: 'Cloth: how many of the band have a woven tunic to wear and a blanket to sleep under.',
   'Worn by': 'Worn by: who has it on. Clothes go to whoever needs them most when they are made.',
   'In the hands of': 'In the hands of: who is using it. It goes back on the pile when they are done.',
   Lies: 'Lies: on the stockpile, for anyone in the band to take.',

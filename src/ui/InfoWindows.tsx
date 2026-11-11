@@ -263,6 +263,7 @@ function GearFigure({ p }: { p: PersonDetail }) {
         <path d="M22 70 l-2 40 M38 70 l2 40" />
       </g>
       <path d="M21 13 a9 9 0 0 1 18 0 v2 h-18 z" fill={fill('head')} />
+      {on('torso') && <path d="M19 30 h22 l3 42 h-28 z" fill="#cdc2a2" />}
       <path d="M16 29 h28 l5 44 h-38 z" fill={fill('body')} opacity="0.85" />
       <circle cx="10" cy="64" r="3.5" fill={fill('hands')} /><circle cx="50" cy="64" r="3.5" fill={fill('hands')} />
       <path d="M15 108 h8 v5 h-10 z M37 108 h8 l2 5 h-10 z" fill={fill('feet')} />
@@ -310,7 +311,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
               {p.tool && (<><dt data-tip={GEAR_ROW_TIPS['In hand']}>In hand</dt><dd>A {p.tool}</dd></>)}
               {p.dog && (<><dt>Dog</dt><dd>{p.dog}</dd></>)}
               {(() => {
-                const worn = p.gear.filter((g) => g.item).map((g) => g.item!.label.toLowerCase());
+                const worn = p.gear.filter((g) => g.item && g.slot !== 'bed').map((g) => g.item!.label.toLowerCase());
                 return worn.length > 0 && (<><dt data-tip={PERSON_ROW_TIPS.Wearing}>Wearing</dt><dd>{worn[0][0].toUpperCase() + worn.join(', ').slice(1)}</dd></>);
               })()}
               <dt data-tip={PERSON_ROW_TIPS.Where}>Where</dt>

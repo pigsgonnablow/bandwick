@@ -61,8 +61,9 @@ describe('garments', () => {
     }
     expect(GARMENTS.bag.warm).toBe(0);
     expect(GARMENTS.hat.warm).toBeGreaterThan(GARMENTS.mittens.warm);
-    // everything at once (the warmest thing for the body) still lets some cold through
-    const through = KINDS.filter((k) => k !== 'cape' && k !== 'cloak').reduce((t, k) => t * (1 - GARMENTS[k].warm), 1);
+    // everything worn at once by day (the warmest thing for the body) still lets some cold through
+    // (a blanket is only over them at night)
+    const through = KINDS.filter((k) => k !== 'cape' && k !== 'cloak' && k !== 'blanket').reduce((t, k) => t * (1 - GARMENTS[k].warm), 1);
     expect(through).toBeGreaterThan(0.3);
   });
 
