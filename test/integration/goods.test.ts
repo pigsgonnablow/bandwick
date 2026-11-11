@@ -175,6 +175,16 @@ describe('the band\'s goods', () => {
     expect(s.buildings.some((b) => b.band === s.camp.id && b.kind === 'kiln')).toBe(true);
   });
 
+  it('sites no kiln or storage pit where there is no clay to be dug, whatever the band was taught', () => {
+    const s = fedBand();
+    (s as any).mudSpots = [];
+    (s as any).nearCache.clear();
+    s.camp.knows.push('kiln', 'garden', 'grain', 'pits');
+    runTo(s, s.tick + 2 * TICKS_PER_DAY);
+    expect(s.buildings.filter((b) => b.band === s.camp.id && (b.kind === 'kiln' || b.kind === 'pit')).map((b) => b.kind)).toEqual([]);
+    expect(DISCOVERY.get('pits')!.near).toBe('mud');
+  });
+
   it('rates a thing plain below a sixth of the way into the craft, and always fine at the top of it; the kiln helps only the potter', () => {
     const s = fedBand();
     const p = adult(s);

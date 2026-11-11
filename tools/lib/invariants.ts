@@ -118,6 +118,7 @@ export class InvariantChecker {
         if (!q) flag('partner missing', `${at} ${p.name}`);
         else if (q.alive && q.partner !== p.id) flag('partnership one-sided', `${at} ${p.name} -> ${q.name} -> ${q.partner}`);
         else if (!q.alive) flag('partnered to the dead', `${at} ${p.name} -> ${q.name}`);
+        else if (q.band !== p.band) flag('partnered to someone of another band', `${at} ${p.name} -> ${q.name}`);
         if (q && sim.isKin(p, q)) flag('partnered with kin', `${at} ${p.name} & ${q.name}`);
       }
       if (p.home >= 0 && !sim.buildings.some((b) => b.id === p.home)) flag('home missing', `${at} ${p.name}`);

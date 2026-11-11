@@ -1,5 +1,5 @@
 // Plain words for what the sim keeps as numbers, shared by the windows (and checked by the tests).
-import { CARRY, MEND_MAX } from '../sim/band';
+import { CARRY, MEND_MAX, TaskKind } from '../sim/band';
 
 /** What someone has in their arms, by CARRY id. */
 export const CARRYING: Record<number, string> = {
@@ -38,3 +38,15 @@ export function clothesLine(clothes: Record<string, number>, pop: number) {
   const [first, ...rest] = have;
   return [`${clothes[first]} of ${pop} have ${PLURAL[first]}`, ...rest.map((k) => `${clothes[k]} ${clothes[k] === 1 && k !== 'mittens' && k !== 'shoes' ? k : PLURAL[k]}`)].join(' · ');
 }
+
+/** What someone is doing, as the label over their head says it when the pointer is on them. */
+export const TASK_PHRASE: Record<TaskKind, string> = {
+  eat: 'eating', eatwild: 'eating berries', sleep: 'asleep', warm: 'warming up', socialize: 'visiting', play: 'playing',
+  idle: 'resting', mourn: 'mourning', forage: 'picking berries', fell: 'felling a tree', haul: 'hauling logs', hunt: 'hunting',
+  fish: 'fishing', build: 'building', supply: 'carrying wood', fuel: 'feeding the fire', preserve: 'drying food', bury: 'burying the dead',
+  explore: 'exploring', deadwood: 'gathering firewood', swim: 'swimming', craft: 'making things by the fire', trap: 'checking the traps',
+  migrate: 'on the way to camp', reap: 'cutting grass', dig: 'digging', quarry: 'quarrying stone', watch: 'watching and learning',
+  tell: 'telling a story', listen: 'listening to a story', bed: 'laying fresh bedding', roots: 'digging roots', nuts: 'gathering acorns',
+  herbs: 'gathering herbs', nurse: 'tending the sick', gift: 'giving a gift', feast: 'at the feast', eggs: 'looking for eggs',
+  honey: 'smoking out a hive', mushrooms: 'picking mushrooms', mend: 'mending', sow: 'sowing', tend: 'weeding the garden', harvest: 'bringing in the harvest',
+};

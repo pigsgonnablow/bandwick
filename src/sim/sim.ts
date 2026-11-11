@@ -235,6 +235,8 @@ export interface Camp {
   feastDay?: number;
   /** grain kept back from the harvest to sow next spring, in meals (absent: none) */
   seed?: number;
+  /** the beasts this band (or the band it came from) has brought down: its first of each is remembered */
+  hunted?: ('deer' | 'boar')[];
   plan: string[];
 }
 
@@ -248,6 +250,30 @@ export interface Learned {
   by: number;
   /** the band the newcomers came from */
   from?: string;
+}
+
+/**
+ * Finds things in a list by id without walking the list each time. It remembers where each one was;
+ * when that is out of date (something was added or taken out) it looks the slow way and starts over,
+ * so it always gives exactly what a search of the list would.
+ */
+class IdIndex<T extends { id: number }> {
+  private at = new Map<number, number>();
+  private of: T[] | null = null;
+  get(list: T[], id: number): T | undefined {
+    if (this.of === list) {
+      const i = this.at.get(id);
+      if (i !== undefined && list[i]?.id === id) return list[i];
+    }
+    let found: T | undefined;
+    for (const x of list) if (x.id === id) { found = x; break; }
+    if (found) {
+      this.at.clear();
+      for (let j = 0; j < list.length; j++) this.at.set(list[j].id, j);
+      this.of = list;
+    }
+    return found;
+  }
 }
 
 export class Sim {
@@ -284,6 +310,16 @@ export class Sim {
     return this.nextId++;
   }
   private nextEvent = 1;
+  private itemIndex = new IdIndex<Item>();
+  private buildingIndex = new IdIndex<Building>();
+  /** The thing with this id, if it is still about. */
+  item(id: number): Item | undefined {
+    return this.itemIndex.get(this.items, id);
+  }
+  /** The building with this id, if it still stands (finished or not). */
+  building(id: number): Building | undefined {
+    return this.buildingIndex.get(this.buildings, id);
+  }
 
   // ---- mutable props (start as the generated world's, then change) ----
   propCount = 0;
@@ -569,6 +605,8 @@ export class Sim {
       this.camp = { ...d.camp, id: d.camp.id ?? 0, gone: 0, parent: -1, leader: -1, settled: d.camp.founded };
       this.camps = [this.camp];
     }
+    // saves from before each band kept its own first kills: count every band as having hunted what anyone had
+    for (const c of this.camps) if (!c.hunted) c.hunted = [...(this.stats.kills > (this.stats.boarKills ?? 0) ? ['deer' as const] : []), ...(this.stats.boarKills ? ['boar' as const] : [])];
     for (const c of this.camps) if (!c.color) { c.color = this.distinctColor(); c.origin ??= c.parent < 0 ? 'first' : 'amicable'; }
     // saves from before fiber and cordage
     for (const c of [...this.camps, this.camp]) { c.stock.fiber ??= 0; c.stock.cordage ??= 0; c.stock.mud ??= 0; c.stock.stone ??= 0; c.stock.hides ??= 0; c.stock.roots ??= 0; c.stock.nuts ??= 0; c.stock.herbs ??= 0; c.stock.bones ??= 0; c.stock.trinkets ??= 0; c.stock.eggs ??= 0; c.stock.honey ??= 0; c.stock.mushrooms ??= 0; c.stock.furs ??= 0; c.stock.grain ??= 0; c.stock.greens ??= 0; }
@@ -791,6 +829,7 @@ export class Sim {
       // a daughter band knows all its parent did
       knows: prev && parent === prev.id ? prev.knows.slice() : [],
       learned: prev && parent === prev.id ? prev.learned?.slice() ?? [] : [],
+      hunted: prev && parent === prev.id ? prev.hunted?.slice() ?? [] : [],
       famine: false, hungryWinters: 0, jobs: {}, plan: [],
     };
     c.color = this.distinctColor();
@@ -849,7 +888,7 @@ export class Sim {
       this.clearTile(tile);
       const b = this.newBuilding('stockpile', tile, -1);
       b.built = true;
-      b.finished = this.tick;
+        b.finished = this.tick;
     }
     this.camp = prev;
   }
@@ -977,7 +1016,7 @@ export class Sim {
     return p.traits.includes(t);
   }
   hearth(c = this.camp) {
-    return this.buildings.find((b) => b.id === c.hearth)!;
+    return this.building(c.hearth)!;
   }
   campById(id: number) {
     return this.camps.find((c) => c.id === id);
@@ -1294,18 +1333,19 @@ export class Sim {
     // cold
     const temp = this.tempAt(p);
     // a windbreak behind the fire throws its heat back and keeps the wind off: a wider, warmer circle
-    const sheltered = this.hasBuilt('windbreak');
-    const nearFire = this.hearthLit() && hyp(p.x - this.camp.x, p.z - this.camp.z) < (sheltered ? WARM_RADIUS_SHELTERED : WARM_RADIUS);
+    // (only looked for when it matters: this is asked of everyone every tick)
+    const fireDist = hyp(p.x - this.camp.x, p.z - this.camp.z);
+    const nearFire = this.hearthLit() && (fireDist < WARM_RADIUS || (fireDist < WARM_RADIUS_SHELTERED && this.hasBuilt('windbreak')));
     let shelter = 0;
     if (p.indoors && p.home >= 0) {
-      const b = this.buildings.find((q) => q.id === p.home);
+      const b = this.building(p.home);
       if (b) shelter = specOf(b).shelter;
     }
     // what they wear keeps off some of the cold, indoors or out: a cloak most, a hat and mittens a little
     const dressed = this.coldKept(p);
     if (temp < 15) p.warmth -= (15 - temp) * 0.018 * (1 - shelter) * (age < 3 || age > 60 ? 1.25 : 1) * (1 - dressed);
     else p.warmth += 0.5;
-    if (nearFire) p.warmth += sheltered ? 1.7 : 1.3;
+    if (nearFire) p.warmth += this.hasBuilt('windbreak') ? 1.7 : 1.3;
     if (p.indoors && shelter > 0 && temp > -2) p.warmth += 0.15;
     // safety: dark without a fire or shelter is unsettling
     const dark = isDark(this.tick);
@@ -1363,7 +1403,7 @@ export class Sim {
     // a home passes to the partner, or else to the eldest adult still living in it
     for (const b of this.buildings) {
       if (b.owner !== p.id) continue;
-      const heir = partner && partner.alive ? partner
+      const heir = partner && partner.alive && partner.band === b.band ? partner
         : this.living().filter((q) => q.home === b.id && this.age(q) >= 16).sort((a, c) => a.birth - c.birth || a.id - c.id)[0];
       if (heir) {
         b.owner = heir.id;
@@ -1723,7 +1763,7 @@ export class Sim {
   /** What someone wears in one place, if anything. */
   wornIn(p: Person, slot: Slot) {
     const id = p.worn?.[slot];
-    return id !== undefined ? this.items.find((i) => i.id === id) : undefined;
+    return id !== undefined ? this.item(id) : undefined;
   }
   /** Everything someone wears, head to foot. */
   wornBy(p: Person): Item[] {
@@ -1738,7 +1778,7 @@ export class Sim {
     for (const slot of SLOTS) {
       const id = p.worn[slot];
       if (id === undefined) continue;
-      const it = this.items.find((i) => i.id === id);
+      const it = this.item(id);
       if (it && isGarment(it.kind)) through *= 1 - GARMENTS[it.kind].warm;
     }
     return 1 - through;
@@ -2450,7 +2490,7 @@ export class Sim {
         p.sex === 0 && p.pregnantUntil === 0 && age >= 16 && age <= 44 && p.partner >= 0
       ) {
         const partner = this.byId.get(p.partner)!;
-        if (partner.alive && partner.sex === 1) {
+        if (partner.alive && partner.sex === 1 && partner.band === p.band) {
           const youngest = p.children.map((c) => this.byId.get(c)!).filter((c) => c.alive).map((c) => this.age(c));
           const baby = youngest.some((a) => a < 2) ? 0.2 : 1;
           const fed = foodDays > 4 ? 1 : foodDays > 1.5 ? 0.6 : 0.25;
@@ -2512,7 +2552,7 @@ export class Sim {
       if (this.age(p) < 14) continue;
       // a day with someone sick with fever in the band: those who sit with them think about what might help
       if (fever && p.sick === 0) this.practise(p, 'sickbed');
-      const home = p.home >= 0 ? this.buildings.find((b) => b.id === p.home) : undefined;
+      const home = p.home >= 0 ? this.building(p.home) : undefined;
       if (!home || !home.built || home.kind === 'leanto') this.practise(p, 'night_out');
       if (lit) this.practise(p, 'evening_fire');
       // wolves howling round camp of a night set people thinking about them
@@ -3098,6 +3138,12 @@ export class Sim {
     this.camp = c;
     this.join(group, nc);
     nc.settled = this.tick;
+    // a partner who stays behind is no longer theirs: each is free to take another
+    if (partner && partner.partner === att.id && !group.includes(partner)) {
+      att.partner = -1;
+      partner.partner = -1;
+      this.remember(partner, 'exiled', -10, 3, att.id, `Stayed behind when ${att.name} was driven out.`);
+    }
     for (const p of group) this.remember(p, 'exiled', -30, 4, -1, p === att ? `Was driven out of ${c.name}.` : `Went into exile with ${att.name}.`);
     this.event('exile', `${att.name} killed ${vic.name} in a quarrel and was driven out of ${c.name}${group.length > 1 ? `. ${group.length === 2 ? `${partner!.name} went too` : `${partner!.name} and the children went too`}` : ''}. They made a camp alone at ${nc.name}.`,
       [att.id, vic.id, ...group.filter((p) => p !== att).map((p) => p.id)], att.x, att.z, 5);
@@ -3373,8 +3419,11 @@ export class Sim {
       }
     }
     // a second hut at once when the band is large
-    if (this.knows('huts') && pop > 10 && sites.filter((b) => b.kind === 'hut').length < 2 && this.householdsWithoutHome().length > 1) {
-      const head = this.householdsWithoutHome()[1];
+    // (for a household with no site of its own yet: one already being built for counts as on its way)
+    const underway = new Set(this.bandBuildings(c).filter((b) => !b.built && (b.kind === 'hut' || b.kind === 'leanto')).map((b) => b.owner));
+    const next = this.householdsWithoutHome().find((h) => !underway.has(h.id) && !underway.has(h.partner));
+    if (this.knows('huts') && pop > 10 && sites.filter((b) => b.kind === 'hut').length < 2 && next && underway.size > 0) {
+      const head = next;
       const tile = this.siteFor('hut', head);
       if (tile >= 0) {
         this.clearTile(tile);
@@ -3383,7 +3432,7 @@ export class Sim {
     }
     this.planGardens(c, s);
     // a potter's kiln, once someone has thought of one: the bowls and pots fired in it seldom crack
-    if (this.knows('kiln', c) && !this.bandBuildings(c).some((b) => b.kind === 'kiln')) {
+    if (this.knows('kiln', c) && !this.bandBuildings(c).some((b) => b.kind === 'kiln') && this.nearCamp(c, 'mud')) {
       const tile = this.siteFor('kiln', null);
       if (tile >= 0) {
         this.clearTile(tile);
@@ -3418,7 +3467,8 @@ export class Sim {
         c.plan.push('Fence a garden plot against the deer');
       }
     }
-    if (this.knows('pits', c) && !mine.some((b) => b.kind === 'pit')) {
+    // a pit is lined with clay: none is dug where there is no mud to be had (a band taught pits, or one that moved)
+    if (this.knows('pits', c) && !mine.some((b) => b.kind === 'pit') && this.nearCamp(c, 'mud')) {
       const tile = this.siteFor('pit', null);
       if (tile >= 0) {
         this.clearTile(tile);
@@ -3657,7 +3707,7 @@ export class Sim {
       const home = p.home >= 0 ? p.home : partner?.home ?? -1;
       if (home >= 0) {
         const theirs = owns(p.id, home) || (partner ? owns(partner.id, home) : false);
-        const b = this.buildings.find((q) => q.id === home);
+        const b = this.building(home);
         const crowd = b ? living.filter((q) => q.home === home).length > specOf(b).cap : false;
         if (theirs || (!partner && !crowd)) continue;
       }
@@ -4398,7 +4448,7 @@ export class Sim {
       };
     }
     if (ref.kind === 'building') {
-      const b = this.buildings.find((q) => q.id === ref.id);
+      const b = this.building(ref.id);
       if (!b) return null;
       const prevCamp = this.camp;
       this.camp = this.campById(b.band) ?? this.camp;
@@ -4410,7 +4460,7 @@ export class Sim {
 
   /** A made thing: what it is and does, who made and mended it, how worn it is and where it is now. */
   private itemCard(ref: Ref): Card | null {
-    const it = this.items.find((i) => i.id === ref.id);
+    const it = this.item(ref.id);
     if (!it) return null;
     const pref = (id: number): Ref => ({ kind: 'person', id });
     const L = (label: string, value: string, ref?: Ref): CardLine => ({ label, value, ref });
@@ -4837,7 +4887,7 @@ export class Sim {
       .map(([q, v]) => ({ id: q, name: name(q), v, alive: this.byId.get(q)?.alive ?? false }))
       .filter((r) => r.alive)
       .sort((a, b) => b.v - a.v);
-    const home = p.alive ? this.buildings.find((b) => b.id === p.home) : undefined;
+    const home = p.alive ? this.building(p.home) : undefined;
     return {
       id: p.id, name: p.name, sex: p.sex, age: this.age(p), alive: p.alive, cause: p.cause,
       death: p.death, birth: p.birth,

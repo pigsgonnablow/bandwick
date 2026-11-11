@@ -318,7 +318,7 @@ function foxes(s: Sim, den: Den, group: Beast[], people: Person[], dark: boolean
       continue;
     }
     if (b === raider && den.raid !== undefined) {
-      const it = s.items.find((q) => q.id === den.raid);
+      const it = s.item(den.raid);
       if (!it || !(it.catch ?? 0) || it.tile === undefined || it.tile < 0) { den.raid = undefined; b.state = FOX.Sit; b.timer = 4; continue; }
       const at = snareSpot(s, it.id, it.tile);
       if (b.state !== FOX.Raid) {

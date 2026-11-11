@@ -393,3 +393,28 @@ describe('the daily checks', () => {
     expect(day(4, false)).toBe(true);
   });
 });
+
+describe('finding things by id', () => {
+  it('gives what a search of the list would, as things are made, used up and the lists replaced', () => {
+    const s = runYears(sim(1), 1);
+    const same = () => {
+      for (const it of s.items) expect(s.item(it.id)).toBe(it);
+      for (const b of s.buildings) expect(s.building(b.id)).toBe(b);
+      expect(s.item(-5)).toBeUndefined();
+      expect(s.building(-5)).toBeUndefined();
+    };
+    same();
+    // one taken out of the middle: its id is gone and the rest are still found
+    const gone = s.items[Math.floor(s.items.length / 2)];
+    s.items.splice(s.items.indexOf(gone), 1);
+    expect(s.item(gone.id)).toBeUndefined();
+    same();
+    s.items.push({ ...gone, id: s.newId() });
+    same();
+    // and a list put in place of the old one
+    s.buildings = s.buildings.slice().reverse();
+    same();
+    runTo(s, s.tick + 20 * TICKS_PER_DAY);
+    same();
+  });
+});

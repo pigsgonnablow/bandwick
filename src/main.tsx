@@ -6,6 +6,7 @@ import { Runner, ToSim, FromSim, Frame, refKey } from './sim/runner';
 import { DEFAULT_PARAMS, WorldData, WorldParams } from './sim/types';
 import type { SimEvent, Ref, Card } from './sim/band';
 import { TASK_KINDS, BUILD } from './sim/band';
+import { TASK_PHRASE } from './ui/words';
 import { Director } from './render/director';
 import { Intro } from './render/intro';
 import { PROP_NAMES, SPECIES, STAGES, TREE_VARIANTS, TERRAIN_NAMES, WATER } from './sim/types';
@@ -100,11 +101,6 @@ export interface Snapshot {
 }
 
 const STAGE_WORDS = ['Sapling', 'Young', 'Mature', 'Old'];
-const PHRASE: Record<string, string> = {
-  eat: 'eating', eatwild: 'eating berries', sleep: 'asleep', warm: 'warming up', socialize: 'visiting', play: 'playing',
-  idle: 'resting', mourn: 'mourning', forage: 'picking berries', fell: 'felling a tree', haul: 'hauling logs', hunt: 'hunting',
-  fish: 'fishing', build: 'building', supply: 'carrying wood', fuel: 'feeding the fire', preserve: 'drying food', bury: 'burying the dead', explore: 'exploring', deadwood: 'gathering firewood', swim: 'swimming', craft: 'making things by the fire', trap: 'checking the traps',
-};
 
 /** Talks to the simulation, wherever it runs. */
 interface SimLink {
@@ -760,7 +756,7 @@ export class Engine {
     const name = this.names.get(id) ?? 'Someone';
     let task = '';
     this.view.band?.each((pid, p) => {
-      if (pid === id && p.task > 0) task = PHRASE[TASK_KINDS[p.task - 1]] ?? '';
+      if (pid === id && p.task > 0) task = TASK_PHRASE[TASK_KINDS[p.task - 1]] ?? '';
     });
     return task ? `${name} · ${task}` : name;
   }
@@ -824,11 +820,15 @@ export class Engine {
       this.emit();
     }
   }
-  /** An autosave at each new season, at most once a minute of real time. */
+  /**
+   * An autosave at each new season, at most once a minute of real time, and every five minutes at the
+   * slow speeds where a season is long (closing the page may not leave time for the save it asks for).
+   */
   private maybeAutosave(tick: number) {
     const season = Math.floor(tick / (TICKS_PER_YEAR / 4));
     if (this.lastAutosaveSeason < 0) { this.lastAutosaveSeason = season; return; }
-    if (season === this.lastAutosaveSeason || performance.now() - this.lastAutosave < 60000 || this.snap.skipping) return;
+    const since = performance.now() - this.lastAutosave;
+    if ((season === this.lastAutosaveSeason && since < 300000) || since < 60000 || this.snap.skipping) return;
     this.lastAutosaveSeason = season;
     this.lastAutosave = performance.now();
     void this.saveNow(true);
