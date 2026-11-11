@@ -1628,7 +1628,7 @@ export class Sim {
   toolToMake(c = this.camp): RecipeKey & ItemKind | null {
     const ms = this.members(c);
     // what is already being made at the fire counts too, or every crafter makes the same tool all day
-    const have = (k: ItemKind) => this.toolsOf(c, k).length + ms.filter((p) => p.task?.kind === 'craft' && p.task.amount > 0 && RECIPE_KEYS[p.task.ref] === k).length;
+    const have = (k: ItemKind) => this.toolsOf(c, k).length + this.making(c, k);
     const axes = have('axe'), choppers = have('chopper');
     // with nothing at all to fell with, the quickest thing first: an axe if the stores hold one, else a chopper
     // (an axe takes wood, and there is no wood without something to fell with)
@@ -1669,12 +1669,17 @@ export class Sim {
     }
     return null;
   }
+  /** How many of a thing the band's crafters are making right now (its materials already set aside). */
+  making(c: Camp, key: string) {
+    return this.members(c).filter((p) => p.task?.kind === 'craft' && p.task.amount > 0 && RECIPE_KEYS[p.task.ref] === key).length;
+  }
   /** How many hanks of thread a band would have spun and put by: what the loom wants for the cloth still to weave, or a few to try the spindle. */
   threadWanted(c = this.camp) {
     if (!this.knows('spinning', c)) return 0;
     if (!this.loomOf(c)) return THREAD_TRY;
     const ms = this.members(c), dressed = ms.filter((p) => this.age(p) >= 1).length;
-    const have = (k: ItemKind) => this.toolsOf(c, k).length;
+    // (cloth already on the loom has had its thread)
+    const have = (k: ItemKind) => this.toolsOf(c, k).length + this.making(c, k);
     const cloth = Math.max(0, dressed - have('tunic')) * RECIPES.tunic.uses.thread! + Math.max(0, dressed - have('blanket')) * RECIPES.blanket.uses.thread!;
     return Math.min(THREAD_KEPT, cloth + THREAD_TRY);
   }
@@ -4724,8 +4729,10 @@ export class Sim {
       if (b.kind === 'loom' && b.built) {
         const at = this.people.filter((p) => p.alive && p.band === b.band && p.task?.kind === 'craft' && p.task.amount > 0 && LOOMED.includes(RECIPE_KEYS[p.task.ref]));
         for (const p of at) lines.push(L('Weaving', `${p.name}: ${RECIPES[RECIPE_KEYS[p.task!.ref]].doing.replace(/^Weaving /, '')}`, pref(p.id)));
-        lines.push(L('Thread', `${Math.floor(this.camp.stock.thread)} ${Math.floor(this.camp.stock.thread) === 1 ? 'hank' : 'hanks'} spun`));
-        const ms = this.members(this.camp).filter((p) => this.age(p) >= 1);
+        // (the loom's own band, which need not be the one followed)
+        const owner = this.campById(b.band) ?? this.camp, thread = Math.floor(owner.stock.thread);
+        lines.push(L('Thread', `${thread} ${thread === 1 ? 'hank' : 'hanks'} spun`));
+        const ms = this.members(owner).filter((p) => this.age(p) >= 1);
         const has = (k: Slot) => ms.filter((p) => p.worn?.[k] !== undefined).length;
         lines.push(L('Cloth', `${has('torso')} of ${ms.length} in tunics, ${has('bed')} with blankets`));
         notes.push(`An upright loom under a thatched roof: a beam on two posts, the threads hanging from it weighted with stones. Tunics, blankets and patterned sashes are woven here from thread spun by the fire.`);

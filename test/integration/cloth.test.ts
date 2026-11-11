@@ -68,8 +68,8 @@ describe('cloth', () => {
     const seen = watch(s, 12);
     expect(seen.has('thread')).toBe(true);
     expect(s.camp.stock.thread).toBeGreaterThan(0);
-    // a hank or two over, at most, from spinners already at it when the want was met
-    expect(s.camp.stock.thread).toBeLessThanOrEqual(THREAD_TRY + 3);
+    // and no more: the hanks still on the spindles count toward the want
+    expect(s.camp.stock.thread).toBeLessThanOrEqual(THREAD_TRY);
     for (const k of ['tunic', 'blanket', 'sash']) {
       expect(seen.has(k)).toBe(false);
       expect(s.canCraft(k as 'tunic')).toBe(false);
@@ -175,6 +175,22 @@ describe('cloth', () => {
     const p = adult(s);
     p.skills[SK.weave] = 16;
     expect(s.isMaster(p)).toBe(true);
+  });
+
+  it('tells of the loom\'s own band on its card, not the band followed', () => {
+    const { s, loom } = weavers();
+    s.camp.stock.thread = 7;
+    const mine = s.camp;
+    // another band, with nothing spun, is the one being followed
+    const other = s.camps.find((c) => c !== mine && !c.gone) ?? { ...mine, id: -99, stock: { ...mine.stock, thread: 0 } };
+    if (!s.camps.includes(other)) s.camps.push(other);
+    other.stock.thread = 0;
+    s.camp = other;
+    const card = s.inspectThing({ kind: 'building', id: loom.id })!;
+    const line = (k: string) => card.lines.find((l) => l.label === k)?.value;
+    expect(line('Thread')).toBe('7 hanks spun');
+    const ms = s.members(mine).filter((p) => s.age(p) >= 1).length;
+    expect(line('Cloth')).toBe(`0 of ${ms} in tunics, 0 with blankets`);
   });
 
   it('gives bands in older saves an empty store of thread, and plays on', () => {

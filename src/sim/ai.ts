@@ -146,6 +146,8 @@ function craftFor(s: Sim, p: Person): { key: RecipeKey; score: number } | null {
     const w = s.camp.jobs[`craft.${key}`] ?? 0;
     // the morning's plan may be met already: a tool or a trap only while the band is still short of it
     if (w <= 0 || !s.canCraft(key)) continue;
+    // (the morning's want of thread may be met already, counting the hanks still on the spindles)
+    if (key === 'thread' && s.camp.stock.thread + s.making(s.camp, 'thread') >= s.threadWanted()) continue;
     const good = GOODS.includes(key as ItemKind);
     if (good ? false : TRAP_KINDS.includes(key as ItemKind) ? !s.trapShort(key as ItemKind) : key !== 'cordage' && key !== 'thread' && s.toolToMake() !== key) continue;
     // a master of the craft sits down to it whenever the band can spare them
