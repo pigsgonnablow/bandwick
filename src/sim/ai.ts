@@ -2,7 +2,7 @@
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim, Camp } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR,
+import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR,
   CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER } from './band';
 import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
@@ -147,7 +147,7 @@ function craftFor(s: Sim, p: Person): { key: RecipeKey; score: number } | null {
     // the morning's plan may be met already: a tool or a trap only while the band is still short of it
     if (w <= 0 || !s.canCraft(key)) continue;
     const good = GOODS.includes(key as ItemKind);
-    if (good ? false : TRAP_KINDS.includes(key as ItemKind) ? !s.trapShort(key as ItemKind) : key !== 'cordage' && s.toolToMake() !== key) continue;
+    if (good ? false : TRAP_KINDS.includes(key as ItemKind) ? !s.trapShort(key as ItemKind) : key !== 'cordage' && key !== 'thread' && s.toolToMake() !== key) continue;
     // a master of the craft sits down to it whenever the band can spare them
     const score = w * fit(p, RECIPES[key].skill) * (good && p.skills[RECIPES[key].skill] >= ELITE && s.camp.provided ? MASTER_CRAFT : 1);
     if (!best || score > best.score) best = { key, score };
@@ -699,9 +699,9 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const key = recipe ?? craftFor(s, p)?.key;
       if (!key || !s.canCraft(key)) return null;
       const rc = RECIPES[key];
-      // a potter with a kiln works beside it; everything else is made by the fire
-      const kiln = rc.skill === SK.pot ? s.kilnOf() : undefined;
-      const st = kiln ? s.kilnSeat(kiln, p) : seat(s, p, 1.45);
+      // a potter with a kiln works beside it, a weaver of cloth at the loom; everything else is made by the fire
+      const shop = s.workshopFor(key);
+      const st = shop ? s.kilnSeat(shop, p) : seat(s, p, 1.45);
       const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, RECIPE_KEYS.indexOf(key));
       // set aside now so others don't count it twice
       for (const [m, n] of Object.entries(rc.uses) as [keyof typeof rc.uses, number][]) c.stock[m] -= n;
@@ -1511,8 +1511,10 @@ export function runTask(s: Sim, p: Person) {
       // fresh grass to lie on: a deeper sleep than on the bare ground
       const bed = p.indoors ? s.building(t.ref) : undefined;
       const soft = (bed?.bedding ?? 0) > 0;
-      p.rest = clamp(p.rest + (p.indoors ? 1.35 : 0.85) * (soft ? BED_REST : 1));
-      p.thought = p.indoors ? (soft ? 'Asleep at home on fresh grass.' : 'Asleep at home.') : 'Asleep by the fire.';
+      // and under a woven blanket, deeper still
+      const blanket = p.worn?.bed !== undefined;
+      p.rest = clamp(p.rest + (p.indoors ? 1.35 : 0.85) * (soft ? BED_REST : 1) * (blanket ? BLANKET_REST : 1));
+      p.thought = p.indoors ? (soft ? (blanket ? 'Asleep at home on fresh grass, under a blanket.' : 'Asleep at home on fresh grass.') : blanket ? 'Asleep at home under a blanket.' : 'Asleep at home.') : blanket ? 'Asleep by the fire under a blanket.' : 'Asleep by the fire.';
       const dark = isDark(s.tick);
       if ((!dark && p.rest >= 96) || (!dark && hourOf(s.tick) > 7.5 && p.rest > 65) || s.tick - t.started > 150) {
         p.indoors = false;
@@ -2045,7 +2047,7 @@ export function runTask(s: Sim, p: Person) {
       s.book('feast.ate', 1);
       for (const q of s.people) if (q !== p && q.alive && q.task?.kind === 'feast' && q.task.stage >= 1) s.adjust(p, q, 1.5);
       s.remember(p, 'midwinter', 14 + Math.round(show * 8), 1, -1, show >= 0.5
-        ? `Feasted by the fire at ${c.name} on the longest night, the band's bowls and beads set out round it.`
+        ? `Feasted by the fire at ${c.name} on the longest night, the band's goods set out round it.`
         : `Feasted by the fire at ${c.name} on the longest night.`);
       p.thought = 'Full, and warm, and among their own.';
       finish(s, p);
@@ -2471,7 +2473,7 @@ export function runTask(s: Sim, p: Person) {
         if (s.hearthLit()) p.thought = rc.thought.replace(/\.$/, ' by the fire.');
       }
       p.act = ACT.Sit;
-      const at = rc.skill === SK.pot ? s.kilnOf() : undefined;
+      const at = s.workshopFor(key);
       if (at) face(p, at.x + 0.5, at.z + 0.5);
       else face(p, c.x, c.z);
       if (--t.timer > 0) return;
@@ -2484,9 +2486,16 @@ export function runTask(s: Sim, p: Person) {
       const cracked = fired && r.chance(kiln ? KILN_CRACK : HEARTH_CRACK * Math.max(0.25, 1 - p.skills[SK.pot] / 20));
       if (fired && !kiln) s.practise(p, 'fire_pot', cracked ? 2 : 1);
       if (key === 'chopper' || key === 'axe') s.practise(p, 'knap');
+      // twisting cord sets a weaver thinking of a finer thread; spinning it, and weaving baskets and traps, of a loom
+      if (key === 'cordage') s.practise(p, 'twist');
+      if (key === 'thread') s.practise(p, 'spin');
+      if (key === 'basket' || key === 'fishtrap' || key === 'cape') s.practise(p, 'weave');
       if (rc.makes === 'cordage') {
         c.stock.cordage += 1;
         s.book('twisted', rc.uses.fiber ?? 0);
+      } else if (rc.makes === 'thread') {
+        c.stock.thread += 1;
+        s.book('spun', rc.uses.fiber ?? 0);
       } else if (cracked) {
         s.book(`cracked.${rc.makes}`, 1);
         p.thought = `The ${ITEMS[rc.makes].label.toLowerCase()} cracked in the firing.`;

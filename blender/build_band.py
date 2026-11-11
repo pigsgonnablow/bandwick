@@ -21,11 +21,11 @@ Conventions (read by src/render/band.ts):
   carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,grain,greens,basket,basketFull,hare} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
-  pile__{bowl,beads}                                              the band's goods on the stockpile: a patterned clay bowl, a string of beads lying coiled.
+  pile__{bowl,beads,sash}                                         the band's goods on the stockpile: a patterned clay bowl, a string of beads lying coiled, a woven sash.
   boat__dugout                                                    the dugout the first band lands in (origin at the waterline, bow to -Y).
-  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace,bowl,beads}  each made thing in real colours,
+  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace,bowl,beads,tunic,blanket,sash}  each made thing in real colours,
       for the picture in its window (the game fits it to the picture).
-  bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit,kiln}  one tile footprint, centred on the origin
+  bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit,kiln,loom}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
   bld__{plot,plotSown,plotRoots,plotGrain,plotRipe,plotStubble}  a garden plot through its year (bare or fallow, sown, roots in
@@ -3500,6 +3500,190 @@ for x in (-0.06, 0.0, 0.06):
         v.co = v.co * 1.25 + Vector((-KR - 0.08 + x, -0.16, 0.016))
     q.paint(q._faces_of(new), (184, 156, 120), rnd, 0.04)  # not yet fired: pale and dull
 q.finish("bld__kiln")
+
+# ---------------------------------------------------------------- cloth: the loom shed, tunics, blankets and sashes
+# Thread is spun from nettle and grass fiber, a pale grey-buff; some is dyed with alder bark (brown) and
+# madder-like roots (a dull red) for the patterns.
+NETTLE = (202, 190, 160)
+NETTLE_SH = (176, 164, 136)
+WEFT_BROWN = (122, 92, 64)
+WEFT_RED = (150, 74, 54)
+LOOM_STONE = [(142, 136, 126), (124, 118, 110), (156, 148, 134)]
+
+
+def woven(q, x0, x1, z0, z1, y, rnd, rows=8, cols=10, band=(2, 5), thick=0.003):
+    """A panel of cloth on the loom, hanging in the xz plane at depth y: plain weave in the pale thread,
+    a band of the pattern (a zigzag of brown and red) across it."""
+    xs = [x0 + (x1 - x0) * k / cols for k in range(cols + 1)]
+    zs = [z1 - (z1 - z0) * i / rows for i in range(rows + 1)]
+    front = [[(x, y - thick / 2, z) for x in xs] for z in zs]
+    back = [[(x, y + thick / 2, z) for x in xs] for z in zs]
+
+    def col(i, k):
+        if band[0] <= i <= band[1]:
+            return WEFT_RED if (i + k) % 3 == 0 else WEFT_BROWN if (i + k) % 3 == 1 else NETTLE
+        return NETTLE if (i + k) % 2 else NETTLE_SH
+    shell(q, front, back, col, lambda i, k: NETTLE_SH, NETTLE_SH, rnd, 0.04)
+
+
+# a loom shed: four forked posts and a thatched roof falling to the back, open at the front (-y). Inside, an
+# upright warp-weighted loom leant against the back posts: two uprights, the cloth beam across the top with
+# a length of cloth rolled on it and more hanging below, the warp threads gathered in bunches to stone weights
+# that hang clear of the ground. A stool before it, and a basket of hanks of thread at the side.
+q = Part()
+rnd = random.Random(91)
+X0, YF, YB = 0.26, -0.1, 0.24
+ZF, ZB = 0.6, 0.44
+for x in (-X0, X0):
+    forked_post(q, (x, YF, 0), (x, YF, ZF - 0.03), rnd, r=0.013)
+    forked_post(q, (x, YB, 0), (x, YB, ZB - 0.03), rnd, r=0.013)
+for y, z in ((YF, ZF), (YB, ZB)):
+    q.cyl(5, 0.011, 0.01, (-X0 - 0.06, y, z - 0.014), (X0 + 0.06, y, z - 0.014), POLE, rnd)
+L = X0 + 0.07
+xs = [-L + 2 * L * k / 8 for k in range(9)]
+ys = [YF - 0.03, YF + 0.08, YB - 0.08, YB + 0.07]
+roof_z = lambda x, y: ZF + (ZB - ZF) * (y - YF) / (YB - YF) + 0.006 - (1 - (x / L) ** 2) * 0.008
+rag = [rnd.uniform(-0.006, 0.006) - (0.01 if k % 2 else 0) for k in range(9)]
+top = [[(x, y, roof_z(x, y) + (rag[k] if i in (0, 3) else 0)) for k, x in enumerate(xs)] for i, y in enumerate(ys)]
+bot = [[(x, y, z - 0.026) for x, y, z in row] for row in top]
+shade = lambda i, k: jit(THATCH if (i + k // 2) % 2 else (206, 176, 108), rnd, 0.04)
+shell(q, top, bot, shade, lambda i, k: THATCH_UNDER, THATCH_DK, rnd, 0.06)
+# the back walled in wattle, so the wind doesn't get at the threads
+for k in range(7):
+    x = -X0 + 2 * X0 * k / 6
+    q.cyl(4, 0.006, 0.005, (x, YB + 0.01, 0), (x, YB + 0.01, ZB - 0.04), POLE, rnd)
+for j in range(9):
+    z = 0.03 + j * 0.04
+    q.box((0, YB + 0.012 + (0.004 if j % 2 else -0.004), z), (2 * X0, 0.008, 0.026), (150, 120, 80) if j % 2 else (132, 104, 70), rnd, 0.05)
+# the loom: two uprights leaning back against the rear plate, the cloth beam across their tops
+LY0, LY1 = -0.01, 0.13   # foot and top of the uprights, in y (they lean back)
+LZ = 0.40
+LX = 0.17
+for x in (-LX, LX):
+    q.cyl(5, 0.011, 0.009, (x, LY0, 0), (x, LY1, LZ + 0.02), POLE, rnd)
+lean = lambda z: LY0 + (LY1 - LY0) * z / (LZ + 0.02)
+q.cyl(6, 0.013, 0.013, (-LX - 0.04, lean(LZ), LZ), (LX + 0.04, lean(LZ), LZ), WOOD, rnd)          # the cloth beam
+q.cyl(8, 0.02, 0.02, (-LX + 0.02, lean(LZ) - 0.002, LZ), (LX - 0.02, lean(LZ) - 0.002, LZ), NETTLE, rnd, 0.04)  # cloth rolled on it
+q.cyl(5, 0.007, 0.007, (-LX - 0.02, lean(0.2), 0.2), (LX + 0.02, lean(0.2), 0.2), POLE, rnd)       # the shed rod
+q.cyl(5, 0.006, 0.006, (-LX - 0.02, lean(0.26) - 0.012, 0.26), (LX + 0.02, lean(0.26) - 0.012, 0.26), POLE, rnd)  # the heddle bar, on brackets
+for x in (-LX, LX):
+    q.cyl(4, 0.004, 0.004, (x, lean(0.26), 0.26), (x, lean(0.26) - 0.014, 0.26), POLE, rnd)
+# the cloth woven so far, hanging from the beam
+CZ0 = 0.27
+before = set(q.bm.verts)
+woven(q, -LX + 0.02, LX - 0.02, CZ0, LZ - 0.015, 0.0, rnd, rows=8, cols=10, band=(3, 5))
+for v in [v for v in q.bm.verts if v not in before]:
+    v.co.y += lean(v.co.z) - 0.006
+# the warp threads below it, gathered in bunches to a row of loom weights
+NB = 8
+for b in range(NB):
+    xb = -LX + 0.03 + (2 * LX - 0.06) * b / (NB - 1)
+    wz = 0.07 + (0.012 if b % 2 else 0.0)
+    for t in range(3):
+        xt = xb + (t - 1) * 0.008
+        q.cyl(3, 0.0012, 0.0012, (xt, lean(CZ0) - 0.006, CZ0), (xb, lean(wz) - 0.004 + (0.01 if b % 2 else -0.004), wz + 0.02), NETTLE, rnd, 0.03, cap=False)
+    # a weight: a flattened ring of stone, pierced and threaded
+    q.blob((xb, lean(wz) - 0.004 + (0.01 if b % 2 else -0.004), wz), (0.014, 0.008, 0.016), rnd.choice(LOOM_STONE), rnd, 0.05, noise=0.12)
+# a stool before the loom: a section of log
+q.cyl(7, 0.03, 0.032, (0.0, -0.08, 0), (0.0, -0.08, 0.07), (118, 90, 60), rnd, 0.05)
+q.cyl(7, 0.029, 0.029, (0.0, -0.08, 0.07), (0.0, -0.08, 0.072), (196, 170, 128), rnd, 0.03)
+# a basket of hanks of thread at the side, and a spindle lying across it
+basket_at = Vector((X0 - 0.11, -0.04, 0))
+q.cyl(10, 0.04, 0.046, basket_at, basket_at + Vector((0, 0, 0.045)), (170, 140, 92), rnd, 0.06)
+for k in range(4):
+    a = k / 4 * math.tau + 0.4
+    q.blob(basket_at + Vector((math.cos(a) * 0.018, math.sin(a) * 0.018, 0.05)), (0.016, 0.011, 0.01), NETTLE if k % 3 else WEFT_RED, rnd, 0.05, noise=0.1)
+q.cyl(4, 0.0025, 0.0025, basket_at + Vector((-0.05, -0.02, 0.06)), basket_at + Vector((0.04, 0.03, 0.064)), WOOD, rnd, 0.03)
+q.cyl(8, 0.009, 0.009, basket_at + Vector((-0.036, -0.012, 0.0605)), basket_at + Vector((-0.032, -0.010, 0.0615)), LOOM_STONE[0], rnd, 0.03)  # the whorl
+q.finish("bld__loom")
+
+
+def tunic(q, rnd):
+    """A tunic laid out flat (in the xz plane, front to -y): the shoulders and short sleeves woven in one
+    piece across, drooping at the ends, the body hanging to the thighs, a woven band at the hem and cuffs,
+    the neck cut round and bound. Origin at the middle."""
+    T = 0.004
+    plain = lambda i, k: NETTLE
+
+    def panel(xs, zs, col_of, droop=lambda x: 0.0):
+        top = [[(x, -T / 2, z - droop(x)) for x in xs] for z in zs]
+        bot = [[(x, T / 2, z - droop(x)) for x in xs] for z in zs]
+        shell(q, top, bot, col_of, lambda i, k: NETTLE_SH, NETTLE_SH, rnd, 0.04)
+    # shoulders and sleeves: 10 columns across, the outer two at each end the cuffs
+    xs = [-0.07 + 0.14 * k / 10 for k in range(11)]
+    droop = lambda x: max(0.0, abs(x) - 0.034) * 0.45
+    panel(xs, [0.042, 0.03, 0.016], lambda i, k: WEFT_BROWN if k in (0, 9) else plain(i, k), droop)
+    # the body, hanging from it, a band of the pattern at the hem
+    xs = [-0.036 + 0.072 * k / 6 for k in range(7)]
+    zs = [0.016 - 0.076 * i / 6 for i in range(7)]
+    panel(xs, zs, lambda i, k: (WEFT_RED if k % 2 else WEFT_BROWN) if i == 5 else plain(i, k))
+    # the neck: a round opening, dark inside, bound with a thread of the brown
+    q.blob((0, -T / 2 - 0.0004, 0.040), (0.009, 0.0006, 0.0055), (70, 56, 44), rnd, 0.03, subdiv=2)
+    for k in range(10):
+        a0, a1 = k / 10 * math.tau, (k + 1) / 10 * math.tau
+        q.cyl(3, 0.0009, 0.0009, (math.cos(a0) * 0.0095, -T / 2 - 0.0006, 0.040 + math.sin(a0) * 0.006),
+              (math.cos(a1) * 0.0095, -T / 2 - 0.0006, 0.040 + math.sin(a1) * 0.006), WEFT_BROWN, rnd, 0.03, cap=False)
+
+
+q = Part()
+tunic(q, random.Random(92))
+q.finish("item__tunic")
+
+
+def blanket(q, rnd, folds=3):
+    """A blanket folded in a stack: thick layers with a broad stripe near each end and a fringe at the folded
+    edge. Origin at the foot, centred."""
+    W, D, Hl = 0.08, 0.055, 0.007
+    for j in range(folds):
+        z = j * Hl + Hl / 2
+        q.box((0, 0, z), (W - j * 0.001, D - j * 0.001, Hl * 0.96), NETTLE if j % 2 else NETTLE_SH, rnd, 0.04)
+        for x in (-W * 0.32, W * 0.32):  # the stripes, showing on the edges
+            q.box((x, 0, z), (0.008, D + 0.0008 - j * 0.001, Hl * 0.98), WEFT_RED if j % 2 else WEFT_BROWN, rnd, 0.03)
+    for k in range(10):  # the fringe at the front
+        x = -W / 2 + 0.004 + (W - 0.008) * k / 9
+        q.cyl(3, 0.0009, 0.0009, (x, -D / 2, Hl * folds - 0.002), (x + rnd.uniform(-0.002, 0.002), -D / 2 - 0.008, Hl * folds - 0.006), NETTLE_SH, rnd, 0.03, cap=False)
+
+
+q = Part()
+blanket(q, random.Random(93))
+q.finish("item__blanket")
+
+
+def sash(q, rnd, coiled):
+    """A sash: a narrow band woven in the band's pattern (a zigzag of red and brown on the pale thread), with
+    fringed ends; lying in a loose S (coiled) or laid out straight for its picture. Origin at the middle, on the ground."""
+    n, Wd, T = 24, 0.014, 0.0025
+    pts = []
+    for k in range(n + 1):
+        u = k / n
+        if coiled:
+            a = (u - 0.5) * math.tau * 0.9
+            pts.append(Vector((math.sin(a) * 0.03 + (u - 0.5) * 0.02, math.sin(2 * a) * 0.016, T / 2)))
+        else:
+            pts.append(Vector(((u - 0.5) * 0.12, 0, 0.012 + math.sin(u * math.pi) * 0.006)))
+    top, bot = [], []
+    for k, p in enumerate(pts):
+        d = (pts[min(n, k + 1)] - pts[max(0, k - 1)]).normalized()
+        side = Vector((-d.y, d.x, 0)) * (Wd / 2) if coiled else Vector((0, Wd / 2, 0))
+        up = Vector((0, 0, T / 2))
+        top.append([p - side + up, p + side + up])
+        bot.append([p - side - up, p + side - up])
+    pat = lambda i, k: WEFT_RED if (i + k) % 4 == 0 else WEFT_BROWN if (i + k) % 4 == 2 else NETTLE
+    shell(q, top, bot, pat, lambda i, k: NETTLE_SH, NETTLE_SH, rnd, 0.04)
+    for end, nxt in ((pts[0], pts[1]), (pts[-1], pts[-2])):
+        d = (end - nxt).normalized()
+        side = Vector((-d.y, d.x, 0)) if coiled else Vector((0, 1, 0))
+        for t in range(4):
+            a = end + side * ((t - 1.5) * Wd / 4)
+            q.cyl(3, 0.0008, 0.0008, a, a + d * 0.009 + Vector((0, 0, -0.001)), NETTLE_SH, rnd, 0.03, cap=False)
+
+
+q = Part()
+sash(q, random.Random(94), coiled=True)
+q.finish("pile__sash")
+q = Part()
+sash(q, random.Random(95), coiled=False)
+q.finish("item__sash")
 
 import json
 

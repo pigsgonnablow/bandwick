@@ -474,8 +474,8 @@ describe('the band\'s goods', () => {
     const bare = feast(0), proud = feast(40);
     expect(bare.belonging).toBeCloseTo(30, 5);
     expect(proud.belonging).toBeCloseTo(45, 5);
-    expect(proud.memory.text).toMatch(/bowls and beads/);
-    expect(bare.memory.text).not.toMatch(/bowls and beads/);
+    expect(proud.memory.text).toMatch(/goods set out/);
+    expect(bare.memory.text).not.toMatch(/goods set out/);
   });
 
   it('shows the goods apart from the tools, on the band and on the stockpile', () => {

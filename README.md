@@ -181,6 +181,22 @@ hidework for now). Pottery and hidework show on a person's card once the band ha
 Whoever is clearly a band's best at a craft is known for it ("Ada, the toolmaker") on their card
 and in the Chronicle. Older saves give each person's old crafting level to toolmaking and weaving.
 
+**Cloth.** A good weaver twisting cordage may think of hanging a stone whorl on a stick and spinning
+the fiber finer: spinning, a discovery (weaving 11, once the band has huts). Two bundles of fiber spin
+into a hank of thread by the fire, and a band spins a few hanks to try the spindle. A skilled weaver
+(weaving 14, building 8) spinning, twisting cord or weaving baskets, traps and capes may then think of
+the loom, and the band raises a loom shed near the fire (8 wood, 6 thatch, 2 cordage and 2 stones for
+the loom weights): a thatched roof open at the front over an upright loom, its threads weighted with
+stones. Cloth is woven only there. The plan has the weavers weave a tunic for everyone past their first
+year (3 hanks), then a blanket each (4 hanks), and keeps the spinners at it while the loom wants
+thread. A tunic is worn next to the skin, under a cloak or a reed cape, and keeps off a tenth more of
+the cold without a single hide; a blanket keeps off nearly a third of the cold while its owner sleeps,
+and they sleep deeper under it. Once everyone has both, the weavers weave patterned sashes in the
+band's free hours: the weavers' goods, like the potters' bowls and the toolmakers' beads, set out at
+the midwinter feast and laid in the graves of the dead. A master weaver is a master craftsman like the
+others. The stockpile card counts the thread, the loom shed's card says who is weaving what and how many
+of the band have tunics and blankets, and people in tunics are drawn in pale or dyed cloth.
+
 **Fortune.** Most years are ordinary. Some are not: a sickness that runs through a camp, a feud
 that ends in a killing and an exile, wolves or a bear on someone out alone after dark, a drowning,
 a lean year (a late frost takes the berry flowers, the fish run thin and the acorns, roots, mushrooms

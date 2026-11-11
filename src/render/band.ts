@@ -173,6 +173,8 @@ function gaitTexture() {
 
 // sRGB palettes; each person's look seed picks from these
 const CLOTH = ['#cbb894', '#8f6b4a', '#a86b3c', '#7b8b58', '#8e4b3b', '#70727a', '#4f6283', '#bba06f', '#5f4b3a', '#9a8a70'];
+/** A woven tunic of nettle thread, in place of their own clothes: left pale, or dyed with bark or roots. */
+const TUNIC = ['#cdc2a2', '#bfb291', '#a98563', '#9a5a44', '#d6ccb0'];
 const SKIN = ['#efcfae', '#e2b892', '#d3a27a', '#bd8a62', '#a3714d', '#85583b'];
 const HAIR = ['#21170f', '#33241a', '#4d331f', '#6e4426', '#9a6b38', '#c9a46a', '#7c3418', '#3e2a1a'];
 const GREY = new THREE.Color('#bdb8ae');
@@ -199,7 +201,7 @@ interface Shown {
   band: number;
   /** the tool in hand: 0 none, 1 chopper, 2 axe, 3 digging stick, 4 snare, 5 fish trap, 6 basket */
   tool: number;
-  /** what they wear (the sim's dress flags: 1 cloak, 2 hat, 4 shoes, 8 reed cape, 16 bag, 32 mittens), and 64 a dog with them (128 a pup) */
+  /** what they wear (the sim's dress flags: 1 cloak, 2 hat, 4 shoes, 8 reed cape, 16 bag, 32 mittens, 512 a woven tunic), and 64 a dog with them (128 a pup) */
   dress: number;
   /** someone dead and unburied: what is left of them (REMAINS stage plus the way to the next) */
   remains: number;
@@ -260,7 +262,7 @@ export class BandLayer {
   private buildingMeshes = new Map<string, THREE.InstancedMesh>();
   private flames: THREE.InstancedMesh;
   /** what lies on each stockpile (by building id), and the meshes that show it */
-  private piles = new Map<number, { wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number; bowls?: number; beads?: number }>();
+  private piles = new Map<number, { wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number; bowls?: number; beads?: number; sashes?: number }>();
   private pileMeshes = new Map<string, THREE.InstancedMesh>();
   /** the snares and fish traps standing in the world, and their meshes (set, and holding a catch) */
   private traps: NonNullable<Frame['traps']> = [];
@@ -327,7 +329,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln']) {
+      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -351,7 +353,7 @@ export class BandLayer {
       const pm = new THREE.MeshLambertMaterial({ vertexColors: true });
       pm.onBeforeCompile = (sh) => addCommon(sh);
       pm.customProgramCacheKey = () => 'pile';
-      for (const [key, geo] of [['log', 'pile__log'], ['basket', 'carry__berries'], ['meat', 'carry__meat'], ['fish', 'carry__fish'], ['pot', 'pile__pot'], ['bowl', 'pile__bowl'], ['beads', 'pile__beads']] as const) {
+      for (const [key, geo] of [['log', 'pile__log'], ['basket', 'carry__berries'], ['meat', 'carry__meat'], ['fish', 'carry__fish'], ['pot', 'pile__pot'], ['bowl', 'pile__bowl'], ['beads', 'pile__beads'], ['sash', 'pile__sash']] as const) {
         const g = geoms.get(geo);
         if (!g) continue;
         const m = new THREE.InstancedMesh(g, pm, 64);
@@ -1189,7 +1191,7 @@ export class BandLayer {
         return spearInHand(spearHold(s.prevAct, t, ph, s.run), spearHold(s.shownAct, t, ph, s.run), smooth(0, 1, blend), elder * 0.18, s.gesture, gpr, gw);
       };
       anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, toolCarry === STICK ? CARRY.Spear : toolCarry || snared ? CARRY.Berries : carry);
-      col.set(CLOTH[(look >>> 8) % CLOTH.length]).convertSRGBToLinear();
+      col.set((s.dress & 512 ? TUNIC : CLOTH)[(look >>> 8) % (s.dress & 512 ? TUNIC.length : CLOTH.length)]).convertSRGBToLinear();
       const bc = this.colorMode ? this.bandColors.get(s.band) : undefined;
       if (bc) col.lerp(bc.color, 0.7);
       cloth.setXYZ(n, col.r, col.g, col.b);
@@ -1657,7 +1659,7 @@ export class BandLayer {
     if (this.auras.instanceColor) this.auras.instanceColor.needsUpdate = true;
   }
 
-  setPiles(p: { id: number; wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number; bowls?: number; beads?: number }[]) {
+  setPiles(p: { id: number; wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number; bowls?: number; beads?: number; sashes?: number }[]) {
     this.piles = new Map(p.map((q) => [q.id, q]));
   }
 
@@ -1742,6 +1744,10 @@ export class BandLayer {
       }
       for (let i = 0; i < beads; i++)
         place('beads', 0.06 + (i % 3) * 0.055 + (h(i + 600) - 0.5) * 0.01, 0.006 + Math.floor(i / 3) * 0.006, -0.1 + (h(i + 620) - 0.5) * 0.02, 0, h(i + 640) * Math.PI * 2);
+      // and the woven sashes laid one on another at the end of the row
+      const sashes = Math.min(5, p.sashes ?? 0);
+      for (let i = 0; i < sashes; i++)
+        place('sash', 0.22 + (h(i + 700) - 0.5) * 0.02, 0.003 + i * 0.004, -0.1 + (h(i + 720) - 0.5) * 0.02, 0, h(i + 740) * Math.PI * 2);
       items.slice(0, 15).forEach((it, i) => {
         const col = i % 5, row = Math.floor(i / 5);
         const x = -0.2 + col * 0.1 + (h(i + 200) - 0.5) * 0.02, z = 0.05 + row * 0.085 + (h(i + 300) - 0.5) * 0.02;
