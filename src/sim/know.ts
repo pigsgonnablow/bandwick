@@ -44,6 +44,7 @@ export type Practice =
   | 'twist' // a length of cordage twisted by the fire
   | 'spin' // a hank of thread spun on a spindle
   | 'weave' // a basket, a fish trap or a reed cape woven by the fire
+  | 'piglet' // a boar brought down on the hunt (a striped piglet counts most), or a garden plot rooted up by the boar (each gardener)
 
 /**
  * What someone has to be before they can have an idea. Only skill levels for now; a new kind of
@@ -335,6 +336,14 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'sow and reap grain', memory: 'Sowed and reaped the first grain.',
   },
   {
+    // (a hunter who has carried home one piglet too many, in a band whose gardens the boar keep raiding, keeps the
+    // next one alive, feeds it on the scraps and the weeds from the plots, and fences it in)
+    key: 'pigs', label: 'Penned pigs', needs: ['garden', 'boar'], requires: [skill(SK.hunt, 10), skill(SK.garden, 8)],
+    practice: { piglet: 1 }, odds: 6,
+    found: 'brought a striped piglet home from the hunt alive, fed it on scraps and weeds from the plots, and penned it in with hurdles: the band\'s first pig',
+    taught: 'keep pigs in a pen and breed them', memory: 'Penned the first pig.',
+  },
+  {
     // (a gardener who finds a plot trampled and eaten in the night thinks of a hurdle round it, like the windbreak)
     key: 'fences', label: 'Garden fences', needs: ['garden'], requires: [skill(SK.garden, 6), skill(SK.build, 8)],
     practice: { raided: 1 }, odds: 3,
@@ -407,7 +416,7 @@ export const DISCOVERY = new Map(DISCOVERIES.map((d) => [d.key, d]));
 /** What a band has to know to build something. */
 export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   const out: string[] = [];
-  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom' } as Partial<Record<BuildKind, string>>)[b.kind];
+  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs' } as Partial<Record<BuildKind, string>>)[b.kind];
   if (k) out.push(k);
   if (b.walls === 'daub') out.push('daub');
   if (b.walls === 'stone') out.push('stonework');

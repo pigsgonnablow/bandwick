@@ -29,13 +29,14 @@ export const PHRASE: Record<string, string> = {
   herbs: 'is looking for healing plants', nurse: 'is nursing someone through a fever',
   gift: 'is making a gift for someone dear', feast: 'is feasting by the fire on the longest night',
   sow: 'is sowing a garden plot', tend: 'is weeding and watching over the garden', harvest: 'is bringing in the harvest',
+  pigs: 'is feeding the pigs and mucking out the pen',
 };
 /** How much a viewer would want to see each task. */
 export const INTEREST: Record<string, number> = {
   migrate: 2.4, hunt: 6, bury: 6.5, mourn: 4.5, build: 3.5, fell: 3.2, fish: 2.8, haul: 2, supply: 2, forage: 2.2, preserve: 2.2,
   socialize: 1.8, play: 2.2, eat: 1.4, fuel: 1.6, eatwild: 1.6, warm: 1.2, idle: 0.6, sleep: 0.1, explore: 2, deadwood: 1.8, swim: 3.4,
   reap: 1.8, craft: 1.2, dig: 2, quarry: 2.4, trap: 2.2, watch: 2, tell: 3.6, listen: 1.4, bed: 1.6, roots: 2.4, nuts: 1.8, eggs: 2, honey: 3.6, mushrooms: 1.8, mend: 1.2, herbs: 1.6, nurse: 3.2, gift: 2.6, feast: 4.2,
-  sow: 2.4, tend: 1.6, harvest: 3,
+  sow: 2.4, tend: 1.6, harvest: 3, pigs: 2.2,
 };
 
 export class Director {

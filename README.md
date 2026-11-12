@@ -197,6 +197,22 @@ the midwinter feast and laid in the graves of the dead. A master weaver is a mas
 others. The stockpile card counts the thread, the loom shed's card says who is weaving what and how many
 of the band have tunics and blankets, and people in tunics are drawn in pale or dyed cloth.
 
+**Penned pigs.** A hunter with a garden at home who brings down a boar (a striped piglet most of all), or
+a gardener who finds a plot rooted up by the boar in the night, may think of keeping one: penned pigs, a
+discovery once the band knows its gardens and the boar (hunting 10, gardening 8). The band builds a pen by
+the gardens (8 wood, 4 fiber, 2 cordage): wattle hurdles round a muddy yard, a thatched sty in one corner
+and a log trough. Until it holds a sow, a boar and a few to start with, the hunters go after the young of
+the nearest sounder to catch piglets and carry them home alive. Someone feeds the pigs each morning from
+the greens, acorns, roots and grain in store (most in winter; in summer and autumn they root for much of
+their own) and mucks out the pen, and the muck keeps the garden plots from tiring as fast. A fed sow with
+a boar farrows once each spring (3 to 6 piglets). In late autumn the band keeps its three oldest sows and
+a boar and kills the rest for the stores (14 meals a grown pig, 6 a young one). A band rationing its own
+food gives the pigs half; one that can't feed them at all kills its herd down to a sow and a boar, and pigs
+left unfed for days break out and run off into the woods. A
+band that moves camp kills its pigs and takes the meat. The pigs root, trot about and lie up in the sty
+at night, a carried piglet is cradled in the arms, and the pen's card shows the herd, who tends it and
+how well it is fed.
+
 **Fortune.** Most years are ordinary. Some are not: a sickness that runs through a camp, a feud
 that ends in a killing and an exile, wolves or a bear on someone out alone after dark, a drowning,
 a lean year (a late frost takes the berry flowers, the fish run thin and the acorns, roots, mushrooms

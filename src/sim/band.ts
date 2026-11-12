@@ -52,6 +52,8 @@ export const TRAINING = {
   'garden.sow': [{ skill: SK.garden, gain: 0.09 }],
   'garden.tend': [{ skill: SK.garden, gain: 0.05 }],
   'garden.harvest': [{ skill: SK.garden, gain: 0.06 }, { skill: SK.forage, gain: 0.01 }],
+  // a morning at the pig pen: the pigs fed and watered, the litter mucked out (or a pig killed for the stores)
+  pigs: [{ skill: SK.garden, gain: 0.04 }, { skill: SK.hunt, gain: 0.01 }],
 } as const satisfies Record<string, Lesson>;
 export type Training = keyof typeof TRAINING;
 
@@ -100,20 +102,20 @@ export const FLASH = { Thrust: 1, Stab: 2 } as const;
 export const ACT_NAMES = Object.keys(ACT);
 
 /** What a person is carrying. */
-export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10, Roots: 11, Nuts: 12, Herbs: 13, Eggs: 14, Honey: 15, Mushrooms: 16, Grain: 17, Greens: 18 } as const;
+export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10, Roots: 11, Nuts: 12, Herbs: 13, Eggs: 14, Honey: 15, Mushrooms: 16, Grain: 17, Greens: 18, Piglet: 19 } as const;
 
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
   | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast' | 'eggs' | 'honey' | 'mushrooms' | 'mend'
-  | 'sow' | 'tend' | 'harvest';
+  | 'sow' | 'tend' | 'harvest' | 'pigs';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
   'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen', 'bed', 'roots', 'nuts', 'herbs', 'nurse', 'gift', 'feast', 'eggs', 'honey', 'mushrooms', 'mend',
-  'sow', 'tend', 'harvest',
+  'sow', 'tend', 'harvest', 'pigs',
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
@@ -527,6 +529,8 @@ export interface Task {
   res?: Material;
   /** hunting: the quarry is a wild boar (`ref` is a beast's id) rather than a deer */
   boar?: boolean;
+  /** hunting: a young boar to bring home alive for the pen, not to kill */
+  alive?: boolean;
   /** garden work: how long the spell of work at the plot is, all told */
   span?: number;
   /** a gift: the string of beads from the band's goods set aside to give (absent: a necklace strung of teeth and shells) */
@@ -619,7 +623,7 @@ export interface Person {
   gave?: number;
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -662,6 +666,9 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   // a thatched shed open at the front, over an upright loom: a beam on two posts, the warp threads hanging from it
   // weighted with stones
   loom: spec({ wood: 8, fiber: 6, cordage: 2, stone: 2, work: 70, label: 'Loom shed' }),
+  // a pig pen: a ring of wattle hurdles on stakes, a low thatched sty in one corner for the pigs to lie in, and a
+  // hollowed log for a trough
+  pen: spec({ wood: 8, fiber: 4, cordage: 2, work: 60, label: 'Pig pen' }),
 };
 
 /** What a building's walls are made of. Huts and storehouses can be raised in any of these. */
@@ -861,6 +868,54 @@ export const BEAST_NAMES = ['boar', 'fox', 'beaver'] as const;
 export const BOAR = { Stand: 0, Walk: 1, Run: 2, Root: 3, Lie: 4, Charge: 5 } as const;
 export const FOX = { Sit: 0, Trot: 1, Run: 2, Mouse: 3, Curl: 4, Raid: 5 } as const;
 export const BEAVER = { Sit: 0, Walk: 1, Swim: 2, Gnaw: 3, Home: 4, Dive: 5 } as const;
+
+/**
+ * A pig kept in a band's pen: brought home from the hunt as a striped piglet, or born in the pen. Pigs root
+ * about the pen by day and lie up in the sty at night; they are fed each morning from the stores (in summer
+ * and autumn they find much of their own, turned out on the stubble and under the oaks), the sows farrow in
+ * spring, and the pigs the band can't keep through the winter are killed in the autumn for the stores.
+ */
+export interface Pig {
+  id: number;
+  band: number;
+  /** the pen it is kept in (a building id) */
+  pen: number;
+  sow: boolean;
+  born: number;
+  x: number;
+  z: number;
+  tx: number;
+  tz: number;
+  fx: number;
+  fz: number;
+  state: number; // BOAR.*
+  timer: number;
+  /** the last tick it was fed */
+  fed: number;
+  /** caught wild (as a piglet) rather than born in the pen */
+  wild?: boolean;
+  /** a sow: the year she last farrowed */
+  farrowed?: number;
+}
+/** How many grown pigs a pen holds (and its piglets as well). */
+export const PEN_HOLDS = 8;
+/**
+ * A grown pig's keep for a day from the stores, in meals (a piglet's is half): in winter, with nothing to root
+ * for; less in spring; and in summer and autumn hardly any, turned out on the stubble and under the oaks.
+ */
+export const PIG_FEED = [0.15, 0.04, 0.04, 0.3] as const;
+/** Meals of meat on a grown pig, and on one killed in its first autumn. */
+export const PIG_MEAT = 14;
+export const PIG_MEAT_YOUNG = 6;
+/** Grown pigs kept through the winter to breed from: sows, and one boar. */
+export const PIG_SOWS_KEPT = 3;
+/** Days a pig goes unfed before it grows thin, and before it breaks out of the pen and is lost. */
+export const PIG_THIN_DAYS = 3;
+export const PIG_LOST_DAYS = 9;
+/** A sow's litter, smallest and largest. */
+export const LITTER = [3, 6] as const;
+/** The pen's muck dug into the plots: a harvest tires the ground only this much as much. */
+export const PEN_MUCK = 0.6;
 
 /** Where a group of beasts lives: a sounder's range, a fox's earth, a beaver lodge (and its dam). */
 export interface Den {

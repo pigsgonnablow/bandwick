@@ -1,11 +1,13 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim, Camp } from './sim';
+import { PIGLET_RANGE } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR,
-  CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER } from './band';
+  PEN_MUCK, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER } from './band';
 import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
+import { addPig, gateOf, feedPigs, pigToKill, killPig, pigsHungry, pigsOf } from './pigs';
 import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, daylight, yearOf, TICKS_PER_DAY, TICKS_PER_HOUR } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
@@ -96,7 +98,7 @@ export function workSkill(q: Person): number {
     case 'forage': case 'reap': case 'roots': case 'nuts': case 'herbs': case 'eggs': case 'honey': case 'mushrooms': return SK.forage;
     case 'preserve': case 'mend': return SK.hide;
     case 'trap': return SK.hunt;
-    case 'sow': case 'tend': case 'harvest': return SK.garden;
+    case 'sow': case 'tend': case 'harvest': case 'pigs': return SK.garden;
     case 'craft': return t.amount > 0 ? RECIPES[RECIPE_KEYS[t.ref]].skill : -1;
     default: return -1;
   }
@@ -191,7 +193,7 @@ function giftFor(s: Sim, p: Person) {
 }
 
 /** The everyday work a master craftsman is spared while the band is fed. */
-const SPARED: TaskKind[] = ['fell', 'haul', 'deadwood', 'forage', 'fish', 'hunt', 'reap', 'dig', 'quarry', 'roots', 'nuts', 'eggs', 'mushrooms', 'trap', 'tend'];
+const SPARED: TaskKind[] = ['fell', 'haul', 'deadwood', 'forage', 'fish', 'hunt', 'reap', 'dig', 'quarry', 'roots', 'nuts', 'eggs', 'mushrooms', 'trap', 'tend', 'pigs'];
 
 function busyWith(s: Sim, kind: TaskKind) {
   let n = 0;
@@ -273,7 +275,9 @@ export function decide(s: Sim, p: Person) {
     // a hunt can mean a day's walk: not for the sick, the weak or the half-starved
     if (age >= 16 && age < 56 && p.sick === 0 && p.health >= HEALTH.hunt && (p.food >= 50 || stock < 0.4)) {
       const nerve = s.has(p, 'brave') ? 1.4 : s.has(p, 'cautious') ? 0.55 : 1;
-      add('hunt', food * fit(p, SK.hunt) * nerve * 0.95 * crowd('hunt'));
+      // (and one or two of the best hunters out after the piglets for the pen, while it is empty)
+      const piglets = (j.piglets ?? 0) > 0 && !dark && s.people.filter((q) => q.alive && q.band === p.band && q.task?.kind === 'hunt' && q.task.alive).length < 2 ? j.piglets * drive * fit(p, SK.hunt) * fit(p, SK.hunt) : 0;
+      add('hunt', Math.max(food * fit(p, SK.hunt) * nerve * 0.95 * crowd('hunt'), piglets));
     }
     if (age >= 11) add('fish', food * fit(p, SK.fish) * 0.85 * crowd('fish'));
     // in autumn, roots dug with a digging stick from under the reeds and the meadow grass: a staple that keeps
@@ -291,6 +295,10 @@ export function decide(s: Sim, p: Person) {
     if (age >= 11 && !dark && (j.sow ?? 0) > 0) add('sow', j.sow * drive * fit(p, SK.garden) * crowd('sow'));
     if (age >= 9 && !dark && (j.tend ?? 0) > 0) add('tend', j.tend * drive * fit(p, SK.garden) * (child || age >= 50 ? 1.4 : 1) * crowd('tend'));
     if (age >= 11 && !dark && (j.harvest ?? 0) > 0) add('harvest', j.harvest * drive * fit(p, SK.garden) * crowd('harvest'));
+    // the pigs fed and the pen mucked out, once a day by one person: work for the older children as much as anyone
+    // (and killing one for the stores is for a grown-up)
+    if (age >= 10 && !dark && (j.pigs ?? 0) > 0 && c.pigRound !== dayOf(s.tick) && busyWith(s, 'pigs') === 0 && (age >= 16 || !pigToKill(s, c)))
+      add('pigs', j.pigs * drive * fit(p, SK.garden) * (child ? 1.2 : 1));
     // grass and reeds for thatch and cordage: work the older children can do too
     if (age >= 9) add('reap', (j.fiber ?? 0) * drive * night * fit(p, SK.forage) * (child ? 1.15 : 1) * crowd('reap'));
     // healing herbs from the undergrowth, put by for fevers: one person at a time
@@ -669,6 +677,13 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       p.thought = 'Prising stone from the rocks.';
       return newTask(s, kind, i, (i % N) + 0.5, Math.floor(i / N) + 0.5, -1, true);
     }
+    case 'pigs': {
+      const pen = s.penOf(c);
+      if (!pen || !pigsOf(s, c).length) return null;
+      const at = gateOf(pen);
+      p.thought = 'Off to feed the pigs.';
+      return newTask(s, kind, s.tileOf(at), at.x, at.z, pen.id);
+    }
     case 'trap': {
       const route = trapRoute(s);
       if (!route.length) return null;
@@ -786,14 +801,18 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       });
       // a band that has learned to hunt the wild boar goes after a sounder too, for the meat on them
       let boar: Beast | undefined;
+      // (a band with an empty pen wants a striped piglet or two brought home alive: they are worth a longer walk)
+      const piglets = s.knows('boar') && (c.jobs.piglets ?? 0) > 0 && s.pigsWanted(c);
       if (s.knows('boar')) {
-        let bd = Math.min(40 + (dog ? 12 : 0), best >= 0 ? bestD * 1.25 : Infinity);
+        let bd = piglets ? PIGLET_RANGE : Math.min(40 + (dog ? 12 : 0), best >= 0 ? bestD * 1.25 : Infinity);
         // a sounder thinned to a few is let be, to grow again
         const size = new Map<number, number>();
         for (const b of s.beasts) if (b.alive && b.kind === BEAST.Boar) size.set(b.den, (size.get(b.den) ?? 0) + 1);
         for (const b of s.beasts) {
           if (!b.alive || b.kind !== BEAST.Boar || (size.get(b.den) ?? 0) <= 3) continue;
-          if (hyp(b.x - p.x, b.z - p.z) > reach) continue;
+          // (a hunter out for piglets sets off in the morning, and may be home after dark with one)
+          if (hyp(b.x - p.x, b.z - p.z) > (piglets && b.young ? Math.max(reach, PIGLET_RANGE) : reach)) continue;
+          if (piglets && !b.young) continue;
           const dist = hyp(b.x - c.x, b.z - c.z);
           if (dist < bd && !s.people.some((q) => q !== p && q.alive && q.task?.kind === 'hunt' && q.task.ref === b.id)) { bd = dist; boar = b; }
         }
@@ -803,6 +822,12 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
         const t = newTask(s, kind, s.tileOf(boar), boar.x, boar.z, boar.id, true);
         t.boar = true;
         t.deadline = s.tick + 120 + (dog ? 30 : 0) + Math.round(hyp(boar.x - p.x, boar.z - p.z) / 0.3);
+        // (a piglet is worth a longer chase: they keep at it longer)
+        if (piglets && boar.young) {
+          t.alive = true;
+          t.deadline += 40;
+          p.thought = 'After the wild boar, to bring a piglet home alive for the pen.';
+        }
         return t;
       }
       if (best < 0) return null;
@@ -939,6 +964,13 @@ export function sendHome(s: Sim, p: Person, c = s.campOf(p)) {
 export function abandon(s: Sim, p: Person, keepCarry = false) {
   const t = p.task;
   const st = s.camp.stock;
+  // a piglet carried home for the pen is put in it (or let go, with no pen to put it in)
+  if (p.carry === CARRY.Piglet) {
+    const pen = s.penOf();
+    if (pen) penIt(s, p, pen);
+    p.carry = CARRY.None;
+    p.carryAmt = 0;
+  }
   if (t) {
     if (t.kind === 'gift' && t.amount > 0) {
       st.trinkets += 1;
@@ -1912,7 +1944,7 @@ export function runTask(s: Sim, p: Person) {
         // the plot is bare: the ground is a little more tired for it
         // (the first harvest the band has ever brought in: no plot of theirs, this one included, reaped before)
         const first = !s.plots(c).some((q) => (q.plot?.reaped ?? 0) > 0);
-        Object.assign(pl, { crop: 0, growth: 0, weeds: 0, left: 0, greens: 0, cond: 1, sown: 0, reaped: yearOf(s.tick), last: pl.crop, soil: Math.max(0.4, pl.soil - SOIL_TIRE) });
+        Object.assign(pl, { crop: 0, growth: 0, weeds: 0, left: 0, greens: 0, cond: 1, sown: 0, reaped: yearOf(s.tick), last: pl.crop, soil: Math.max(0.4, pl.soil - SOIL_TIRE * (pigsOf(s, c).length >= 2 ? PEN_MUCK : 1)) });
         s.buildingsVersion++;
         if (first) s.event('harvest', `${p.name} brought in the first harvest from the gardens of ${c.name}.`, [p.id], b.x + 0.5, b.z + 0.5, 3);
       }
@@ -2368,6 +2400,59 @@ export function runTask(s: Sim, p: Person) {
       finish(s, p);
       return;
     }
+    case 'pigs': {
+      const pen = s.building(t.ref);
+      if (t.stage === 2) {
+        if (moving(go(s, p, t))) return;
+        deposit(s, p);
+        return finish(s, p);
+      }
+      if (!pen || !pen.built || !pigsOf(s, c).length) return finish(s, p);
+      if (t.stage === 0) {
+        const res = go(s, p, t);
+        // (the way to the gate blocked: as near as they can get will do)
+        if (res === 'fail' && !t.near) { t.near = true; p.path = null; return; }
+        if (res === 'fail') {
+          c.pigRound = dayOf(s.tick); // (no getting there today)
+          return finish(s, p);
+        }
+        if (moving(res)) return;
+        t.stage = 1;
+        t.timer = Math.max(14, Math.round(32 * (1.2 - p.skills[SK.garden] * 0.02)));
+        p.thought = 'Feeding the pigs and mucking out the pen.';
+      }
+      p.act = t.timer % 12 < 6 ? ACT.Tend : ACT.Gather;
+      face(p, pen.x + 0.5, pen.z + 0.5);
+      if (--t.timer > 0) return;
+      // (the day's round done: if they are called away before this, someone else goes)
+      c.pigRound = dayOf(s.tick);
+      const got = feedPigs(s, c);
+      train(p, 'pigs');
+      // a pig for the stores (a grown-up's work): stuck at the gate, bled, scalded and butchered there
+      const g = s.age(p) >= 16 ? pigToKill(s, c) : undefined;
+      if (g) {
+        const meat = killPig(s, c, g);
+        // with nothing to feed them on, the rest the band can't keep are killed too, and fetched home through the day
+        if (pigsHungry(s, c)) {
+          let more = 0;
+          for (let q = pigToKill(s, c); q; q = pigToKill(s, c)) more += killPig(s, c, q);
+          if (more) {
+            c.stock.meat += more;
+            s.book('gathered.meat', more);
+          }
+        }
+        // the hide kept for cloaks, the bones for needles, the tusks for ornaments, as with a boar from the woods
+        if (s.knows('cloaks') && c.stock.hides < HIDES_KEPT) { c.stock.hides += 1; s.book('gathered.hides', 1); }
+        if (s.knows('needles') && c.stock.bones < BONES_KEPT) { c.stock.bones = Math.min(BONES_KEPT, c.stock.bones + BONES_PER_DEER); s.book('gathered.bones', BONES_PER_DEER); }
+        p.carry = CARRY.Meat;
+        p.carryAmt = meat;
+        goStore(s, p, t, 2);
+        p.thought = 'Carrying a pig home for the stores.';
+        return;
+      }
+      p.thought = got >= 0.6 ? 'Fed the pigs.' : got > 0 ? 'Fed the pigs what could be spared: not enough.' : 'Nothing in the stores to feed the pigs.';
+      return finish(s, p);
+    }
     case 'trap': {
       const route = t.route ?? [];
       const aim = () => {
@@ -2650,6 +2735,7 @@ export function runTask(s: Sim, p: Person) {
     }
     case 'hunt': {
       if (t.boar && t.stage === 0) return huntBoar(s, p, t);
+      if (t.alive && t.stage === 2) return penPiglet(s, p, t);
       const d = s.deer.find((q) => q.id === t.ref);
       if (t.stage === 0) {
         if (!d || !d.alive) return finish(s, p);
@@ -3107,6 +3193,37 @@ function boarNear(s: Sim, p: Person, r: number) {
   return s.beasts.some((b) => b.alive && b.kind === BEAST.Boar && Math.abs(b.x - p.x) < r && Math.abs(b.z - p.z) < r);
 }
 
+/** Home with a piglet caught on the boar hunt, to put it in the band's pen. */
+function penPiglet(s: Sim, p: Person, t: Task) {
+  const c = s.camp, pen = s.penOf(c);
+  if (!pen) {
+    // the pen gone (the band moved on): the piglet is let go
+    p.carry = CARRY.None;
+    p.carryAmt = 0;
+    return finish(s, p);
+  }
+  const res = go(s, p, t);
+  if (res === 'moving') return;
+  penIt(s, p, pen);
+  p.thought = 'Put a piglet in the pen.';
+  finish(s, p);
+}
+/** A caught piglet put in the pen: a sow or a boar as it turns out (the band's first, an event). */
+function penIt(s: Sim, p: Person, pen: Building) {
+  const c = s.camp;
+  const herd = pigsOf(s, c);
+  // (the first two the band keeps are a sow and a boar, if the hunters can tell: after that, as it falls)
+  const sow = !herd.some((g) => g.sow) ? true : !herd.some((g) => !g.sow) ? false : s.rPig.chance(0.5);
+  addPig(s, c, pen, sow, true);
+  p.carry = CARRY.None;
+  p.carryAmt = 0;
+  s.book('pigs.caught', 1);
+  if (!herd.length) {
+    s.event('pigs', `${p.name} brought a striped piglet home alive from the boar hunt and put it in the new pen at ${c.name}.`, [p.id], pen.x + 0.5, pen.z + 0.5, 3);
+    s.remember(p, 'pigs', 10, 2, -1, 'Brought the first piglet home alive for the pen.');
+  }
+}
+
 /**
  * The boar hunt: after the sounder through the woods, then in close with the spear. A boar is tougher to bring
  * down than a deer and fights back: a cornered one can charge and gore its hunter (a dog bays it and holds it).
@@ -3147,10 +3264,31 @@ function huntBoar(s: Sim, p: Person, t: Task) {
   }
   const chance = 0.12 + p.skills[SK.hunt] * 0.02 + (s.has(p, 'brave') ? 0.06 : 0) + (dog ? 0.1 : 0) + (b.young ? 0.15 : 0);
   flash(p, FLASH.Thrust);
-  if (r.next() < chance) {
+  const hit = r.next() < chance;
+  if (hit && t.alive && b.young && s.penOf(c)) {
+    // caught, kicking and squealing, and carried home in their arms (the sow may come after them)
+    b.alive = false;
+    train(p, 'hunt.kill');
+    p.carry = CARRY.Piglet;
+    p.carryAmt = 1;
+    const pen = s.penOf(c)!, at = gateOf(pen);
+    t.goal = s.tileOf(at);
+    t.gx = at.x;
+    t.gz = at.z;
+    t.near = true;
+    t.stage = 2;
+    t.homeAt = s.tick;
+    p.path = null;
+    p.thought = 'Carrying a squealing piglet home for the pen.';
+    return;
+  }
+  if (hit) {
     b.alive = false;
     b.killed = true;
     p.kills++;
+    // a striped piglet, carried home for the pot: a hunter who has a garden to feed scraps from thinks of keeping one
+    // (and any boar brought home to a band with plots to feed one from now and then puts the thought in mind)
+    if (s.knows('garden')) s.practise(p, 'piglet', b.young ? 1 : 0.3);
     s.stats.kills++;
     s.stats.boarKills = (s.stats.boarKills ?? 0) + 1;
     train(p, 'hunt.kill');

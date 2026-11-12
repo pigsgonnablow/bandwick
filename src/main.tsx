@@ -696,7 +696,7 @@ export class Engine {
     for (const v of band.beasts.visible) {
       const p = proj(v.x, v.y, v.z);
       const d = Math.hypot(p.x - cx, p.y - cy);
-      const name = v.kind === 0 ? (v.young ? 'Piglet' : 'Wild boar') : v.kind === 1 ? (v.young ? 'Fox cub' : 'Fox') : v.young ? 'Beaver kit' : 'Beaver';
+      const name = v.kind === 0 ? (v.young ? 'Piglet' : 'Wild boar') : v.kind === 1 ? (v.young ? 'Fox cub' : 'Fox') : v.kind === 3 ? (v.young ? 'Piglet, penned' : 'Pig, penned') : v.young ? 'Beaver kit' : 'Beaver';
       if (d < 14) offer({ kind: 'beast', id: v.id }, name, d - 4);
     }
     for (const b of band.getBuildings()) {
