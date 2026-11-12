@@ -54,6 +54,8 @@ export const TRAINING = {
   'garden.harvest': [{ skill: SK.garden, gain: 0.06 }, { skill: SK.forage, gain: 0.01 }],
   // a morning at the pig pen: the pigs fed and watered, the litter mucked out (or a pig killed for the stores)
   pigs: [{ skill: SK.garden, gain: 0.04 }, { skill: SK.hunt, gain: 0.01 }],
+  // a spell of work on a monument: earth heaped, a stone levered upright (slow, heavy, and much the same each day)
+  raise: [{ skill: SK.build, gain: 0.08 }],
 } as const satisfies Record<string, Lesson>;
 export type Training = keyof typeof TRAINING;
 
@@ -108,14 +110,14 @@ export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
   | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast' | 'eggs' | 'honey' | 'mushrooms' | 'mend'
-  | 'sow' | 'tend' | 'harvest' | 'pigs';
+  | 'sow' | 'tend' | 'harvest' | 'pigs' | 'raise';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
   'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen', 'bed', 'roots', 'nuts', 'herbs', 'nurse', 'gift', 'feast', 'eggs', 'honey', 'mushrooms', 'mend',
-  'sow', 'tend', 'harvest', 'pigs',
+  'sow', 'tend', 'harvest', 'pigs', 'raise',
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
@@ -623,7 +625,7 @@ export interface Person {
   gave?: number;
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -669,7 +671,20 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   // a pig pen: a ring of wattle hurdles on stakes, a low thatched sty in one corner for the pigs to lie in, and a
   // hollowed log for a trough
   pen: spec({ wood: 8, fiber: 4, cordage: 2, work: 60, label: 'Pig pen' }),
+  // the band's monuments, raised over years in the hours it can spare: a long mound of earth heaped over a
+  // chamber of stone slabs by the burial ground, its foot ringed with kerb stones
+  barrow: spec({ stone: 10, work: 15000, label: 'Burial mound' }),
+  // and a ring of standing stones out past the huts, each dragged in and levered upright, a tall one at the centre
+  stones: spec({ stone: 26, work: 24000, label: 'Stone ring' }),
 };
+/** The buildings a band raises for its own sake, in its spare hours over years, and never as a job of work. */
+export const MONUMENTS: readonly BuildKind[] = ['barrow', 'stones'];
+export const isMonument = (kind: BuildKind) => kind === 'barrow' || kind === 'stones';
+/** How much each monument a band has raised holds it where it is: the chance it moves away, or splits, scaled. */
+export const MONUMENT_MOVE = 0.4;
+export const MONUMENT_SPLIT = 0.7;
+/** How far a monument's work can run ahead of the stone brought to it (in stones' worth of work). */
+export const MONUMENT_AHEAD = 1.5;
 
 /** What a building's walls are made of. Huts and storehouses can be raised in any of these. */
 export const WALLS = ['wood', 'daub', 'stone'] as const;

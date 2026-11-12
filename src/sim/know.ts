@@ -45,6 +45,8 @@ export type Practice =
   | 'spin' // a hank of thread spun on a spindle
   | 'weave' // a basket, a fish trap or a reed cape woven by the fire
   | 'piglet' // a boar brought down on the hunt (a striped piglet counts most), or a garden plot rooted up by the boar (each gardener)
+  | 'laid' // one of the band's dead laid in the burial ground by camp (each adult there to see it)
+  | 'raise' // a spell of work on a monument
 
 /**
  * What someone has to be before they can have an idea. Only skill levels for now; a new kind of
@@ -404,6 +406,22 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'raise walls of wattle-and-daub', memory: 'Worked out wattle-and-daub walls.',
   },
   {
+    // (a settled band, burying its dead year after year in the same ground: someone who has raised its storehouse
+    // and its huts thinks of heaping a mound over them, so that they are not forgotten)
+    key: 'barrow', label: 'Burial mound', needs: ['storehouse'], requires: [skill(SK.build, 11)],
+    practice: { laid: 1 }, odds: 2,
+    found: 'thought of heaping a great mound of earth over the band\'s dead, walled inside with slabs of stone, so that they would never be forgotten',
+    taught: 'raise a burial mound over their dead', memory: 'Thought of raising a mound over the band\'s dead.',
+  },
+  {
+    // (and a master builder heaping the mound, levering its slabs upright, or laying one of the band's dead by it,
+    // thinks of stones standing on their own)
+    key: 'stones', label: 'Stone ring', needs: ['barrow'], requires: [skill(SK.build, 14)],
+    practice: { raise: 1, laid: 2 }, odds: 60,
+    found: 'stood a slab upright on its own, then another, and marked out a ring of standing stones for the band to gather in',
+    taught: 'raise a ring of standing stones', memory: 'Marked out a ring of standing stones.',
+  },
+  {
     key: 'stonework', label: 'Stonework', needs: ['huts'], requires: [skill(SK.build, ELITE), skill(SK.tool, 8)], near: 'stone',
     practice: { build: 1 }, odds: 4,
     found: 'worked out how to raise walls of stacked stone',
@@ -416,7 +434,7 @@ export const DISCOVERY = new Map(DISCOVERIES.map((d) => [d.key, d]));
 /** What a band has to know to build something. */
 export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   const out: string[] = [];
-  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs' } as Partial<Record<BuildKind, string>>)[b.kind];
+  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones' } as Partial<Record<BuildKind, string>>)[b.kind];
   if (k) out.push(k);
   if (b.walls === 'daub') out.push('daub');
   if (b.walls === 'stone') out.push('stonework');

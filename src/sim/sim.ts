@@ -8,7 +8,7 @@ import {
 } from './types';
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
-  Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, Deer, Herd, Wolf, Pack, WOLF, Beast, Den, Pig, Stock, SimEvent, Task, TaskKind, Memory,
+  Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, isMonument, MONUMENT_MOVE, MONUMENT_SPLIT, Deer, Herd, Wolf, Pack, WOLF, Beast, Den, Pig, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, FURS_PER_CLOAK, FURS_KEPT, BEAST, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
   BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, REMAINS, ROT_FROM, BONES_FROM, remainsStage,
   QUALITY_WEAR, GOODS, GOODS_EACH, GOODS_OVER, WOOD_PLENTY, KILN_CRACK, HEARTH_CRACK,
@@ -1214,6 +1214,25 @@ export class Sim {
     return b;
   }
 
+  /** Whether any grave lies on a tile. */
+  gravesOn(tile: number) {
+    for (let k = 0; k < this.propCount; k++) if (this.propAlive[k] && this.propTile[k] === tile && (this.propType[k] === GRAVE || this.propType[k] === GRAVE + 1)) return true;
+    return false;
+  }
+  /** Fell the trees on a tile (and nothing else: a grave there stays), for the ground round a monument. */
+  clearTrees(tile: number) {
+    for (let k = 0; k < this.propCount; k++) {
+      if (!this.propAlive[k] || this.propTile[k] !== tile || !isTreeType(this.propType[k])) continue;
+      const t = this.propType[k], sp = treeSpecies(t);
+      const st = this.addProp(STUMP_BASE + sp, this.propX[k], this.propY[k], this.propZ[k], this.propRot[k], this.propScale[k]);
+      const logs = this.addProp(LOGS, this.propX[k] + 0.12, this.propY[k], this.propZ[k] + 0.1, this.propRot[k], 1);
+      const what = `${STAGE_WORD[treeStage(t)]} ${SPECIES[sp]}`;
+      this.propNote.set(st, `${art(what) === 'an' ? 'An' : 'A'} ${what} cut down to clear ground for building, ${this.when(this.tick)}.`);
+      this.propNote.set(logs, `Wood from ${art(what)} ${what} cleared for building.`);
+      this.propVal[logs] = WOOD_BY_STAGE[treeStage(t)];
+      this.removeProp(k);
+    }
+  }
   /** Remove small props from a tile so something can be built on it. */
   clearTile(tile: number) {
     for (let k = 0; k < this.propCount; k++) {
@@ -2786,7 +2805,9 @@ export class Sim {
     let quarrels = 0, pairs = 0;
     for (const a of adults) for (const b of adults) if (a !== b) { pairs++; if (this.opinion(a, b) <= -25) quarrels++; }
     const tension = pairs ? quarrels / pairs : 0;
-    const chance = Math.min(0.45, Math.max(0, (ms.length - 16) * 0.035) + tension * 1.6 + (this.treesNear(c, 10) < 25 ? 0.04 : 0) + (trouble ? 0.12 : 0));
+    // (a band that has raised a monument together holds together longer)
+    const monuments = this.bandBuildings(c).filter((b) => isMonument(b.kind) && b.built).length;
+    const chance = Math.min(0.45, Math.max(0, (ms.length - 16) * 0.035) + tension * 1.6 + (this.treesNear(c, 10) < 25 ? 0.04 : 0) + (trouble ? 0.12 : 0)) * MONUMENT_SPLIT ** monuments;
     if (!r.chance(chance)) return false;
     // whoever is most restless (or most at odds with the rest) leads the way
     let leader: Person | null = null, best = -1e9;
@@ -2884,7 +2905,9 @@ export class Sim {
     // a band with gardens dug and sown has put down roots of its own: it fetches wood from further off
     // rather than leave them, and only years of hunger and death drive it away
     const gardens = this.bandBuildings(c).filter((b) => b.kind === 'plot' && b.built).length;
-    const tied = gardens >= 2 ? 0.2 : gardens === 1 ? 0.6 : 1;
+    // (and one that has raised a monument over its dead, or a ring of stones to gather in, more so)
+    const monuments = this.bandBuildings(c).filter((b) => isMonument(b.kind) && b.built).length;
+    const tied = (gardens >= 2 ? 0.2 : gardens === 1 ? 0.6 : 1) * MONUMENT_MOVE ** monuments;
     if (!r.chance(((poorWood ? 0.18 : 0) + (hard ? (lean ? 0.3 : 0.12) : 0)) * tied)) return false;
     const site = this.chooseSite({ from: c, min: 12, max: lean ? 60 : 40, avoid: 18, reachFrom: c.tile, fish: lean });
     if (site < 0) return false;
@@ -3289,7 +3312,9 @@ export class Sim {
     if (c.rationing && winterNow) c.rationedIn = yearOf(this.tick);
     // kept burning through the night, the fire eats about 9 loads a winter day: lay in enough before the cold comes
     const fuelNeed = (winterNow ? Math.max(14, daysToWinterEnd * 9) : s > 2.0 ? 110 : s > 1.4 ? 80 : s > 0.7 ? 35 : 15) * (this.hasBuilt('woodshed') ? 1 : s > 1.6 ? DAMP_BURN : 1);
-    const sites = mine.filter((b) => !b.built);
+    // (a monument is raised in the hours the band can spare, not as a job of work: it is no building site)
+    const sites = mine.filter((b) => !b.built && !isMonument(b.kind));
+    const monument = mine.find((b) => !b.built && isMonument(b.kind));
     // daub can't wait on frozen ground: a site still short of mud as winter comes is raised in wood
     if (s >= 2.75) for (const b of sites) this.fallBackToWood(b);
     const owed = (m: 'wood' | 'fiber' | 'cordage' | 'mud' | 'stone') => sites.reduce((a, b) => a + Math.max(0, specOf(b)[m] - b[m]), 0);
@@ -3319,6 +3344,7 @@ export class Sim {
     // thread spun for the loom by anyone who can spin, in the hours to spare (and a few hanks to try the spindle before there is one)
     const spin = threadShort > 0 && c.stock.fiber - owed('fiber') >= FIBER_PER_THREAD && !c.rationing && !woodShort;
     const make = this.toolToMake(c);
+    const raise = monument && goodsFree ? (provided ? 0.34 : 0.26) : 0;
     // the band's pigs, and whether one is for the stores today
     const herd = pigsOf(this, c), killPig = !!pigToKill(this, c);
     const pigletsOut = this.knows('boar', c) && pigsWanted(this, c) && this.beasts.some((b) => b.alive && b.young && b.kind === BEAST.Boar && hyp(b.x - c.x, b.z - c.z) < PIGLET_RANGE);
@@ -3394,7 +3420,11 @@ export class Sim {
       dig: (siteMud > c.stock.mud || (make === 'pot' && c.stock.mud < 2)) && !winterNow ? 0.75 : bowls && c.stock.mud < 3 && !winterNow ? 0.4 : 0,
       // stone for walls, and a lump or two for knapping tools
       // (with nothing left to fell with, the stone for a new chopper is as urgent as the knapping)
-      quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < (RECIPES[make].uses.stone ?? 0) ? (unarmed ? 0.95 : 0.5) : beads && c.stock.stone < 2 ? 0.35 : 0,
+      quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < (RECIPES[make].uses.stone ?? 0) ? (unarmed ? 0.95 : 0.5) : beads && c.stock.stone < 2 ? 0.35
+        // (and stone for the monument, when its builders have run out)
+        : raise && monument!.stone + c.stock.stone < specOf(monument!).stone && c.stock.stone < 2 ? raise : 0,
+      // the band's monument, raised in the hours it can spare: a little at a time, over years
+      raise,
       bury: this.people.some((p) => !p.alive && !p.buried && p.band === c.id) ? 1 : 0,
       sow: toSow ? 0.9 : 0,
       tend: toTend ? 0.55 + Math.min(0.3, toTend * 0.05) : 0,
@@ -3432,6 +3462,7 @@ export class Sim {
     if (make === 'tunic' || make === 'blanket') c.plan.push(make === 'tunic' ? 'Weave tunics at the loom' : 'Weave blankets at the loom');
     if (herd.length) c.plan.push(killPig ? 'Feed the pigs, and kill one for the stores' : 'Feed the pigs and muck out the pen');
     if (pigletsOut) c.plan.push('Bring piglets home alive from the boar hunt, for the pen');
+    if (raise) c.plan.push(monument!.kind === 'barrow' ? 'Raise a mound over the band\'s dead, in the hours to spare' : 'Raise a ring of standing stones, in the hours to spare');
     if (woodPlenty) c.plan.push('The woodpile is full: the wood is left to the woodcutters');
 
     this.craftNames(c);
@@ -3493,7 +3524,7 @@ export class Sim {
     // then the comforts of the fire, one at a time once the first hut stands: a roof over the woodpile
     // to keep the firewood dry through autumn and winter, and a windbreak behind the fire
     const now = this.bandBuildings();
-    const busy = now.some((b) => !b.built && b.kind !== 'hut' && b.kind !== 'leanto');
+    const busy = now.some((b) => !b.built && b.kind !== 'hut' && b.kind !== 'leanto' && !isMonument(b.kind));
     if (!busy && now.some((b) => b.kind === 'hut' && b.built)) {
       const pile = now.find((b) => b.kind === 'stockpile');
       const hearth = this.hearth();
@@ -3544,6 +3575,20 @@ export class Sim {
         this.clearTile(tile);
         this.newBuilding('pen', tile, -1);
         c.plan.push('Build a pen for the pigs');
+      }
+    }
+    // and a monument, once the band knows how: a mound over its dead by the burial ground first, then a ring of
+    // standing stones (one at a time, the last one finished before the next is begun)
+    const raised = this.bandBuildings(c).filter((b) => isMonument(b.kind));
+    if (raised.every((b) => b.built)) {
+      const next = (['barrow', 'stones'] as const).find((k) => this.knows(k, c) && !raised.some((b) => b.kind === k));
+      const tile = next ? this.siteFor(next, null) : -1;
+      if (next && tile >= 0) {
+        this.clearTile(tile);
+        // (it stands wider than its own ground: the trees round it come down too)
+        for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (dx || dz) this.clearTrees(tile + dz * this.N + dx);
+        this.newBuilding(next, tile, -1);
+        c.plan.push(next === 'barrow' ? 'Mark out a burial mound by the graves' : 'Mark out a ring of standing stones');
       }
     }
   }
@@ -3850,11 +3895,18 @@ export class Sim {
         if (w.water[i] !== WATER.None || !this.grid.walkable(i)) continue;
         if (this.buildings.some((b) => Math.abs(b.x - x) <= 1 && Math.abs(b.z - z) <= 1)) continue;
         if (i === this.camp.graveyard) continue;
-        const d = hyp(dx, dz);
-        const want = kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'loom' ? 3.6 : kind === 'pen' ? 4.8 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
+        // a burial mound goes up by the burial ground, beside the graves and not over them
+        const byGraves = kind === 'barrow' && this.camp.graveyard >= 0;
+        if (byGraves && this.gravesOn(i)) continue;
+        // (and a ring of stones not on top of the burial ground)
+        if (kind === 'stones' && this.camp.graveyard >= 0 && hyp(x - (this.camp.graveyard % N), z - Math.floor(this.camp.graveyard / N)) < 3.5) continue;
+        const d = byGraves ? hyp(x - (this.camp.graveyard % N), z - Math.floor(this.camp.graveyard / N)) : hyp(dx, dz);
+        const want = byGraves ? 1.6 : kind === 'barrow' ? 7.5 : kind === 'stones' ? 8 : kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'loom' ? 3.6 : kind === 'pen' ? 4.8 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
         let sc = -Math.abs(d - want) * 1.6;
         if (w.level[i] !== w.level[this.camp.tile]) sc -= 2.5;
         sc -= this.treesOnTile[i] * 1.2;
+        // (a monument stands wider than its tile: open, level ground round it, not a wood to clear or a bank's edge)
+        if (isMonument(kind)) for (let ez = -1; ez <= 1; ez++) for (let ex = -1; ex <= 1; ex++) sc -= this.treesOnTile[i + ez * N + ex] * 0.6 + (w.water[i + ez * N + ex] !== WATER.None ? 3 : 0) + (w.level[i + ez * N + ex] !== w.level[i] ? 2 : 0);
         for (const kh of kinHomes) sc -= hyp(kh.x - x, kh.z - z) * 0.25;
         sc += (hash3(i, w.params.seed, 99) % 100) * 0.012;
         if (sc > bestS) { bestS = sc; best = i; }
@@ -4418,7 +4470,16 @@ export class Sim {
       fuel: b.fuel, owner: b.owner, bedding: (b.bedding ?? 0) > 0,
       // a garden plot's look: bare, sown, in leaf or green, ripe, or stubble after the reaping
       ...(b.kind === 'plot' ? { look: this.plotLook(b) } : {}),
+      // a monument goes up in stages: each its own model, drawn whole (not risen from the ground like a roof)
+      ...(isMonument(b.kind) ? { look: this.monumentLook(b), progress: 1 } : {}),
     }));
+  }
+  /** Which model draws a monument as it stands: a mound or a ring a third, two thirds and all the way up. */
+  monumentLook(b: Building) {
+    if (b.built) return b.kind;
+    const spec = specOf(b);
+    const done = Math.min(b.work / spec.work, b.stone / spec.stone);
+    return `${b.kind}${done < 1 / 3 ? 1 : done < 2 / 3 ? 2 : 3}`;
   }
   /** Which model draws a garden plot as it stands. */
   plotLook(b: Building) {
@@ -4697,11 +4758,11 @@ export class Sim {
         if (spec.fiber) lines.push(L('Thatch', `${Math.floor(b.fiber)} of ${spec.fiber} bundles of grass and reeds`));
         if (spec.cordage) lines.push(L('Cordage', `${Math.floor(b.cordage)} of ${spec.cordage} lengths`));
         if (spec.mud) lines.push(L('Mud', `${Math.floor(b.mud)} of ${spec.mud} loads for the daub`));
-        if (spec.stone) lines.push(L('Stone', `${Math.floor(b.stone)} of ${spec.stone} loads for the walls`));
+        if (spec.stone) lines.push(L('Stone', `${Math.floor(b.stone)} of ${spec.stone} ${b.kind === 'barrow' ? 'slabs for the chamber and the kerb' : b.kind === 'stones' ? 'stones dragged out to it' : 'loads for the walls'}`));
         lines.push(L('Work', `${Math.round((b.work / spec.work) * 100)}% done`));
-        const workers = this.people.filter((p) => p.alive && (p.task?.kind === 'build' || p.task?.kind === 'supply') && p.task.ref === b.id);
+        const workers = this.people.filter((p) => p.alive && (p.task?.kind === 'build' || p.task?.kind === 'supply' || p.task?.kind === 'raise') && p.task.ref === b.id);
         const fetching = { wood: 'Fetching wood', fiber: 'Fetching thatch', cordage: 'Fetching cordage', mud: 'Fetching mud', stone: 'Fetching stone' };
-        for (const p of workers) lines.push(L(p.task!.kind === 'build' ? 'Building' : fetching[p.task!.res ?? 'wood'], p.name, pref(p.id)));
+        for (const p of workers) lines.push(L(p.task!.kind === 'build' || p.task!.kind === 'raise' ? 'Building' : fetching[p.task!.res ?? 'wood'], p.name, pref(p.id)));
       }
       if (b.kind === 'hearth') {
         const hours = b.fuel / this.burnRate(b);
@@ -4830,11 +4891,20 @@ export class Sim {
         if (y.pigs.born + y.pigs.killed > 0) lines.push(L(`This year (${this.stores(this.camp).year})`, `${y.pigs.born} born, ${y.pigs.killed} killed for ${y.pigs.meat} meals of meat`));
         notes.push('A ring of wattle hurdles with a thatched sty in one corner. The pigs are fed each morning, the sows farrow in spring, and in the autumn the pigs the band can\'t keep through the winter are killed for the stores. The muck from the pen goes on the gardens, and a plot dug with it tires more slowly.');
       }
+      if (isMonument(b.kind)) {
+        // (years of work by many hands: who has put in a day on it, and what it means to the band)
+        if (b.builders.length) lines.push(L(b.built ? 'Raised by' : 'Worked on by', `${b.builders.length} of the band${b.built ? '' : ' so far'}`));
+        if (b.kind === 'barrow') {
+          const laid = this.people.filter((q) => !q.alive && q.buried && q.band === b.band && q.death > b.finished && b.built).length;
+          if (b.built) lines.push(L('Laid by it', laid ? `${laid} of the band's dead since it was finished` : 'None yet since it was finished'));
+          notes.push('A long mound of earth heaped over a chamber of stone slabs, its foot ringed with kerb stones, by the band\'s burial ground. The band\'s dead are laid beside it, with those who went before. A band that has raised a mound over its dead is slow to leave them.');
+        } else notes.push('A ring of standing stones out past the huts, each one dragged in and levered upright, a tall one at the centre. On the longest night the band goes out to the stones after the feast to see the year turn. A band that has raised a ring of stones together holds together.');
+      }
       if (b.kind === 'rack') {
         lines.push(L('Dried food', `${Math.round(this.camp.stock.preserved)} meals`));
         notes.push('Meat and fish dried here keep for most of a year.');
       }
-      if (b.built && b.builders.length) notes.push(`Raised by ${b.builders.map(name).join(', ')}, finished ${this.when(b.finished)}.`);
+      if (b.built && b.builders.length) notes.push(isMonument(b.kind) ? `Begun ${this.when(b.started)}, finished ${this.when(b.finished)}${b.builders.length > 6 ? `, by ${b.builders.slice(0, 5).map(name).join(', ')} and ${b.builders.length - 5} others` : ` by ${b.builders.map(name).join(', ')}`}.` : `Raised by ${b.builders.map(name).join(', ')}, finished ${this.when(b.finished)}.`);
       else if (!b.built) notes.push(`Begun ${this.when(b.started)}.`);
       const home = b.kind === 'hut' || b.kind === 'leanto';
       const empty = home && b.built && !this.people.some((p) => p.alive && p.home === b.id);

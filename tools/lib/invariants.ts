@@ -5,7 +5,7 @@ import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, yearOf, seasonOf } from '../../src/sim/time';
 import { FAR_GRAVE } from '../../src/sim/ai';
-import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, GOODS, GOODS_EACH, GOODS_OVER, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS, GARMENTS, isGarment, MEND_MAX, type RecipeKey } from '../../src/sim/band';
+import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, GOODS, GOODS_EACH, GOODS_OVER, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS, GARMENTS, isGarment, MEND_MAX, isMonument, type RecipeKey } from '../../src/sim/band';
 import { dayOf } from '../../src/sim/time';
 import { knowHowFor } from '../../src/sim/know';
 
@@ -203,7 +203,9 @@ export class InvariantChecker {
         tiles.add(b.tile);
       }
       for (const m of MATERIALS) if (b[m] > specOf(b)[m] + 6) flag('building over-supplied', `${at} ${b.kind} ${m} ${b[m]}`);
-      if (!b.built && sim.tick - b.started > 2 * TICKS_PER_YEAR) flag('building unfinished for 2 years', `${at} ${b.kind}`);
+      // (a monument is the work of years of spare hours: it gets longer, but not forever)
+      if (!b.built && !isMonument(b.kind) && sim.tick - b.started > 2 * TICKS_PER_YEAR) flag('building unfinished for 2 years', `${at} ${b.kind}`);
+      if (!b.built && isMonument(b.kind) && !sim.campById(b.band)?.gone && sim.tick - b.started > 8 * TICKS_PER_YEAR) flag('monument unfinished for 8 years', `${at} ${b.kind}`);
     }
     // trees on the tile counter agree with props
     if (sim.tick % (TICKS_PER_DAY * 48) === 0) {

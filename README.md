@@ -213,6 +213,21 @@ band that moves camp kills its pigs and takes the meat. The pigs root, trot abou
 at night, a carried piglet is cradled in the arms, and the pen's card shows the herd, who tends it and
 how well it is fed.
 
+**Monuments.** A band that has built a storehouse, and buries its dead year after year in the same ground,
+may come to think of something more lasting over them: a good builder (building 11) at a burial thinks of
+the burial mound. The band marks one out beside its graves and raises it in the hours it can spare, never
+as a job of work: a chamber of stone slabs with a doorway to the front, a long mound of earth heaped over
+it, and a kerb of stones set on edge round its foot (10 stones, and years of spare days). Stone is carried
+out to it as the work needs it, and quarried when the pile runs out. A master builder (building 14) heaping
+the mound may then think of stones standing on their own, and the band raises a ring of standing stones
+out past the huts: a dozen slabs dragged in and levered upright, a tall one at the centre (26 stones). Each
+takes two or three years, and the models show it going up: the bare chamber in a ring of dug earth, the
+mound half heaped, full height in bare earth, then grassed over; the ring four, eight and twelve stones
+up, then the centre stone raised. When one is finished everyone who worked on it remembers it. The band's
+dead are laid by the mound with those who went before; on the longest night the band goes out to the stones
+after the feast to see the year turn, and comes back closer for it. A band with a monument is much slower
+to move away (less than half as likely for each), and slower to split.
+
 **Fortune.** Most years are ordinary. Some are not: a sickness that runs through a camp, a feud
 that ends in a killing and an exile, wolves or a bear on someone out alone after dark, a drowning,
 a lean year (a late frost takes the berry flowers, the fish run thin and the acorns, roots, mushrooms
