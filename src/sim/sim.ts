@@ -3008,7 +3008,8 @@ export class Sim {
   /** A band that leaves its camp leaves its half-built sites to fall back to the land (what is finished stands). */
   private dropSites(c: Camp) {
     const n = this.buildings.length;
-    this.buildings = this.buildings.filter((b) => b.band !== c.id || b.built || b.kind === 'hearth' || b.kind === 'stockpile');
+    // (a monument half raised is left standing as it is: years of work, not a pile of stakes to pick up)
+    this.buildings = this.buildings.filter((b) => b.band !== c.id || b.built || b.kind === 'hearth' || b.kind === 'stockpile' || (isMonument(b.kind) && b.work + b.stone > 0));
     // gardens left behind go to weeds: whatever was growing in them is lost
     for (const b of this.buildings) if (b.band === c.id && b.plot?.crop) { Object.assign(b.plot, { crop: 0, growth: 0, weeds: 1, left: 0, greens: 0 }); this.buildingsVersion++; }
     if (this.buildings.length !== n) this.buildingsVersion++;
@@ -3027,7 +3028,8 @@ export class Sim {
     const fallen = new Set<number>();
     this.buildings = this.buildings.filter((b) => {
       const c = this.campById(b.band);
-      const falls = b.kind !== 'hearth' && !!c?.gone && this.tick - c.gone > RUIN_TICKS;
+      // (a burial mound and a ring of standing stones are built to outlast those who raised them: they stay)
+      const falls = b.kind !== 'hearth' && !isMonument(b.kind) && !!c?.gone && this.tick - c.gone > RUIN_TICKS;
       if (falls) fallen.add(b.id);
       return !falls;
     });
@@ -3897,7 +3899,8 @@ export class Sim {
         if (i === this.camp.graveyard) continue;
         // a burial mound goes up by the burial ground, beside the graves and not over them
         const byGraves = kind === 'barrow' && this.camp.graveyard >= 0;
-        if (byGraves && this.gravesOn(i)) continue;
+        // (a monument stands wider than its tile: no grave under any of it, for clearing its ground would take the grave too)
+        if (isMonument(kind) && [-1, 0, 1].some((ez) => [-1, 0, 1].some((ex) => this.gravesOn(i + ez * N + ex)))) continue;
         // (and a ring of stones not on top of the burial ground)
         if (kind === 'stones' && this.camp.graveyard >= 0 && hyp(x - (this.camp.graveyard % N), z - Math.floor(this.camp.graveyard / N)) < 3.5) continue;
         const d = byGraves ? hyp(x - (this.camp.graveyard % N), z - Math.floor(this.camp.graveyard / N)) : hyp(dx, dz);

@@ -55,7 +55,7 @@ describe('monuments', () => {
     if (c.graveyard >= 0) {
       const N = s.N;
       expect(Math.hypot(b.x - (c.graveyard % N), b.z - Math.floor(c.graveyard / N))).toBeLessThan(4);
-      expect(s.gravesOn(b.tile)).toBe(false);
+      for (const dz of [-1, 0, 1]) for (const dx of [-1, 0, 1]) expect(s.gravesOn(b.tile + dz * N + dx)).toBe(false);
     }
     // knowing the ring too, nothing more is begun until the mound is finished
     c.knows.push('stones');
@@ -121,6 +121,24 @@ describe('monuments', () => {
     const end = s.tick + TICKS_PER_DAY * 6;
     while (s.tick < end && !b.built) s.step();
     expect(b.built).toBe(true);
+  });
+
+  it('outlast the band that raised them, and stand half raised where a band moved on', () => {
+    const s = settled();
+    const c = s.camp;
+    s.plan();
+    const b = monumentOf(s)!;
+    b.work = 500;
+    // the band moves on: what it had begun of its monument is left standing, not cleared away like a building site
+    (s as unknown as { dropSites(c: unknown): void }).dropSites(c);
+    expect(s.buildings.includes(b)).toBe(true);
+    // and once it is finished, it stands long after the huts have fallen in
+    b.built = true;
+    c.gone = s.tick;
+    s.tick += 13 * 48 * TICKS_PER_DAY;
+    (s as unknown as { ruinsFall(): void }).ruinsFall();
+    expect(s.buildings.includes(b)).toBe(true);
+    expect(s.buildings.some((q) => q.band === c.id && q.kind === 'hut')).toBe(false);
   });
 
   it('draw in stages as they go up, each with its model', () => {
