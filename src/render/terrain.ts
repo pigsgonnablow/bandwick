@@ -17,6 +17,81 @@ const SNOW_LIP = new THREE.Color('#e8edf2');
 const SEABED_SIDE = new THREE.Color('#8f846c');
 const BASE_DARK = new THREE.Color('#3a2e24');
 
+/**
+ * A tileable close-up texture for turf, drawn once: R blade shade (dark in the gaps and at the roots, light at the
+ * tips), G crumbs and pebbles for bare earth, B how much of the spot is covered by a blade. One repeat spans
+ * about a tile, and the shader samples it twice at different turns and sizes so the repeat does not show.
+ */
+function makeGrassTexture(size = 256): THREE.DataTexture {
+  const shade = new Float32Array(size * size).fill(0.32);
+  const cover = new Float32Array(size * size);
+  const crumbs = new Float32Array(size * size).fill(0.5);
+  let s = 0x2f6e2b1;
+  const rnd = () => {
+    s = (Math.imul(s ^ (s >>> 15), 0x2c1b3c6d) + 0x9e3779b9) >>> 0;
+    return (s >>> 8) / 16777216;
+  };
+  const at = (x: number, y: number) => (((y % size) + size) % size) * size + (((x % size) + size) % size);
+  // tufts: a handful of blades fanning out from one root, each darker at its foot and lighter toward the tip
+  const tufts = Math.round(size * size / 70);
+  for (let t = 0; t < tufts; t++) {
+    const rx = rnd() * size, ry = rnd() * size;
+    const lean = rnd() * Math.PI * 2;
+    const blades = 3 + Math.floor(rnd() * 5);
+    const tone = 0.75 + rnd() * 0.25;
+    for (let b = 0; b < blades; b++) {
+      const a = lean + (rnd() - 0.5) * 1.9;
+      const len = size * (0.035 + rnd() * 0.05);
+      const bend = (rnd() - 0.5) * 0.04;
+      const w = 0.9 + rnd() * 0.9;
+      let x = rx, y = ry, ang = a;
+      const steps = Math.ceil(len * 2);
+      for (let k = 0; k <= steps; k++) {
+        const f = k / steps;
+        const v = (0.45 + 0.55 * f) * tone;
+        const r = w * (1 - f * 0.75);
+        for (let oy = -2; oy <= 2; oy++)
+          for (let ox = -2; ox <= 2; ox++) {
+            const d = Math.hypot(ox + (x % 1) - 0.5, oy + (y % 1) - 0.5);
+            if (d > r + 0.5) continue;
+            const c = Math.min(1, r + 0.5 - d);
+            const j = at(Math.floor(x) + ox, Math.floor(y) + oy);
+            if (v * c > shade[j] * cover[j] || cover[j] < c) shade[j] = shade[j] + (v - shade[j]) * c;
+            cover[j] = Math.max(cover[j], c);
+          }
+        ang += bend;
+        x += Math.cos(ang) * 0.5;
+        y += Math.sin(ang) * 0.5;
+      }
+    }
+  }
+  // crumbs of earth and small stones, for where the turf wears thin
+  for (let n = 0; n < size * size / 40; n++) {
+    const cx = rnd() * size, cy = rnd() * size, r = 0.6 + rnd() * rnd() * 2.6, v = rnd() < 0.5 ? 0.1 + rnd() * 0.25 : 0.7 + rnd() * 0.3;
+    for (let oy = -3; oy <= 3; oy++)
+      for (let ox = -3; ox <= 3; ox++) {
+        const d = Math.hypot(ox, oy);
+        if (d > r) continue;
+        crumbs[at(Math.floor(cx) + ox, Math.floor(cy) + oy)] = v;
+      }
+  }
+  const data = new Uint8Array(size * size * 4);
+  for (let i = 0; i < size * size; i++) {
+    data[i * 4] = Math.round(Math.min(1, shade[i]) * 255);
+    data[i * 4 + 1] = Math.round(crumbs[i] * 255);
+    data[i * 4 + 2] = Math.round(cover[i] * 255);
+    data[i * 4 + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export function createTerrainMaterials(world: WorldData) {
   const S = world.texSize;
   const colorTex = new THREE.DataTexture(world.colorTex, S, S, THREE.RGBAFormat);
@@ -31,10 +106,12 @@ export function createTerrainMaterials(world: WorldData) {
   maskTex.minFilter = THREE.LinearFilter;
   maskTex.needsUpdate = true;
 
+  const grassTex = makeGrassTexture();
+
   const top = new THREE.MeshLambertMaterial({ map: colorTex });
   top.customProgramCacheKey = () => 'terrain-top';
   top.onBeforeCompile = (shader) => {
-    addCommon(shader, { uMask: { value: maskTex }, uMapSize: { value: world.size } });
+    addCommon(shader, { uMask: { value: maskTex }, uMapSize: { value: world.size }, uGrass: { value: grassTex } });
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       `#include <map_fragment>
@@ -49,6 +126,31 @@ export function createTerrainMaterials(world: WorldData) {
         // bare rock gets coarser grain and darker seams than turf
         float rocky = 1.0 - smoothstep(0.2, 0.6, veg);
         col *= mix(0.9 + 0.2 * g, 0.78 + 0.22 * g + 0.14 * smoothstep(0.45, 0.7, g2), rocky);
+        // turf up close: blades and tufts, clumps of lusher and drier grass, and bare earth where it wears thin
+        {
+          vec2 wp = vWorld.xz;
+          vec4 gA = texture2D(uGrass, mat2(0.92, 0.39, -0.39, 0.92) * wp * 0.52);
+          vec4 gB = texture2D(uGrass, mat2(0.34, -0.94, 0.94, 0.34) * wp * 0.71 + 0.37);
+          vec4 gt = mix(gA, gB, smoothstep(0.42, 0.58, texture2D(uNoise, wp * 0.19 + 7.3).r));
+          float turf = smoothstep(0.35, 0.8, veg);
+          // forest floor (a little less 'veg' than open grass): darker, with old leaves among the blades
+          float wood = smoothstep(0.995, 0.955, veg) * smoothstep(0.8, 0.92, veg);
+          float clump = texture2D(uNoise, wp * 0.55 + 3.1).g;
+          float dry = smoothstep(0.5, 0.68, texture2D(uNoise, wp * 0.23 + 11.7).b);
+          vec3 blade = col * (0.58 + 0.85 * gt.r);
+          blade = mix(blade, blade * vec3(1.18, 1.05, 0.72), dry * smoothstep(0.55, 0.9, gt.r) * 0.55);
+          blade *= 0.93 + 0.16 * clump;
+          // bare earth: patches where the noise runs high, more of it in drier and thinner turf
+          float dn = texture2D(uNoise, wp * 0.31 + 1.7).g * 0.75 + texture2D(uNoise, wp * 1.3 + 5.1).r * 0.25;
+          float bare = smoothstep(0.62, 0.665, dn + dry * 0.05 + (1.0 - veg) * 0.4 + wood * 0.05);
+          bare *= 1.0 - gt.b * 0.7 * smoothstep(0.69, 0.63, dn);
+          vec3 soil = mix(vec3(0.2, 0.12, 0.05), vec3(0.38, 0.27, 0.14), gt.g) * (0.8 + 0.4 * g);
+          vec3 litter = mix(vec3(0.24, 0.13, 0.05), vec3(0.36, 0.24, 0.09), gt.g);
+          soil = mix(soil, litter, wood * 0.7);
+          vec3 turfCol = mix(blade, soil, bare);
+          turfCol = mix(turfCol, turfCol * vec3(1.06, 0.92, 0.8), wood * (1.0 - gt.b) * 0.6);
+          col = mix(col, turfCol, turf);
+        }
         // spring flowers
         float pick = texture2D(uNoise, vWorld.xz * 3.1).r;
         vec3 flower = pick > 0.55 ? vec3(0.95, 0.85, 0.25) : (pick > 0.45 ? vec3(0.95, 0.95, 0.92) : vec3(0.85, 0.45, 0.62));
