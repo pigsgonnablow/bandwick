@@ -5,7 +5,7 @@
 // (and whether a run is passing it); everything here is for show and changes nothing.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { WATER, WorldData } from '../sim/types';
+import { WATER, WorldData, DIRS4 } from '../sim/types';
 import { freshFrozen } from '../sim/time';
 import { addCommon } from './shaderlib';
 
@@ -23,8 +23,6 @@ const SHY = 1.1;
 const SIZE = 1.15;
 /** In a run: how many more salmon are seen than trout in full water, the rises a second per hundred tiles, and the share that are leaps. */
 const RUN_SWIMMERS = 4, RUN_RISES = 5, RUN_LEAPS = 0.6;
-/** The world's flow directions (0 N, 1 E, 2 S, 3 W) as steps. */
-const FLOW: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
 interface Swimmer {
   key: number;
@@ -115,7 +113,7 @@ export class FishLayer {
   private upstream(i: number) {
     const f = this.world.flow[i];
     if (f < 0) return null;
-    const [dx, dz] = FLOW[f];
+    const [dx, dz] = DIRS4[f];
     return Math.atan2(-dx, -dz);
   }
   private tileAt(x: number, z: number) {
@@ -199,7 +197,8 @@ export class FishLayer {
     const slot = (k: number) => (off || counts[k] >= anims[k].count ? -1 : counts[k]++);
     for (const [key, s] of this.swimmers) {
       s.shown += (s.going ? -dt : dt) / 0.8;
-      if (s.shown <= 0 && s.going) { this.swimmers.delete(key); continue; }
+      // (gone: look again, as a salmon may be waiting to take a trout's place)
+      if (s.shown <= 0 && s.going) { this.swimmers.delete(key); this.dirty = true; continue; }
       s.shown = Math.min(1, Math.max(0, s.shown));
       if (dt > 0) this.swim(s, dt, people, splashes);
       const k = s.salmon ? 1 : 0, n = slot(k);
@@ -252,7 +251,7 @@ export class FishLayer {
       if (!this.depthAt(x + Math.sin(angle) * dist, z + Math.cos(angle) * dist)) return;
       this.leaps.push({ x, z, y: d.surface, angle, dist, t: 0, dur: 0.6 + this.rnd() * 0.2, high: 0.13 + this.rnd() * 0.1, phase: 0, salmon: true });
       this.mark(x, z, d.surface, 0.5, 8);
-    } else if (this.rnd() < LEAPS) {
+    } else if (up === null && this.rnd() < LEAPS) {
       const angle = this.rnd() * Math.PI * 2, dist = 0.16 + this.rnd() * 0.14;
       if (!this.depthAt(x + Math.sin(angle) * dist, z + Math.cos(angle) * dist)) return;
       this.leaps.push({ x, z, y: d.surface, angle, dist, t: 0, dur: 0.5 + this.rnd() * 0.15, high: 0.07 + this.rnd() * 0.06, phase: 0, salmon: false });

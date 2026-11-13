@@ -13,8 +13,9 @@ function spinners(seed = 2) {
   const s = runYears(sim(seed), 2);
   const c = s.camp;
   for (const k of ['huts', 'spinning']) if (!c.knows.includes(k)) c.knows.push(k);
-  // (no reed capes to weave for everyone first, in a band that has thought of them by now)
-  c.knows = c.knows.filter((k) => k !== 'capes');
+  // (no reed capes to weave for everyone first, in a band that has thought of them by now,
+  // nor bowls and beads to make, whose want would keep the hands at the fire busy before the spindles)
+  c.knows = c.knows.filter((k) => k !== 'capes' && k !== 'pottery' && k !== 'beads');
   c.stock.fiber += 80;
   c.stock.stone += 20;
   c.stock.wood += 80;

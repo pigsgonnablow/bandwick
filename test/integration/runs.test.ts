@@ -8,7 +8,7 @@ import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_YEAR, dayOf } from '../../src/s
 import { WATER, DIRS4 } from '../../src/sim/types';
 import { Sim } from '../../src/sim/sim';
 import { runTask, setup } from '../../src/sim/ai';
-import { mapRuns, runOn, runStart, runExtra, runsTick, weirSite, weirBank, weirRot, weirWater } from '../../src/sim/runs';
+import { mapRuns, runOn, runStart, runExtra, runsTick, runNear, weirSite, weirBank, weirRot, weirWater } from '../../src/sim/runs';
 import { sim, world, runYears } from '../helpers';
 
 const N = 128;
@@ -48,6 +48,17 @@ describe('the autumn runs', () => {
       // (the river's breadth beside its outlet counts as the outlet too)
       if (m.eel[i] === 0) { outlets++; expect(near(s, i, (j) => w.water[j] === WATER.Lake || m.eel[j] === 0)).toBe(true); }
     }
+    // (an outlet is where a lake drains: no river runs into it from upstream)
+    for (let i = 0; i < N * N; i++) {
+      if (m.eel[i] !== 0 || near(s, i, (j) => m.eel[j] === 0 && j !== i && !near(s, j, (k) => w.water[k] === WATER.Lake))) continue;
+      const fed = DIRS4.some(([dx, dz]) => {
+        const x = (i % N) + dx, z = Math.floor(i / N) + dz, j = z * N + x;
+        if (x < 0 || z < 0 || x >= N || z >= N || w.water[j] !== WATER.River || w.flow[j] < 0) return false;
+        const [fx, fz] = DIRS4[w.flow[j]];
+        return (z + fz) * N + x + fx === i;
+      });
+      expect(fed).toBe(false);
+    }
     expect(mouths).toBeGreaterThan(0);
     expect(outlets).toBeGreaterThan(0);
     expect(m.tiles.length).toBeGreaterThan(100);
@@ -84,6 +95,15 @@ describe('the autumn runs', () => {
     onDay(s, runStart(s, year) + RUN_DAYS + 1);
     runsTick(s);
     expect(s.fish[mouth]).toBe(s.fishCap[mouth]);
+  });
+
+  it('are not told of under the ice', () => {
+    const s = runYears(sim(1, N), 1);
+    const year = Math.floor(s.tick / TICKS_PER_YEAR) + 2;
+    onDay(s, runStart(s, year) + 2);
+    expect(runNear(s, s.camp, 200)).toBeGreaterThan(0);
+    onDay(s, 40);
+    expect(runNear(s, s.camp, 200)).toBe(0);
   });
 
   it('make the news, and the morning plan, at a camp by a river', () => {
@@ -158,6 +178,18 @@ describe('the fish weir', () => {
     onDay(s2, 8);
     for (let k = 0; k < 4; k++) runsTick(s2);
     expect(b2.catch ?? 0).toBeLessThan(1);
+  });
+
+  it('fishes nothing once its band has gone', () => {
+    const s = runYears(sim(1, N), 1);
+    const b = withWeir(s);
+    const year = Math.floor(s.tick / TICKS_PER_YEAR) + 2;
+    let day = runStart(s, year);
+    while (!runOn(s, b.tile, day, year) && day < 40) day++;
+    onDay(s, day + 1);
+    s.camp.gone = s.tick;
+    for (let k = 0; k < 8; k++) runsTick(s);
+    expect(b.catch ?? 0).toBe(0);
   });
 
   it('is emptied by someone who carries the fish home to the stores', () => {

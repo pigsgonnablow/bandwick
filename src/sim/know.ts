@@ -496,7 +496,7 @@ export const DISCOVERY = new Map(DISCOVERIES.map((d) => [d.key, d]));
 /** What a band has to know to build something. */
 export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   const out: string[] = [];
-  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones' } as Partial<Record<BuildKind, string>>)[b.kind];
+  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir' } as Partial<Record<BuildKind, string>>)[b.kind];
   if (k) out.push(k);
   if (b.walls === 'daub') out.push('daub');
   if (b.walls === 'stone') out.push('stonework');

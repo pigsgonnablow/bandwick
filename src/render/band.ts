@@ -1680,8 +1680,9 @@ export class BandLayer {
           const side = rot + 0.3;
           put('site', cx - Math.sin(side) * 1.3, cz - Math.cos(side) * 1.3, rot + 0.6, 1, 0.8);
         } else if (b.kind === 'weir') {
-          // (a weir's stakes and withies lie on the bank, not in the river)
-          put('site', cx + Math.cos(rot) * 0.8, cz - Math.sin(rot) * 0.8, rot + 0.6, 1, 0.8);
+          // (a weir's stakes and withies lie on the bank it is built from, not in the river: the bank to the
+          // left looking downstream, as weirBank picks it)
+          put('site', cx - Math.cos(rot) * 0.8, cz + Math.sin(rot) * 0.8, rot + 0.6, 1, 0.8);
         } else put('site', cx + 0.28, cz + 0.3, rot + 0.6, 1, 0.8);
       }
       // fresh grass laid under a lean-to (a hut's is out of sight inside)

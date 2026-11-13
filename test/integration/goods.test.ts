@@ -18,6 +18,8 @@ function fedBand(seed = 2) {
   c.stock.wood += 60;
   c.stock.grain += 2000;
   c.stock.preserved += 500;
+  // (nobody part way through making something when the watching starts)
+  for (const p of s.members()) if (p.task?.kind === 'craft') p.task = null;
   return s;
 }
 const good = (s: Sim, it: Item) => GOODS.includes(it.kind) && it.band === s.camp.id;
@@ -288,6 +290,7 @@ describe('the band\'s goods', () => {
     c.knows = c.knows.filter((k) => k !== 'pottery' && k !== 'beads');
     // (and whatever goods it made before it forgot)
     for (const it of s.items.filter((i) => GOODS.includes(i.kind))) s.items.splice(s.items.indexOf(it), 1);
+    for (const p of s.members()) if (p.task?.kind === 'craft') p.task = null;
     Object.assign(c.stock, { mud: 30, stone: 30, wood: 200, grain: 2000, preserved: 500 });
     for (let d = 0; d < 6; d++) {
       runTo(s, s.tick + TICKS_PER_DAY);

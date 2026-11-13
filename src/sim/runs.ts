@@ -28,12 +28,7 @@ function stepOf(N: number, i: number, dir: number) {
   const x = (i % N) + dx, z = Math.floor(i / N) + dz;
   return x < 0 || z < 0 || x >= N || z >= N ? -1 : z * N + x;
 }
-/** DIRS4 in the order the world's flow directions use (N, E, S, W). */
-const FLOW: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
-function down(N: number, i: number, flow: number) {
-  const x = (i % N) + FLOW[flow][0], z = Math.floor(i / N) + FLOW[flow][1];
-  return x < 0 || z < 0 || x >= N || z >= N ? -1 : z * N + x;
-}
+const down = stepOf;
 
 export function mapRuns(w: WorldData): RunMap {
   const N = w.size, NN = N * N;
@@ -64,12 +59,16 @@ export function mapRuns(w: WorldData): RunMap {
     if (w.water[i] !== WATER.River || w.flow[i] < 0) continue;
     const out = down(N, i, w.flow[i]);
     if (out < 0 || w.water[out] === WATER.Lake) continue;
-    let fromLake = false;
+    // (an outlet's water comes from the lake: a river fed from upstream that only runs by the shore, or on
+    // into the lake, is no outlet)
+    let fromLake = false, fed = false;
     for (let d = 0; d < 4; d++) {
       const j = stepOf(N, i, d);
-      if (j >= 0 && w.water[j] === WATER.Lake) fromLake = true;
+      if (j < 0) continue;
+      if (w.water[j] === WATER.Lake) fromLake = true;
+      if (w.water[j] === WATER.River && w.flow[j] >= 0 && down(N, j, w.flow[j]) === i) fed = true;
     }
-    if (!fromLake) continue;
+    if (!fromLake || fed) continue;
     // the outlet: follow the water down (and the river's breadth either side of it)
     let at = i;
     for (let dist = 0; at >= 0 && dist <= EEL_REACH && w.water[at] === WATER.River; dist++) {
@@ -115,10 +114,16 @@ export function runOn(s: Sim, i: number, dayOfYear = dayOf(s.tick) % DAYS_PER_YE
   return 0;
 }
 
-/** The built weirs, by the tile they stand in. */
+/** A weir whose band has gone (moved on, or died out) is left untended: its fences fall slack and it fishes nothing. */
+function tended(s: Sim, b: Building) {
+  const c = s.campById(b.band);
+  return !!c && !c.gone;
+}
+
+/** The built weirs still kept up, by the tile they stand in. */
 function weirTiles(s: Sim) {
   const out = new Map<number, Building>();
-  for (const b of s.buildings) if (b.kind === 'weir' && b.built) out.set(b.tile, b);
+  for (const b of s.buildings) if (b.kind === 'weir' && b.built && tended(s, b)) out.set(b.tile, b);
   return out;
 }
 
@@ -166,23 +171,22 @@ export function runExtra(s: Sim, i: number, weirs = weirTiles(s)) {
  */
 export function runsTick(s: Sim) {
   const weirs = weirTiles(s);
-  let changed = false;
   for (const i of s.runs.tiles) {
     const cap = s.fishCap[i];
     if (cap <= 0) continue;
     const extra = runExtra(s, i, weirs);
     if (extra > 0) {
       const want = cap + extra;
-      if (s.fish[i] < want) { s.fish[i] += (want - s.fish[i]) * RUN_FILL; changed = true; }
+      if (s.fish[i] < want) s.fish[i] += (want - s.fish[i]) * RUN_FILL;
     } else if (s.fish[i] > cap) {
       // the run has gone by: what is left of it has gone on up (or down) the river
       s.fish[i] = cap;
-      changed = true;
     }
   }
   // the weirs: the fish nosing along the fence for a way through find the trap at its point
   if (!freshFrozen(s.tick)) {
     for (const b of weirs.values()) {
+      const was = Math.floor(b.catch ?? 0);
       for (const k of weirWater(s, b.tile)) {
         const room = WEIR_HOLDS - (b.catch ?? 0);
         if (room <= 0) break;
@@ -191,11 +195,12 @@ export function runsTick(s: Sim) {
         if (take <= 0) continue;
         s.fish[k] -= take;
         b.catch = (b.catch ?? 0) + take;
-        changed = true;
       }
+      // (the basket's count, and how full it looks)
+      if (Math.floor(b.catch ?? 0) !== was) s.buildingsVersion++;
     }
   }
-  if (changed) s.fishVersion++;
+  // (the fish in the water are drawn afresh by the six-hourly regrowth that calls this)
 }
 
 /** The water a weir fishes: the stretch it stands in, and the river just above and below it. */
@@ -246,7 +251,7 @@ export function weirSite(s: Sim, c: Camp) {
       if (w.water[up] !== WATER.River || w.water[dn] !== WATER.River) continue;
       if ((s.unreachable.get(-3 * N * N - (a + 1)) ?? 0) > s.tick) continue;
       // (not on another weir's stretch)
-      if (s.buildings.some((o) => o.kind === 'weir' && Math.abs(o.x - x) + Math.abs(o.z - z) < 4)) continue;
+      if (s.buildings.some((o) => o.kind === 'weir' && tended(s, o) && Math.abs(o.x - x) + Math.abs(o.z - z) < 4)) continue;
       // the nearer the sea, the thicker the salmon; any run is better than none
       const run = (s.runs.salmon[i] >= 0 ? 8 - (s.runs.salmon[i] / RUN_REACH) * 5 : 0) + (s.runs.eel[i] >= 0 ? 3 : 0);
       const sc = run - d * 0.25;
@@ -263,6 +268,8 @@ export function weirSite(s: Sim, c: Camp) {
 
 /** The runs near a camp now (within a day's fishing of it): 1 salmon, 2 eels, 0 none. */
 export function runNear(s: Sim, c: Camp, r = 28) {
+  // (under the ice no run can be fished)
+  if (freshFrozen(s.tick)) return 0;
   let got = 0;
   for (const i of s.runs.tiles) {
     const x = (i % s.N) + 0.5, z = Math.floor(i / s.N) + 0.5;
