@@ -3727,6 +3727,154 @@ for k in range(6):
 q.finish("bld__pen")
 
 
+# ---------------------------------------------------------------- the monuments
+# Raised over years in a settled band's spare hours, each drawn in four stages: a third of the way, two thirds,
+# all but finished, and done. Both stand wider than their tile (the trees round them are cleared).
+#
+# The burial mound: a long mound of earth along x, over a chamber of stone slabs whose doorway faces the front
+# (-y), two portal stones and a lintel; round its foot a kerb of stones set on edge. Earth while it is being
+# heaped, grassed over once it is finished. The stages: the chamber standing bare and the kerb half laid, with a
+# heap of dug earth and slabs waiting; the mound half heaped; the mound full height in bare earth; and grassed.
+EARTH, EARTH_DK, EARTH_LT = (110, 86, 60), (90, 70, 50), (130, 104, 74)
+KERB = [(150, 144, 132), (134, 128, 118), (162, 154, 140), (120, 116, 108)]
+LICHEN = (168, 164, 118)
+MOUND_GRASS = [(104, 124, 64), (92, 112, 58), (116, 132, 70)]
+BX, BY, BH = 0.56, 0.36, 0.2   # the mound's half length, half width and height
+
+
+def slab(q, at, w, t, h, rnd, lean=0.0, yaw=0.0, col=None):
+    """A slab of stone set on edge: w wide (along its own x), t thick, h tall, rough and a little tapered."""
+    R = Matrix.Rotation(yaw, 3, "Z") @ Matrix.Rotation(lean, 3, "X")
+    vs = q.box((0, 0, 0), (w, t, h), col or rnd.choice(KERB), rnd, 0.06, taper=rnd.uniform(0.72, 0.9))
+    for v in vs:
+        v.co = R @ (v.co + Vector((rnd.uniform(-0.1, 0.1) * w, 0, h / 2))) + Vector(at)
+    # a fleck of lichen on its face
+    if rnd.random() < 0.6:
+        q.blob(Vector(at) + R @ Vector((rnd.uniform(-0.2, 0.2) * w, -t / 2 - 0.002, h * rnd.uniform(0.4, 0.8))), (w * 0.18, 0.002, h * 0.12), LICHEN, rnd, 0.06)
+
+
+def lying(q, at, w, t, h, rnd, yaw=0.0):
+    """A slab lying flat on the ground, waiting to be raised."""
+    R = Matrix.Rotation(yaw, 3, "Z")
+    vs = q.box((0, 0, 0), (h, w, t), rnd.choice(KERB), rnd, 0.06, taper=0.92)
+    for v in vs:
+        v.co = R @ (v.co + Vector((0, 0, t / 2))) + Vector(at)
+
+
+def mound(q, frac, colors, rnd):
+    """The heaped earth: an ellipsoid along x, frac of full height, with clods for a rough top."""
+    h = BH * frac
+    vs = q.blob((0, 0.03, 0), (BX * (0.82 + 0.18 * frac), BY * (0.82 + 0.18 * frac), h), colors[0], rnd, 0.04, noise=0.04, subdiv=3)
+    for f in q._faces_of(vs):
+        q.paint([f], rnd.choice(colors), rnd, 0.05)
+    return vs
+
+
+def kerb(q, n, rnd):
+    """Stones set on edge round the mound's foot, n of the whole ring (from the front round)."""
+    N = 22
+    for k in range(N):
+        if k >= n:
+            break
+        a = -math.pi / 2 + ((k + 1) // 2 * (1 if k % 2 else -1)) * math.tau / N
+        x, y = math.cos(a) * (BX + 0.04), math.sin(a) * (BY + 0.04) + 0.03
+        if abs(x) < 0.09 and y < 0:
+            continue  # the doorway
+        slab(q, (x, y, -0.01), rnd.uniform(0.07, 0.1), 0.026, rnd.uniform(0.05, 0.075), rnd, lean=rnd.uniform(-0.1, 0.1), yaw=a + math.pi / 2)
+
+
+def chamber(q, rnd, covered):
+    """The stone chamber at the mound's heart, its doorway to the front: two portal stones and a lintel."""
+    DY = -BY + 0.02
+    for x in (-0.07, 0.07):
+        slab(q, (x, DY, -0.01), 0.05, 0.04, 0.16, rnd, yaw=0.0)
+    q.box((0, DY, 0.16), (0.2, 0.06, 0.035), KERB[3], rnd, 0.05)  # the lintel
+    q.box((0, DY - 0.005, 0.07), (0.1, 0.012, 0.14), (36, 32, 28), rnd, 0.0)  # the dark of the doorway
+    if not covered:
+        # the passage walls and the capstone over the chamber, bare until the earth goes over them
+        for y in (DY + 0.12, DY + 0.24):
+            for x in (-0.08, 0.08):
+                slab(q, (x, y, -0.01), 0.1, 0.03, 0.15, rnd, yaw=math.pi / 2)
+        q.box((0, DY + 0.32, 0.12), (0.26, 0.2, 0.04), KERB[0], rnd, 0.06)
+
+
+rnd = random.Random(96)
+for stage in (1, 2, 3, 4):
+    q = Part()
+    rr = random.Random(97)
+    if stage == 1:
+        # a low ring of dug earth where the mound will be, the chamber standing bare in it
+        mound(q, 0.18, [EARTH, EARTH_DK, EARTH_LT], rr)
+        chamber(q, rr, covered=False)
+        kerb(q, 10, rr)
+        # slabs waiting on the ground, and a heap of fresh earth with a digging stick in it
+        for k, (x, y) in enumerate(((0.62, -0.42), (0.74, -0.3), (0.5, -0.5))):
+            lying(q, (x, y, 0), 0.06, 0.025, 0.12, rr, yaw=rr.uniform(0, math.pi))
+        q.blob((-0.68, -0.34, 0), (0.12, 0.1, 0.06), EARTH_LT, rr, 0.06, noise=0.15)
+        q.cyl(4, 0.005, 0.004, (-0.66, -0.36, 0.04), (-0.6, -0.42, 0.19), (120, 92, 60), rr, 0.03)
+    elif stage == 2:
+        mound(q, 0.55, [EARTH, EARTH_DK, EARTH_LT], rr)
+        chamber(q, rr, covered=False)
+        kerb(q, 18, rr)
+        lying(q, (0.66, -0.42, 0), 0.06, 0.025, 0.12, rr, yaw=0.6)
+        q.blob((-0.68, -0.34, 0), (0.1, 0.09, 0.05), EARTH_LT, rr, 0.06, noise=0.15)
+    else:
+        # full height: bare earth still, then grassed over, a few flowers in the grass
+        mound(q, 1.0, [EARTH, EARTH_DK, EARTH_LT] if stage == 3 else MOUND_GRASS, rr)
+        chamber(q, rr, covered=True)
+        kerb(q, 22, rr)
+        if stage == 4:
+            for k in range(14):
+                a, r = rr.uniform(0, math.tau), rr.uniform(0.2, 0.85)
+                x, y = math.cos(a) * BX * r, math.sin(a) * BY * r + 0.03
+                z = BH * math.sqrt(max(0.0, 1 - (x / BX) ** 2 - ((y - 0.03) / BY) ** 2))
+                q.blob((x, y, z), (0.008, 0.008, 0.005), (226, 214, 120) if k % 3 else (214, 214, 220), rr, 0.05)
+    q.finish("bld__barrow" + ("" if stage == 4 else str(stage)))
+
+# The stone ring: a dozen stones standing in a ring out past the huts, slabs set on end with their broad faces
+# to the centre, and a tall one in the middle. The stages: four up and others lying where they were dragged in,
+# one on rollers; eight up; the ring closed and the tall stone lying ready, a lever under it; and done. The grass
+# inside is trodden thin in patches.
+RING_R, RING_N = 0.62, 12
+ring_rnd = random.Random(98)
+RING = [(ring_rnd.uniform(0.07, 0.1), ring_rnd.uniform(0.04, 0.055), ring_rnd.uniform(0.26, 0.36), ring_rnd.uniform(-0.08, 0.08), ring_rnd.choice(KERB))
+        for _ in range(RING_N)]
+WORN = (108, 112, 68)
+for stage in (1, 2, 3, 4):
+    q = Part()
+    rr = random.Random(99)
+    # (the grass trodden thin in patches round the inside of the ring)
+    for k in range(7):
+        a = k / 7 * math.tau + 0.4
+        q.blob((math.cos(a) * RING_R * 0.6, math.sin(a) * RING_R * 0.6, 0.0), (0.09, 0.07, 0.003), WORN, rr, 0.05, noise=0.2)
+    up = (4, 8, 12, 12)[stage - 1]
+    order = [0, 6, 3, 9, 1, 7, 4, 10, 2, 8, 5, 11]   # raised across the ring from each other
+    for k in range(RING_N):
+        w, t, h, lean, col = RING[k]
+        a = k / RING_N * math.tau + 0.13
+        at = (math.cos(a) * RING_R, math.sin(a) * RING_R, -0.015)
+        if k in order[:up]:
+            slab(q, at, w, t, h, rr, lean=lean, yaw=a + math.pi / 2, col=col)
+        elif k in order[up:up + 3]:
+            # dragged in and lying beside the hole dug for it, just outside the ring
+            out = (math.cos(a) * (RING_R + 0.16), math.sin(a) * (RING_R + 0.16), 0)
+            lying(q, out, w, t, h, rr, yaw=a)
+            q.blob(at, (0.05, 0.035, 0.006), EARTH_DK, rr, 0.05)
+    if stage == 1:
+        # a stone still on its way in, on log rollers
+        for dx in (-0.05, 0.05):
+            q.cyl(6, 0.014, 0.014, (0.95 + dx, 0.2 - 0.1, 0.014), (0.95 + dx, 0.2 + 0.1, 0.014), (120, 92, 60), rr, 0.04)
+        lying(q, (0.95, 0.2, 0.028), 0.09, 0.05, 0.3, rr, yaw=0.0)
+    # the tall stone at the centre: lying beside its hole with a lever pole under it, then upright
+    if stage == 3:
+        lying(q, (0.0, 0.1, 0), 0.1, 0.06, 0.48, rr, yaw=0.2)
+        q.blob((0, -0.05, 0), (0.06, 0.04, 0.006), EARTH_DK, rr, 0.05)
+        q.cyl(5, 0.007, 0.006, (0.12, 0.1, 0.0), (0.3, 0.12, 0.16), (120, 92, 60), rr, 0.03)
+    if stage == 4:
+        slab(q, (0, -0.02, -0.015), 0.12, 0.07, 0.5, rr, lean=0.03, yaw=0.2, col=KERB[2])
+    q.finish("bld__stones" + ("" if stage == 4 else str(stage)))
+
+
 def tunic(q, rnd):
     """A tunic laid out flat (in the xz plane, front to -y): the shoulders and short sleeves woven in one
     piece across, drooping at the ends, the body hanging to the thighs, a woven band at the hem and cuffs,

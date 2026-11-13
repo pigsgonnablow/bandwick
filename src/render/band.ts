@@ -331,7 +331,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen']) {
+      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -1506,7 +1506,8 @@ export class BandLayer {
 
   /** Which model draws a building: huts come in two shapes, each with wattle, daub and stone walls. */
   private modelOf(b: { kind: string; id: number; walls?: string; look?: string }) {
-    if (b.kind === 'plot') return b.look && this.buildingMeshes.has(b.look) ? b.look : 'plot';
+    // (a garden plot as it grows, a monument as it goes up)
+    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
     if (b.kind !== 'hut' && b.kind !== 'storehouse') return b.kind;
     const shape = b.kind === 'storehouse' ? b.kind : b.id % 2 ? 'hut1' : 'hut0';
     const own = shape + (b.walls === 'daub' ? 'd' : b.walls === 'stone' ? 's' : '');
@@ -1520,7 +1521,7 @@ export class BandLayer {
       if (this.introBuild.get(b.id) === 0) continue;
       const kind = this.modelOf(b);
       need.set(kind, (need.get(kind) ?? 0) + 1);
-      if (!b.built && b.kind !== 'plot') need.set('site', (need.get('site') ?? 0) + 1);
+      if (!b.built && b.kind !== 'plot' && b.kind !== 'barrow' && b.kind !== 'stones') need.set('site', (need.get('site') ?? 0) + 1);
       if (b.bedding) need.set('bedding', (need.get('bedding') ?? 0) + 1);
     }
     for (const [kind, n] of need) {
@@ -1571,7 +1572,8 @@ export class BandLayer {
         const pop = this.bandPop.get(b.band) ?? 10;
         this.auraList.unshift({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, r: 7 + Math.sqrt(pop) * 1.8, c: bc.color, k: 0.3, terr: true });
       }
-      if (!b.built && b.kind !== 'plot') {
+      // (a monument has no pile of stakes and rods: it is earth and stone, and the stone lies on the ground in its model)
+      if (!b.built && b.kind !== 'plot' && b.kind !== 'barrow' && b.kind !== 'stones') {
         // the pile of stakes and rods lies where the work is: a windbreak goes up in an arc behind the fire,
         // so its pile sits just inside the arc rather than in the fire on the hearth's tile
         if (b.kind === 'windbreak') {

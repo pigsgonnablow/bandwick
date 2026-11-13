@@ -4,7 +4,7 @@ import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR,
-  PEN_MUCK, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER } from './band';
+  PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER } from './band';
 import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
 import { addPig, gateOf, feedPigs, pigToKill, killPig, pigsHungry, pigsOf } from './pigs';
@@ -332,6 +332,8 @@ export function decide(s: Sim, p: Person) {
       const axe = s.toolsOf(c).some((i) => i.kind === 'axe');
       add('deadwood', wood * (axe ? 0.8 : 1.05) * crowd('deadwood'));
       add('build', (j.build ?? 0) * drive * night * fit(p, SK.build) * crowd('build') * 1.05);
+      // the band's monument, in the hours it can spare: heavy work, for the grown and not yet old
+      if (age >= 14 && age < 60 && (j.raise ?? 0) > 0) add('raise', j.raise * drive * night * fit(p, SK.build) * crowd('raise'));
       add('preserve', (j.preserve ?? 0) * drive * night * fit(p, SK.hide) * crowd('preserve'));
     }
     // (feeding the fire is for whoever is about camp: someone out on the land would carry the wood off with them
@@ -677,6 +679,28 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       p.thought = 'Prising stone from the rocks.';
       return newTask(s, kind, i, (i % N) + 0.5, Math.floor(i / N) + 0.5, -1, true);
     }
+    case 'raise': {
+      const b = s.buildings.find((q) => q.band === p.band && !q.built && isMonument(q.kind));
+      if (!b) return null;
+      const spec = specOf(b);
+      // stone brought to it from the pile first, while the work is up with the stone it has (two at a time)
+      const coming = b.stone + inTransit(s, b.id, 'stone');
+      if (coming < spec.stone && b.work >= monumentReach(b) - 1 && c.stock.stone >= 1) {
+        const st = s.storeSpot(true);
+        p.thought = b.kind === 'barrow' ? 'Carrying stone for the slabs of the mound.' : 'Dragging a stone out to the ring.';
+        const t = newTask(s, 'supply', st.tile, st.x, st.z, b.id);
+        t.amount = Math.min(2, spec.stone - coming, c.stock.stone);
+        t.res = 'stone';
+        c.stock.stone -= t.amount;
+        return t;
+      }
+      // (nothing more to do there until more stone comes: unless it has all come, and only the last of the work is
+      // left, setting the last stone)
+      const last = b.work >= spec.work - 1 && b.stone >= spec.stone - 0.5;
+      if (b.work >= monumentReach(b) - 1 && !last) return null;
+      p.thought = b.kind === 'barrow' ? 'Heaping earth on the burial mound.' : 'Levering a stone upright in the ring.';
+      return newTask(s, kind, b.tile, b.x + 0.5, b.z + 0.5, b.id, true);
+    }
     case 'pigs': {
       const pen = s.penOf(c);
       if (!pen || !pigsOf(s, c).length) return null;
@@ -865,7 +889,8 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       return t;
     }
     case 'build': {
-      const sites = s.buildings.filter((b) => !b.built && b.band === p.band).sort((a, b) => a.started - b.started);
+      // (not the band's monument: that is raised in the hours it can spare, by those who choose to)
+      const sites = s.buildings.filter((b) => !b.built && b.band === p.band && !isMonument(b.kind)).sort((a, b) => a.started - b.started);
       let short: Material | null = null;
       for (const b of sites) {
         const spec = specOf(b);
@@ -2077,12 +2102,14 @@ export function runTask(s: Sim, p: Person) {
       // the band's goods set out round the fire: the more of them, and the finer, the prouder the night
       const goods = s.goodsOf();
       const show = Math.min(1, goods.reduce((a, i) => a + 1 + (i.quality ?? 0), 0) / Math.max(4, s.members(c).length * 2));
-      p.belonging = clamp(p.belonging + 30 + show * 15);
+      // (and a band with a ring of standing stones goes out to them after, to see the year turn)
+      const ring = s.bandBuildings(c).some((b) => b.kind === 'stones' && b.built);
+      p.belonging = clamp(p.belonging + 30 + show * 15 + (ring ? 12 : 0));
       s.book('feast.ate', 1);
       for (const q of s.people) if (q !== p && q.alive && q.task?.kind === 'feast' && q.task.stage >= 1) s.adjust(p, q, 1.5);
-      s.remember(p, 'midwinter', 14 + Math.round(show * 8), 1, -1, show >= 0.5
-        ? `Feasted by the fire at ${c.name} on the longest night, the band's goods set out round it.`
-        : `Feasted by the fire at ${c.name} on the longest night.`);
+      s.remember(p, 'midwinter', 14 + Math.round(show * 8) + (ring ? 6 : 0), 1, -1, (show >= 0.5
+        ? `Feasted by the fire at ${c.name} on the longest night, the band's goods set out round it`
+        : `Feasted by the fire at ${c.name} on the longest night`) + (ring ? ', and went out to the standing stones to see the year turn.' : '.'));
       p.thought = 'Full, and warm, and among their own.';
       finish(s, p);
       return;
@@ -2399,6 +2426,30 @@ export function runTask(s: Sim, p: Person) {
       deposit(s, p);
       finish(s, p);
       return;
+    }
+    case 'raise': {
+      const b = s.building(t.ref);
+      if (!b || b.built) return finish(s, p);
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 80;
+      }
+      p.act = b.kind === 'barrow' && t.timer % 30 < 20 ? ACT.Dig : ACT.Build;
+      face(p, b.x + 0.5, b.z + 0.5);
+      // as far as the stone brought to it will let them go
+      b.work = Math.min(monumentReach(b), b.work + (1 + p.skills[SK.build] * 0.05) * (s.age(p) >= 50 ? 0.7 : 1));
+      if (!b.builders.includes(p.id)) b.builders.push(p.id);
+      if (s.tick % 10 === 0) s.buildingsVersion++;
+      const spec = specOf(b);
+      if (b.work >= spec.work && b.stone >= spec.stone - 0.5) {
+        completeBuilding(s, b, p);
+        return finish(s, p);
+      }
+      if (--t.timer > 0 && b.work < monumentReach(b)) return;
+      train(p, 'raise');
+      s.practise(p, 'raise');
+      return finish(s, p);
     }
     case 'pigs': {
       const pen = s.building(t.ref);
@@ -3062,7 +3113,14 @@ export function runTask(s: Sim, p: Person) {
         tool.band = p.band;
       }
       p.carry = CARRY.None;
-      s.event('burial', `${p.name} laid ${body.name} to rest.`, [p.id, body.id], p.x, p.z, 1);
+      // laid in the burial ground by camp (not out where they fell): those there to see it, a band that has buried
+      // its dead in the same ground for years, may think of something more lasting over them; and a band that has
+      // raised its mound lays them by it, with those who went before
+      const home = hyp(p.x - c.x, p.z - c.z) <= FAR_GRAVE;
+      const mound = home && s.bandBuildings(c).some((b) => b.kind === 'barrow' && b.built);
+      if (home) for (const q of s.members(c)) if (s.age(q) >= 14 && hyp(q.x - p.x, q.z - p.z) < 14) s.practise(q, 'laid');
+      s.event('burial', mound ? `${p.name} laid ${body.name} to rest by the mound, with those who went before.` : `${p.name} laid ${body.name} to rest.`, [p.id, body.id], p.x, p.z, 1);
+      if (mound) for (const q of s.people) if (q.alive && (s.isKin(q, body) || q.id === body.partner)) s.remember(q, 'mound', 5, 2, body.id, `Saw ${body.name} laid by the mound, with those who went before.`);
       // the finest thing among the band's goods goes into the grave with them, and their kin remember it
       const good = s.goodsOf().sort((a, b) => (b.quality ?? 0) - (a.quality ?? 0) || a.id - b.id)[0];
       if (good && s.age(body) >= 3) {
@@ -3135,7 +3193,8 @@ function graveSpot(s: Sim) {
         if (x < 1 || z < 1 || x >= N - 1 || z >= N - 1) continue;
         const i = z * N + x;
         if (!s.grid.walkable(i) || s.world.water[i] !== WATER.None) continue;
-        if (s.buildings.some((b) => b.tile === i)) continue;
+        // (nor in the ground a monument stands on, which is wider than its tile)
+        if (s.buildings.some((b) => b.tile === i || (isMonument(b.kind) && Math.abs(b.x - x) <= 1 && Math.abs(b.z - z) <= 1))) continue;
         let graves = 0;
         for (let k = 0; k < s.propCount; k++) if (s.propAlive[k] && s.propTile[k] === i && s.propType[k] >= GRAVE && s.propType[k] < GRAVE + 2) graves++;
         if (graves >= 2) continue;
@@ -3151,6 +3210,12 @@ export function firstKill(c: Camp, kind: 'deer' | 'boar') {
   if (had.includes(kind)) return false;
   had.push(kind);
   return true;
+}
+
+/** How far a monument's work can go with the stone brought to it so far (the last of it waits on the last stone). */
+export function monumentReach(b: Building) {
+  const spec = specOf(b);
+  return spec.work * Math.min(1, (b.stone + MONUMENT_AHEAD) / spec.stone);
 }
 
 export function completeBuilding(s: Sim, b: Building, p: Person) {
@@ -3177,6 +3242,16 @@ export function completeBuilding(s: Sim, b: Building, p: Person) {
       s.event('build', first ? `The first ${label} at ${s.camp.name} stands, home to ${owner.name}'s family.` : `A ${label} was finished for ${owner.name}'s family.`,
         household.map((h) => h.id), b.x + 0.5, b.z + 0.5, first ? 3 : 1);
     } else s.event('build', `A ${label} was finished.`, [p.id], b.x + 0.5, b.z + 0.5, 1);
+  } else if (isMonument(b.kind)) {
+    // years of the band's spare days: everyone who worked on it remembers, and the whole band is proud of it
+    const years = Math.max(1, Math.round((s.tick - b.started) / (TICKS_PER_DAY * 48)));
+    const what = b.kind === 'barrow' ? 'the burial mound' : 'the ring of standing stones';
+    s.event('monument', `The people of ${s.camp.name} finished ${what}, after ${years === 1 ? 'a year' : `${years} years`} of work.`, b.builders.slice(0, 8), b.x + 0.5, b.z + 0.5, 4);
+    for (const q of s.members()) {
+      const built = b.builders.includes(q.id);
+      s.remember(q, 'monument', built ? 16 : 8, 6, b.id, built ? `Helped raise ${what} at ${s.camp.name}.` : `Saw ${what} finished at ${s.camp.name}.`);
+      q.belonging = clamp(q.belonging + (built ? 20 : 10));
+    }
   } else if (b.kind === 'plot' || b.kind === 'fence') {
     // (a field of plots is dug one after another: only the first is news)
     if (first) s.event('build', b.kind === 'plot' ? `${p.name} and the others dug the first garden plot at ${s.camp.name}.` : `${p.name} and the others put up the first fence round a garden plot at ${s.camp.name}.`, [p.id], b.x + 0.5, b.z + 0.5, 2);
