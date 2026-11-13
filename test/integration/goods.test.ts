@@ -234,8 +234,10 @@ describe('the band\'s goods', () => {
     const real = s.practise.bind(s);
     s.practise = (q, what, amount = 1) => { if (what === 'fire_pot') fired.push(amount); real(q, what, amount); };
     p.skills[SK.pot] = 5;
+    // (counting only these: the band may have fired bowls of its own before)
+    const made0 = total(s, 'made.bowl'), cracked0 = total(s, 'cracked.bowl');
     for (let i = 0; i < 40; i++) makeOne(s, p, 'bowl');
-    const made = total(s, 'made.bowl'), cracked = total(s, 'cracked.bowl');
+    const made = total(s, 'made.bowl') - made0, cracked = total(s, 'cracked.bowl') - cracked0;
     expect(fired.length).toBe(40);
     expect(fired.filter((a) => a === 2).length).toBe(cracked);
     expect(fired.filter((a) => a === 1).length).toBe(made);
@@ -284,6 +286,8 @@ describe('the band\'s goods', () => {
     const s = runYears(sim(2), 2);
     const c = s.camp;
     c.knows = c.knows.filter((k) => k !== 'pottery' && k !== 'beads');
+    // (and whatever goods it made before it forgot)
+    for (const it of s.items.filter((i) => GOODS.includes(i.kind))) s.items.splice(s.items.indexOf(it), 1);
     Object.assign(c.stock, { mud: 30, stone: 30, wood: 200, grain: 2000, preserved: 500 });
     for (let d = 0; d < 6; d++) {
       runTo(s, s.tick + TICKS_PER_DAY);
@@ -392,6 +396,8 @@ describe('the band\'s goods', () => {
     const maker = adult(s, [p, q]);
     bead.maker = maker.id;
     const old = s.giveNecklace(q, p.id);
+    // (from an even footing: a friendship already near its height has little room to grow)
+    q.rel.set(p.id, 0);
     const before = q.rel.get(p.id) ?? 0;
     finishTask(s, p);
     expect(q.worn?.neck).toBe(bead.id);

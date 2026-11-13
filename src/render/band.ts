@@ -34,6 +34,13 @@ const HARE = 92;
 /** A clay lamp set down beside someone at work after dark, burning (the tool in hand is the lamp they lit). */
 const LAMP = 91;
 const LAMP_TOOL = ITEM_KINDS.indexOf('lamp') + 1;
+/**
+ * Fishing gear: a barbed harpoon (held and stabbed as the spear is), a hook and line (wound on its stick in the
+ * fist on the way, held out over the water on a short rod while they sit at it), and a net (bundled on the
+ * shoulder on the way, out in the water in front of whoever keeps it while it is hauled).
+ */
+const HARPOON = 90, LINE = 89, LINE_CAST = 88, NET = 87, NET_OUT = 86;
+const HARPOON_TOOL = ITEM_KINDS.indexOf('harpoon') + 1, LINE_TOOL = ITEM_KINDS.indexOf('line') + 1, NET_TOOL = ITEM_KINDS.indexOf('net') + 1;
 /** The tip of the lamp's wick, where its flame burns, in the lamp model's own space (see LAMP_WICK in blender/build_band.py). */
 const LAMP_WICK = new THREE.Vector3(0.0155, 0.0085, 0);
 /** Where the lamp is set down: in front of the sitter and a little to one side, on the ground (drawn at twice its size, or it would be lost at the scale of the camp). */
@@ -328,6 +335,7 @@ export class BandLayer {
       [CARRY.Piglet, 'piglet'],
       // a deer, or a boar or pig, laid out on its hide on the ground in front of whoever is butchering it
       [CARRY.Carcass, 'carcass'], [CARRY.BoarCarcass, 'boarCarcass'],
+      [HARPOON, 'harpoon'], [LINE, 'line'], [LINE_CAST, 'lineCast'], [NET, 'net'], [NET_OUT, 'netOut'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
@@ -1210,19 +1218,22 @@ export class BandLayer {
       const carcassDown = (carry === CARRY.Carcass || carry === CARRY.BoarCarcass) && s.act !== ACT.Dead ? carry : 0;
       if (carcassDown) carry = CARRY.None;
       // a fisher's catch comes home on the spear it was caught with
-      const onSpear = carry === CARRY.Fish && s.task === FISH_TASK;
+      // (not one caught on a line or in a net: that is carried home in the hand)
+      const onSpear = carry === CARRY.Fish && s.task === FISH_TASK && s.tool !== LINE_TOOL && s.tool !== NET_TOOL;
       if (onSpear) carry = CARRY.Spear;
       // with free hands on the move, a digging stick is held low like a spear and a trap swings like a basket
       const loose = carry === CARRY.None && !s.gesture && (s.act === ACT.Walk || s.act === ACT.Run || s.act === ACT.Idle);
-      const toolCarry = loose ? (s.tool === 3 ? STICK : s.tool === 4 ? SNARE : s.tool === 5 ? FISHTRAP : s.tool === 6 ? BASKET : 0) : 0;
+      const toolCarry = loose ? (s.tool === 3 ? STICK : s.tool === 4 ? SNARE : s.tool === 5 ? FISHTRAP : s.tool === 6 ? BASKET : s.tool === LINE_TOOL ? LINE : s.tool === NET_TOOL ? NET : 0) : 0;
       // berries picked into a basket come home in it, and the catch from the snares as the hares themselves
       const snared = carry === CARRY.Meat && s.task === TRAP_TASK;
-      const shown = carry === CARRY.Berries && s.tool === 6 ? BASKET_FULL : snared ? HARE : carry;
+      // (a harpoon is held as the spear is, and drawn in its place)
+      const shown = carry === CARRY.Berries && s.tool === 6 ? BASKET_FULL : snared ? HARE : carry === CARRY.Spear && s.tool === HARPOON_TOOL ? HARPOON : carry;
+      const speared = shown === CARRY.Spear || shown === HARPOON;
       const spearAt = () => {
         const t = U.uTime.value + (look % 997) * 0.37, ph = s.phase % 1;
         return spearInHand(spearHold(s.prevAct, t, ph, s.run), spearHold(s.shownAct, t, ph, s.run), smooth(0, 1, blend), elder * 0.18, s.gesture, gpr, gw);
       };
-      anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, toolCarry === STICK ? CARRY.Spear : toolCarry || snared ? CARRY.Berries : carry);
+      anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, toolCarry === STICK ? CARRY.Spear : toolCarry === NET ? CARRY.Grain : toolCarry || snared ? CARRY.Berries : carry);
       col.set((s.dress & 512 ? TUNIC : CLOTH)[(look >>> 8) % (s.dress & 512 ? TUNIC.length : CLOTH.length)]).convertSRGBToLinear();
       const bc = this.colorMode ? this.bandColors.get(s.band) : undefined;
       if (bc) col.lerp(bc.color, 0.7);
@@ -1240,9 +1251,9 @@ export class BandLayer {
           const k = carryCount.get(shown) ?? 0;
           if (k < cm.instanceMatrix.count) {
             // a spear is held in the hand, wherever the arm is in the pose and any move playing over it
-            const off = shown === CARRY.Spear ? spearAt() : carryOffset(shown);
+            const off = speared ? spearAt() : carryOffset(shown);
             // during a one-off move the item goes where the hand goes
-            if (gw > 0 && s.gesture && shown !== CARRY.Spear) {
+            if (gw > 0 && s.gesture && !speared) {
               const [bs, be, bl] = baseArm(carry);
               const g = s.gesture;
               const from = handAt(bs, be, bl, 0);
@@ -1284,6 +1295,24 @@ export class BandLayer {
           const un = 1 / Math.max(0.5, scale);
           cm.setMatrixAt(ck, m4.clone().multiply(new THREE.Matrix4().makeScale(un, un, un).setPosition(0, 0, 0.04 * un)));
           carryCount.set(carcassDown, ck + 1);
+        }
+      }
+      // a hook and line held out over the water by someone sat at it; a net out in the water in front of its keeper,
+      // its float line on the surface (the others hauling it stand at its ends)
+      const fishing = s.task === FISH_TASK && s.act !== ACT.Dead && carry === CARRY.None;
+      const gearOut = fishing && s.tool === LINE_TOOL && s.shownAct === ACT.Sit ? LINE_CAST : fishing && s.tool === NET_TOOL && s.shownAct === ACT.Fish ? NET_OUT : 0;
+      if (gearOut) {
+        const gm = this.carryMeshes.get(gearOut);
+        const gk = carryCount.get(gearOut) ?? 0;
+        if (gm && gk < gm.instanceMatrix.count) {
+          const at = m4.clone();
+          if (gearOut === NET_OUT) {
+            const out = new THREE.Vector3(0, 0, 0.55).applyMatrix4(m4);
+            const wt = this.waterAt(out.x, out.z);
+            if (wt) at.elements[13] = wt.surface + 0.004;
+          }
+          gm.setMatrixAt(gk, at);
+          carryCount.set(gearOut, gk + 1);
         }
       }
       if (toolCarry && s.act !== ACT.Dead) {
@@ -1899,6 +1928,8 @@ function carryOffset(kind: number) {
     case SNARE: p.set(0.075, 0.16, 0.04); break; // the coil in the fist, its stake hanging
     case FISHTRAP: p.set(0.075, 0.075, 0.04); e.set(Math.PI / 2, 0, 0); break; // by the tail, mouth down
     case BASKET: case BASKET_FULL: p.set(0.08, 0.16, 0.035); break; // hung from the fist by its handle
+    case LINE: p.set(0.076, 0.15, 0.035); break; // the stick it is wound on, in the fist
+    case NET: p.set(0.06, 0.3, 0); e.set(0, Math.PI / 2, 0.15); break; // bundled on the shoulder, like a log
   }
   m.makeRotationFromEuler(e).setPosition(p);
   return m;
