@@ -23,6 +23,9 @@ export type Practice =
   | 'hunt' // a hunt, kill or no kill
   | 'forage' // a bush's berries picked
   | 'fish_fiber' // a fishing trip, with fiber in the stores to think of weaving with (more when the catch is thin)
+  | 'fish_miss' // a stab at the water that missed (a quarter as much: a fish that wriggled off the point while the catch was landed)
+  | 'ice' // an evening by the fire while the lakes and rivers are frozen over (each adult)
+  | 'trap_fish' // a fish trap emptied on the round with fish in it (more the fuller it was)
   | 'carcass' // a deer or boar carried home and skinned (half again when it is butchered)
   | 'rack' // a batch of meat or fish hung on the drying rack
   | 'deadwood' // an armful of fallen branches gathered under a tree
@@ -168,6 +171,30 @@ export const DISCOVERIES: Discovery[] = [
     practice: { fish_fiber: 1 }, odds: 10,
     found: 'wove reeds into a funnel the fish swim into and cannot find their way out of',
     taught: 'weave fish traps', memory: 'Wove the first fish trap.',
+  },
+  {
+    // (a fisher who has watched one fish too many wriggle off the spear point, and who knows how to work bone,
+    // cuts barbs into a point of antler so that what it strikes stays on it)
+    key: 'harpoon', label: 'Barbed harpoons', needs: [], requires: [skill(SK.fish, ABLE), skill(SK.tool, 8)],
+    practice: { fish_miss: 1 }, odds: 60,
+    found: 'cut barbs into a point of antler and lashed it to a shaft, and the fish it struck stayed on it: the first harpoon',
+    taught: 'fish with barbed harpoons', memory: 'Made the first barbed harpoon.',
+  },
+  {
+    // (a fisher sitting by the fire through the weeks the lakes are frozen, thinking of the fish under the ice, or
+    // waiting at the water for fish that won't come near the spear, thinks of making them come to a bait)
+    key: 'hooks', label: 'Hook and line', needs: [], requires: [skill(SK.fish, ABLE), skill(SK.tool, 8)],
+    practice: { ice: 1, fish_miss: 0.25 }, odds: 70,
+    found: 'whittled a hook from a thorn, baited it, and pulled a fish up through a hole in the ice on a line',
+    taught: 'fish with a hook and line, even through the ice', memory: 'Caught the first fish on a hook and line.',
+  },
+  {
+    // (a fisher who weaves, emptying the traps of a morning and seeing how the fish crowd into them, thinks of a
+    // trap that could be drawn through the water to them)
+    key: 'nets', label: 'Fishing nets', needs: ['fishtraps'], requires: [skill(SK.fish, 12), skill(SK.weave, 12)],
+    practice: { trap_fish: 1, fish_fiber: 0.1 }, odds: 14,
+    found: 'knotted cord into a long net, weighted its foot with stones, and with two others hauled it through the shallows full of fish',
+    taught: 'knot nets and haul them through the water together', memory: 'Hauled the first fishing net.',
   },
   {
     // (the picker who already twists cord thinks of weaving something to carry more home in)

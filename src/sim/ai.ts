@@ -3,7 +3,7 @@
 import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
-import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND,
+import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, HERBS_WANT, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND,
   PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
@@ -54,6 +54,57 @@ function takeFromPile(s: Sim, p: Person, t: Task, tool: Item) {
   }
   s.takeTool(p, tool);
   return walk;
+}
+
+/**
+ * The fishing gear someone takes to the water, if the band has any free: a net for a grown-up (it wants others to
+ * haul it), else a harpoon. A hook and line brings fewer fish than a good fisher's spear, so a grown-up takes one
+ * only while the lakes and rivers are frozen (it fishes through the ice); for a child it is the only gear.
+ */
+function fishGear(s: Sim, p: Person): Item | undefined {
+  const age = s.age(p);
+  const kinds: ItemKind[] = age < 13 ? ['line'] : freshFrozen(s.tick) ? ['line', 'harpoon', 'net'] : ['net', 'harpoon'];
+  return s.toolFor(p, kinds);
+}
+/** Where to stand to fish from a bank tile: at its edge, by the water (a share of the way from the bank's middle). */
+export function fishStand(N: number, bank: number, w: number, side = 0) {
+  const bx = (bank % N) + 0.5, bz = Math.floor(bank / N) + 0.5;
+  const dx = (w % N) - (bank % N), dz = Math.floor(w / N) - Math.floor(bank / N);
+  // (and along the bank, either side, for the hands hauling a net)
+  return { x: bx + dx * 0.36 - dz * side * 0.32, z: bz + dz * 0.36 + dx * side * 0.32 };
+}
+/** The water a net is hauled through besides the water by the bank: the water tiles next to it. */
+function netReach(s: Sim, w: number): number[] {
+  const out: number[] = [];
+  const x = w % s.N, z = Math.floor(w / s.N);
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const k = (z + dz) * s.N + x + dx;
+    if (x + dx < 0 || z + dz < 0 || x + dx >= s.N || z + dz >= s.N) continue;
+    if (s.fishCap[k] > 0) out.push(k);
+  }
+  return out;
+}
+/** Whether this person is at the water with a net, waiting for hands to haul it. */
+function netWaitingFor(s: Sim, id: number) {
+  const q = s.byId.get(id);
+  return !!q && q.alive && q.task?.kind === 'fish' && q.task.stage <= 1 && q.task.crew === undefined && s.heldBy(q)?.kind === 'net';
+}
+/** Someone of the band near enough laying out a net, with room for another pair of hands on it. */
+function netWaiting(s: Sim, p: Person): Person | undefined {
+  for (const q of s.people) {
+    if (q === p || !q.alive || q.band !== p.band || !netWaitingFor(s, q.id)) continue;
+    if (s.people.filter((o) => o.alive && o.task?.kind === 'fish' && o.task.crew === q.id).length >= NET_CREW) continue;
+    const t = q.task!;
+    const bank = t.bank ?? t.goal;
+    if (hyp((bank % s.N) + 0.5 - p.x, Math.floor(bank / s.N) + 0.5 - p.z) > 40) continue;
+    return q;
+  }
+  return undefined;
+}
+function brokeGear(s: Sim, p: Person, kind: ItemKind) {
+  const what = kind === 'line' ? 'line snapped and the hook was lost' : 'harpoon\'s point broke';
+  s.remember(p, 'tool_broke', -1, 0.2, -1, `Their ${what}.`);
+  s.event('tool', `${p.name}'s ${what}.`, [p.id], p.x, p.z, 1);
 }
 
 /** A seat around the hearth, different for each person. */
@@ -281,7 +332,10 @@ export function decide(s: Sim, p: Person) {
       const piglets = (j.piglets ?? 0) > 0 && !dark && s.people.filter((q) => q.alive && q.band === p.band && q.task?.kind === 'hunt' && q.task.alive).length < 2 ? j.piglets * drive * fit(p, SK.hunt) * fit(p, SK.hunt) : 0;
       add('hunt', Math.max(food * fit(p, SK.hunt) * nerve * 0.95 * crowd('hunt'), piglets));
     }
-    if (age >= 11) add('fish', food * fit(p, SK.fish) * 0.85 * crowd('fish'));
+    // (the older children fish too, with a hook and line)
+    if (age >= 11 || (age >= LINE_AGE && !dark && s.toolFor(p, ['line']))) add('fish', food * fit(p, SK.fish) * 0.85 * crowd('fish') * (age < 11 ? 0.7 : 1));
+    // a net laid out at the water, waiting for hands to haul it
+    if (age >= 13 && !dark && netWaiting(s, p)) add('fish', food * 1.25 * crowd('fish'));
     // in autumn, roots dug with a digging stick from under the reeds and the meadow grass: a staple that keeps
     if (age >= 11 && seasonOf(s.tick) === 2 && s.knows('roots')) add('roots', food * fit(p, SK.forage) * 1.1 * crowd('roots'));
     // and the acorns under the oaks: work the older children can do too
@@ -304,7 +358,8 @@ export function decide(s: Sim, p: Person) {
     // grass and reeds for thatch and cordage: work the older children can do too
     if (age >= 9) add('reap', (j.fiber ?? 0) * drive * night * fit(p, SK.forage) * (child ? 1.15 : 1) * crowd('reap'));
     // healing herbs from the undergrowth, put by for fevers: one person at a time
-    if (age >= 12 && !dark && (j.herbs ?? 0) > 0 && busyWith(s, 'herbs') === 0) add('herbs', j.herbs * drive * fit(p, SK.forage) * 1.1);
+    // (only while the stores are still short of them: the morning's want may be met by the afternoon)
+    if (age >= 12 && !dark && (j.herbs ?? 0) > 0 && c.stock.herbs < HERBS_WANT && busyWith(s, 'herbs') === 0) add('herbs', j.herbs * drive * fit(p, SK.forage) * 1.1);
     // a fever in the band, and herbs in the stores: the one who knows the plants best goes to nurse it
     if (age >= 16 && s.knows('herbs') && c.stock.herbs >= 1 && busyWith(s, 'nurse') < 2 && feverish(s, p)) add('nurse', 1.25 * fit(p, SK.forage) * (healerOf(s) === p ? 1.3 : 0.8));
     // an armful of dry grass from the stores, laid in a home where the old bedding has gone flat
@@ -382,7 +437,8 @@ export function decide(s: Sim, p: Person) {
     if (t) {
       // put down the old task properly (setup may already have reserved things for the new one)
       // and whatever they carry for it, before picking up a spear for a hunt or a day's fishing
-      const spear = o.kind === 'hunt' || o.kind === 'fish';
+      // (no spear for a day's fishing with a net or a line, or for hauling someone else's net)
+      const spear = o.kind === 'hunt' || (o.kind === 'fish' && t.crew === undefined && !['net', 'line'].includes(s.heldBy(p)?.kind ?? ''));
       const keep = spear && p.carry === CARRY.Spear;
       const prev = p.task;
       if (prev) {
@@ -875,13 +931,29 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       return t;
     }
     case 'fish': {
-      const frozen = freshFrozen(s.tick);
+      // a net waiting at the water for hands to haul it: go and help
+      const netter = s.age(p) >= 13 ? netWaiting(s, p) : undefined;
+      if (netter) {
+        const nt = netter.task!;
+        const n = s.people.filter((q) => q.alive && q.task?.kind === 'fish' && q.task.crew === netter.id).length;
+        // along the bank either side of the net's keeper
+        const side = n % 2 ? -1 : 1;
+        const bank = nt.bank ?? nt.goal;
+        const at = fishStand(N, bank, nt.ref, side);
+        const t = newTask(s, kind, bank, at.x, at.z, nt.ref);
+        t.crew = netter.id;
+        p.thought = `Going to help ${netter.name} haul the net.`;
+        return t;
+      }
+      const gear = fishGear(s, p);
+      // (only a hook and line fishes through the ice)
+      const frozen = freshFrozen(s.tick) && gear?.kind !== 'line';
       let best = -1, bestS = -Infinity, bestW = -1;
       for (const spot of s.fishingSpots) {
         const x = (spot % N) + 0.5, z = Math.floor(spot / N) + 0.5;
         const dc = hyp(x - c.x, z - c.z);
         if (dc > 28) continue;
-        if (s.people.some((q) => q !== p && q.alive && q.task?.kind === 'fish' && q.task.goal === spot)) continue;
+        if (s.people.some((q) => q !== p && q.alive && q.task?.kind === 'fish' && (q.task.goal === spot || q.task.bank === spot))) continue;
         if ((s.unreachable.get(-(spot + 1)) ?? 0) > s.tick) continue;
         for (let dz = -1; dz <= 1; dz++)
           for (let dx = -1; dx <= 1; dx++) {
@@ -891,13 +963,21 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
             const w = wz * N + wx;
             if (s.fishCap[w] <= 0 || s.fish[w] < 1.5) continue;
             if (frozen && s.world.water[w] !== WATER.Sea) continue;
-            const sc = s.fish[w] / (dc + hyp(x - p.x, z - p.z) * 0.5 + 6);
+            // (a net sweeps the water round about too)
+            const there = gear?.kind === 'net' ? s.fish[w] + netReach(s, w).reduce((a, k) => a + s.fish[k], 0) * 0.5 : s.fish[w];
+            const sc = there / (dc + hyp(x - p.x, z - p.z) * 0.5 + 6);
             if (sc > bestS) { bestS = sc; best = spot; bestW = w; }
           }
       }
       if (best < 0) return null;
-      p.thought = s.world.water[bestW] === WATER.Sea ? 'Fishing from the shore.' : 'Fishing at the water.';
-      const t = newTask(s, kind, best, (best % N) + 0.5, Math.floor(best / N) + 0.5, bestW);
+      const ice = freshFrozen(s.tick) && s.world.water[bestW] !== WATER.Sea;
+      p.thought = ice ? 'Going to fish through the ice.' : s.world.water[bestW] === WATER.Sea ? 'Fishing from the shore.' : 'Fishing at the water.';
+      // (with a net or a line they go right down to the water's edge)
+      const at = gear ? fishStand(N, best, bestW) : { x: (best % N) + 0.5, z: Math.floor(best / N) + 0.5 };
+      const t = newTask(s, kind, best, at.x, at.z, bestW);
+      t.bank = best;
+      if (gear && takeFromPile(s, p, t, gear))
+        p.thought = gear.kind === 'net' ? 'Fetching the net.' : gear.kind === 'line' ? 'Fetching a hook and line.' : 'Fetching a harpoon.';
       return t;
     }
     case 'build': {
@@ -2633,7 +2713,11 @@ export function runTask(s: Sim, p: Person) {
                   if (s.knows('butchering')) t.fat = (t.fat ?? 0) + BEAVER_FAT * FAT_SEASON[seasonOf(s.tick)];
                 }
               } else if (it.kind === 'snare') t.amount += got;
-              else t.fish = (t.fish ?? 0) + got;
+              else {
+                t.fish = (t.fish ?? 0) + got;
+                // the fish crowded into the funnel set a fisher who weaves thinking of a net to draw through the water
+                s.practise(p, 'trap_fish', got / 2);
+              }
               train(p, 'trap.catch');
             }
             const pelt = it.pelt;
@@ -2972,49 +3056,144 @@ export function runTask(s: Sim, p: Person) {
       return;
     }
     case 'fish': {
+      if (t.stage === -1) {
+        // the gear fetched from the pile: on to the water
+        if (moving(go(s, p, t))) return;
+        const bank = t.bank ?? t.goal;
+        t.stage = 0;
+        const at = fishStand(s.N, bank, t.ref);
+        t.goal = bank;
+        t.gx = at.x;
+        t.gz = at.z;
+        p.path = null;
+        const g = s.heldBy(p)?.kind;
+        p.thought = g === 'net' ? 'Taking the net down to the water.' : g === 'line' ? 'Off to fish with a hook and line.' : 'Off to fish with a harpoon.';
+        return;
+      }
+      const w = t.ref;
+      const gear = s.heldBy(p);
+      const kind = t.crew !== undefined ? 'crew' : gear?.kind === 'net' || gear?.kind === 'line' || gear?.kind === 'harpoon' ? gear.kind : 'spear';
       if (t.stage === 0) {
+        // helping with a net that has gone (hauled already, or given up)
+        if (kind === 'crew' && !netWaitingFor(s, t.crew!)) return finish(s, p);
         if (moving(go(s, p, t))) return;
         t.stage = 1;
-        t.timer = 30;
+        t.timer = kind === 'net' ? NET_WAIT : kind === 'crew' ? 400 : kind === 'line' ? 40 : 30;
         t.amount = 0;
+        if (kind === 'net') p.thought = 'Laying out the net, waiting for hands to haul it.';
+        if (kind === 'crew') p.thought = 'Taking hold of the net.';
+        if (kind === 'line') p.thought = freshFrozen(s.tick) && s.world.water[w] !== WATER.Sea ? 'Cutting a hole in the ice and letting the line down.' : 'Baiting the hook and letting the line down.';
       }
       if (t.stage === 1) {
-        const w = t.ref;
-        p.act = ACT.Fish;
+        // a line is fished sitting on the bank or the ice; a net and a spear standing at the water
+        p.act = kind === 'line' ? ACT.Sit : ACT.Fish;
         face(p, (w % s.N) + 0.5, Math.floor(w / s.N) + 0.5);
+        if (kind === 'crew') {
+          // the net's keeper hauls it, and shares the catch out (see below)
+          if (!netWaitingFor(s, t.crew!)) return finish(s, p);
+          if (--t.timer <= 0) return finish(s, p);
+          return;
+        }
         // a stab at a fish that got away now and then while waiting (just looks; decides nothing)
-        if (t.timer % 9 === 4 && t.timer > 6) flash(p, FLASH.Stab);
+        if ((kind === 'spear' || kind === 'harpoon') && t.timer % 9 === 4 && t.timer > 6) flash(p, FLASH.Stab);
         if (--t.timer > 0) return;
-        // in winter the fish lie deep and slow, and cold hands miss more
-        const chance = 0.42 + p.skills[SK.fish] * 0.028 + (s.fish[w] / Math.max(1, s.fishCap[w])) * 0.18 - (seasonOf(s.tick) === 3 ? 0.12 : 0);
-        flash(p, FLASH.Stab);
+        const winter = seasonOf(s.tick) === 3;
+        const stocked = s.fish[w] / Math.max(1, s.fishCap[w]);
+        const cold = winter ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1;
+        if (kind === 'net') {
+          // whoever has come to help is here by now, or nearly: wait a little longer for those on the way
+          const crew = s.people.filter((q) => q.alive && q.task?.kind === 'fish' && q.task.crew === p.id);
+          const here = crew.filter((q) => q.task!.stage === 1);
+          if (here.length < crew.length && t.amount < 4) {
+            t.amount++;
+            t.timer = 15;
+            return;
+          }
+          for (const q of crew) if (!here.includes(q)) { q.task!.crew = -1; }
+          // hauled through the water by the bank, and the water round about
+          const hands = here.length;
+          const want = Math.max(1, Math.round((4 + p.skills[SK.fish] / 4) * (hands ? 1 + NET_HAND * hands : NET_ALONE) * (0.35 + 0.65 * stocked) * cold));
+          const missed = hands === 0 && r.next() > 0.6;
+          let got = 0;
+          if (!missed) {
+            for (const k of [w, ...netReach(s, w)]) {
+              const take = Math.min(Math.max(0, s.fish[k] - 0.5), want - got);
+              if (take <= 0) continue;
+              s.fish[k] -= take;
+              got += take;
+              if (got >= want) break;
+            }
+            got = Math.floor(got);
+          }
+          s.fishVersion++;
+          flash(p, FLASH.Thrust);
+          if (gear && s.wearTool(gear)) {
+            s.remember(p, 'tool_broke', -1, 0.2, -1, 'The net tore past mending.');
+            s.event('tool', `${p.name}'s net tore past mending.`, [p.id], p.x, p.z, 1);
+          }
+          if (got <= 0) {
+            p.thought = hands ? 'Hauled the net in empty.' : 'Cast the net alone, and caught nothing.';
+            for (const q of here) { q.task!.crew = -1; finish(s, q); }
+            return finish(s, p);
+          }
+          // the catch shared out between the hands that hauled it, each carrying their share home
+          const share = got / (hands + 1);
+          for (const q of here) {
+            train(q, 'fish.catch');
+            q.carry = CARRY.Fish;
+            q.carryAmt = share;
+            q.task!.crew = -1;
+            q.task!.ref = w;
+            goStore(s, q, q.task!, 2);
+            q.thought = `Carrying home a share of the net's catch.`;
+            if (!q.memories.some((m) => m.kind === 'net')) s.remember(q, 'net', 3, 1, p.id, `Hauled ${p.name}'s net and came home with fish.`);
+          }
+          train(p, 'fish.catch');
+          for (const q of here) s.adjust(q, p, 2);
+          p.carry = CARRY.Fish;
+          p.carryAmt = share;
+          s.book('netted', got);
+          goStore(s, p, t, 2);
+          p.thought = hands ? `Hauled the net in with ${got} fish.` : 'Bringing home what the net caught.';
+          return;
+        }
+        // in winter the fish lie deep and slow, and cold hands miss more (less with a barbed point; a baited hook
+        // under the ice hardly minds)
+        const chill = winter ? 0.12 * (kind === 'harpoon' ? HARPOON_COLD : kind === 'line' ? 0 : 1) : 0;
+        const chance = 0.42 + p.skills[SK.fish] * 0.028 + stocked * 0.18 - chill + (kind === 'harpoon' ? HARPOON_HIT : kind === 'line' ? LINE_HIT : 0);
+        if (kind !== 'line') flash(p, FLASH.Stab);
         if (r.next() < chance) {
           // (water fished down, or in a lean year, gives smaller catches: fewer fish, and smaller)
-          const stocked = s.fish[w] / Math.max(1, s.fishCap[w]);
-          const got = Math.min(s.fish[w], Math.max(1, Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (0.35 + 0.65 * stocked) * (seasonOf(s.tick) === 3 ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1))));
+          const got = Math.min(s.fish[w], Math.max(1, Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (0.35 + 0.65 * stocked) * cold * (kind === 'line' ? LINE_CATCH : kind === 'harpoon' ? HARPOON_CATCH : 1))));
           s.fish[w] -= got;
           s.fishVersion++;
           train(p, 'fish.catch');
           // standing in the shallows with reeds to hand is what makes someone think of a woven trap
           if (c.stock.fiber >= 3) s.practise(p, 'fish_fiber', got < 3 ? 1.5 : 1);
+          if (kind === 'spear') s.practise(p, 'fish_miss', 0.25);
           p.carry = CARRY.Fish;
           p.carryAmt = got;
           goStore(s, p, t, 2);
-          p.thought = 'Bringing fish home.';
+          p.thought = kind === 'line' ? 'Bringing home the fish from the line.' : 'Bringing fish home.';
         } else if (t.amount === 0) {
           t.amount = 1;
           t.timer = 24;
-          p.thought = 'Nothing biting yet.';
+          p.thought = kind === 'line' ? 'Nothing on the hook yet.' : 'Nothing biting yet.';
           train(p, 'fish.miss');
+          // a fish that slipped off the point sets a fisher thinking of barbs; one that wouldn't come near, of bait
+          if (kind === 'spear') s.practise(p, 'fish_miss');
         } else {
           p.thought = 'Caught nothing today.';
           if (c.stock.fiber >= 3) s.practise(p, 'fish_fiber', 1.5);
+          if (kind === 'spear') s.practise(p, 'fish_miss');
+          if (gear && kind !== 'spear' && s.wearTool(gear)) brokeGear(s, p, gear.kind);
           return finish(s, p);
         }
       }
       if (t.stage === 2) {
         if (moving(go(s, p, t))) return;
         deposit(s, p);
+        if (gear && (kind === 'harpoon' || kind === 'line') && s.wearTool(gear)) brokeGear(s, p, gear.kind);
         finish(s, p);
       }
       return;

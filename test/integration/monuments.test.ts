@@ -80,7 +80,8 @@ describe('monuments', () => {
     expect(c.plan.some((l) => l.startsWith('Raise a mound'))).toBe(true);
     // a band going short, rationing into the winter, has no hours to spare (the plan works that out from the stores)
     for (const k of ['grain', 'preserved', 'meat', 'fish', 'roots', 'nuts', 'berries', 'greens', 'eggs', 'honey', 'mushrooms'] as const) c.stock[k] = 0;
-    s.tick = Math.floor(s.tick / (TICKS_PER_DAY * 48)) * TICKS_PER_DAY * 48 + TICKS_PER_DAY * 34;
+    // (in the winter itself, so no garden harvest still to come counts against it)
+    s.tick = Math.floor(s.tick / (TICKS_PER_DAY * 48)) * TICKS_PER_DAY * 48 + TICKS_PER_DAY * 38;
     s.plan();
     expect(c.jobs.raise ?? 0).toBe(0);
   });
@@ -100,6 +101,8 @@ describe('monuments', () => {
     b.stone = spec.stone;
     b.work = spec.work - 0.5;
     const before = s.events.length;
+    // (from a clean slate: someone whose twelve memories are all stronger would let it go at once)
+    for (const q of s.members()) q.memories = [];
     p.task = task(s, 'raise', b);
     runTask(s, p);
     expect(b.built).toBe(true);
@@ -131,10 +134,13 @@ describe('monuments', () => {
     b.work = 900;
     b.stone = 2;
     s.camp.stock.stone += 6;
-    // let the band take to it for a day, so there is work under way and stone being carried out
-    const end = s.tick + TICKS_PER_DAY * 2;
-    while (s.tick < end) s.step();
-    const at = s.people.filter((q) => q.alive && q.task?.ref === b.id && (q.task.kind === 'raise' || q.task.kind === 'supply'));
+    // let the band take to it for a day or two, so there is work under way and stone being carried out (a band in
+    // mourning, or busy with a burial, may be a while getting to it)
+    const working = () => s.people.filter((q) => q.alive && q.task?.ref === b.id && (q.task.kind === 'raise' || q.task.kind === 'supply'));
+    const end = s.tick + TICKS_PER_DAY * 8;
+    const first = s.tick + TICKS_PER_DAY * 2;
+    while (s.tick < first || (s.tick < end && !working().length)) s.step();
+    const at = working();
     expect(at.length).toBeGreaterThan(0);
     const t = new Sim(s.world, JSON.parse(JSON.stringify(s.serialize())));
     const tb = t.building(b.id)!;

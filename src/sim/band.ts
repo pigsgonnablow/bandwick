@@ -125,7 +125,7 @@ export const TASK_KINDS: TaskKind[] = [
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap', 'deadfall'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -189,6 +189,14 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   jar: { label: 'Storage jar', uses: 1200 },
   // a narrow band woven in a pattern of its own, made in the free hours: it does not wear out lying with the goods
   sash: { label: 'Woven sash', uses: 1000 },
+  // a barbed point of antler or bone, hafted on a spear shaft and tied with sinew: it holds what it strikes
+  // (each trip to the water is a use: a season or two of fishing)
+  harpoon: { label: 'Barbed harpoon', uses: 60 },
+  // a hook of thorn on a line of sinew or cord, wound on a stick, with a scrap of meat or a worm for bait (each trip a use)
+  line: { label: 'Hook and line', uses: 40 },
+  // a net knotted of cordage, stones tied along its foot to sink it, hauled through the water by two or three
+  // (each haul a use: a year or so, before it is all mends)
+  net: { label: 'Fishing net', uses: 50 },
 };
 /**
  * Things made for their own sake in the hours a fed band has free: they are the band's goods, its wealth.
@@ -275,10 +283,11 @@ export const SINEW_KEPT = 10;
 export const PEMMICAN_FAT = 1;
 export const PEMMICAN_GAIN = 2;
 /**
- * The hide things sewn with sinew where there is some (it stands in for cordage), and a mend sewn with sinew
+ * The hide things sewn with sinew where there is some (it stands in for cordage), and the fishing gear tied with
+ * it (a harpoon's point lashed on, a hook's line); and a mend sewn with sinew
  * holds this much better.
  */
-export const SINEW_SEWN: RecipeKey[] = ['cloak', 'hat', 'mittens', 'shoes', 'bag', 'furcloak'];
+export const SINEW_SEWN: RecipeKey[] = ['cloak', 'hat', 'mittens', 'shoes', 'bag', 'furcloak', 'harpoon', 'line'];
 export const SINEW_MEND = 1.3;
 /** How much of the cold a woven tunic keeps off, worn under anything else; and a blanket, at night. */
 export const TUNIC_WARM = 0.1;
@@ -382,6 +391,30 @@ export const FIRE_NIGHT = 0.4;
 export const LAMP_UNTIL = 21;
 export const LAMP_REST = 45;
 export const LAMP_SLEEP = 0.5;
+/**
+ * Fishing gear. A barbed harpoon holds the fish it strikes, where a plain spear lets one wriggle off: more of the
+ * stabs come home with something, the big fish that would tear free stay on it, and the cold slows it less in winter.
+ */
+export const HARPOON_HIT = 0.16;
+export const HARPOON_CATCH = 1.2;
+export const HARPOON_COLD = 0.5;
+/**
+ * A hook and line is patient work, sat on the bank or on the ice: the fish come to the bait one at a time, so a
+ * trip seldom comes home empty but brings fewer. It is the one way to fish a frozen lake or river (through a
+ * hole cut in the ice), and gentle enough work for the older children.
+ */
+export const LINE_HIT = 0.3;
+export const LINE_CATCH = 0.6;
+export const LINE_AGE = 8;
+/**
+ * A net is hauled by its keeper with one or two others: the keeper waits at the water a while for hands to
+ * come, and the haul grows with each, sweeping the fish from the water by the bank and the water next to it.
+ * Cast alone from the bank it seldom does better than a spear.
+ */
+export const NET_CREW = 2;
+export const NET_WAIT = 50;
+export const NET_ALONE = 0.6;
+export const NET_HAND = 0.9;
 /** Berries brought home in one trip with a basket: several bushes' worth, where bare hands manage one. */
 export const BASKET_HOLDS = 8;
 
@@ -395,7 +428,7 @@ export const FIBER_PER_THREAD = 2;
 /** Hanks of thread a band spins to try the spindle before it has a loom, and keeps by at most once it has. */
 export const THREAD_TRY = 4;
 export const THREAD_KEPT = 16;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage or a hank of thread into the stores, or an item onto the pile */
@@ -526,13 +559,28 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
     makes: 'jar', uses: { mud: 3, wood: 2 }, work: 80, skill: SK.pot, grow: 0.09, knows: 'jars', doing: 'Making a storage jar',
     thought: 'Coiling a tall storage jar and a stopper to seal it.', done: 'Fired a storage jar and sealed the stores in it.',
   },
+  harpoon: {
+    // a point of antler or bone grooved and cut into barbs, set in a split shaft and lashed with sinew
+    makes: 'harpoon', uses: { bones: 1, wood: 1, cordage: 1 }, work: 44, skill: SK.tool, grow: 0.07, knows: 'harpoon', doing: 'Making a barbed harpoon',
+    thought: 'Cutting barbs into a point of antler and lashing it to a shaft.', done: 'Made a barbed harpoon and laid it on the pile.',
+  },
+  line: {
+    // a hook whittled from a thorn of the blackthorn and bound to its twig, and a line of sinew or twisted cord wound on a stick
+    makes: 'line', uses: { wood: 1, cordage: 1 }, work: 28, skill: SK.tool, grow: 0.06, knows: 'hooks', doing: 'Making a hook and line',
+    thought: 'Whittling a hook from a thorn and its twig, and tying it to a line.', done: 'Made a hook and line and laid it on the pile.',
+  },
+  net: {
+    // cordage knotted mesh by mesh into a long net, with stones tied along its foot to sink it
+    makes: 'net', uses: { cordage: 4, stone: 1 }, work: 100, skill: SK.weave, grow: 0.08, knows: 'nets', doing: 'Knotting a fishing net',
+    thought: 'Knotting cordage into a net, mesh by mesh.', done: 'Knotted a fishing net and laid it on the pile.',
+  },
 };
 /** The recipes fired only in the kiln: too big for the embers of the hearth. */
 export const KILNED: RecipeKey[] = ['jar'];
 /** The recipes woven at the loom: they can't be made without a loom shed, and are made in it. */
 export const LOOMED: RecipeKey[] = ['tunic', 'blanket', 'sash'];
 /** The recipes that go faster with a bone needle and awl: sewing hides, weaving baskets and traps. */
-export const SEWN: RecipeKey[] = ['cloak', 'basket', 'fishtrap', 'snare', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'furcloak'];
+export const SEWN: RecipeKey[] = ['cloak', 'basket', 'fishtrap', 'snare', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'furcloak', 'net'];
 /** One made thing. It lies on its band's stockpile unless someone holds it, or it is set out in the land. */
 export interface Item {
   id: number;
@@ -636,6 +684,10 @@ export interface Task {
   sinew?: number;
   /** the trap round: fat cut from the beavers taken in the deadfalls */
   fat?: number;
+  /** fishing: the bank tile to fish from, once the gear is fetched from the pile */
+  bank?: number;
+  /** fishing: helping haul this person's net (a person id) */
+  crew?: number;
 }
 
 export interface Memory {

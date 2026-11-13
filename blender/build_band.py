@@ -20,14 +20,14 @@ Conventions (read by src/render/band.ts):
   beaver__{body,head,tail,legFL,legFR,legBL,legBR}                  a beaver, posed in the shader (waddling, swimming, gnawing).
   lodge__beaver, dam__beaver                                        a beaver lodge, and a dam across a river (along x), origin at the water.
   hare__{body,head,ears,fore,hind}                                 a brown hare in parts, posed in the shader (hopping, sitting up, nibbling).
-  carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,grain,greens,piglet,basket,basketFull,hare} attached to a person's hands or shoulder.
+  carry__{log,berries,meat,fish,spear,harpoon,line,lineCast,net,netOut,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,grain,greens,piglet,basket,basketFull,hare} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
   pile__jar                                                       a tall storage jar sealed with a clay stopper (origin at its foot).
   pile__lamp                                                      a clay lamp set down beside someone working after dark (origin at its foot, the wick's lip to +X).
   pile__{bowl,beads,sash}                                         the band's goods on the stockpile: a patterned clay bowl, a string of beads lying coiled, a woven sash.
   boat__dugout                                                    the dugout the first band lands in (origin at the waterline, bow to -Y).
-  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace,bowl,beads,tunic,blanket,sash,lamp,jar}  each made thing in real colours,
+  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace,bowl,beads,tunic,blanket,sash,lamp,jar,harpoon,line,net}  each made thing in real colours,
       for the picture in its window (the game fits it to the picture).
   bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit,kiln,loom,pen}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
@@ -1615,6 +1615,101 @@ q = Part()
 q.cyl(4, 0.006, 0.006, (0, 0, -0.18), (0, 0, 0.2), (120, 92, 60), rnd, 0.03)
 q.cone(4, 0.012, 0.2, 0.04, (90, 90, 96), rnd)
 q.finish("carry__spear")
+# ---- fishing gear: a barbed harpoon (held as the spear is), a hook and line, a net
+ANTLER = (214, 200, 170)
+ANTLER_DK = (170, 152, 120)
+SINEW_C = (178, 150, 104)
+LINE_C = (196, 178, 140)
+NET_C = (150, 128, 92)
+NET_DK = (112, 92, 64)
+FLOAT_C = (132, 98, 62)
+q = Part()  # the spear's shaft, a split end lashed with sinew round a point of antler cut into barbs down one side
+q.cyl(4, 0.006, 0.006, (0, 0, -0.18), (0, 0, 0.17), (120, 92, 60), rnd, 0.03)
+q.cyl(5, 0.0074, 0.0074, (0, 0, 0.152), (0, 0, 0.184), SINEW_C, rnd, 0.04)
+q.cyl(5, 0.0055, 0.0018, (0, 0, 0.165), (0, 0, 0.262), ANTLER, rnd, 0.04)
+for k, z in enumerate((0.195, 0.214, 0.233)):
+    side = 1 if k % 2 == 0 else -1
+    # each barb a little wedge sloping back from the point
+    q.box((side * 0.0062, 0, z), (0.0058, 0.0028, 0.012), ANTLER_DK, rnd, 0.03, rot=Matrix.Rotation(side * 0.55, 3, "Y"), taper=0.25)
+q.finish("carry__harpoon")
+
+
+def winder(q):
+    """A stick with the line wound round its middle, and the thorn hook hanging from it (origin at the grip)."""
+    q.cyl(5, 0.0042, 0.0042, (0, 0, -0.035), (0, 0, 0.035), (120, 92, 60), rnd, 0.03)
+    q.cyl(7, 0.0085, 0.0085, (0, 0, -0.018), (0, 0, 0.018), LINE_C, rnd, 0.05)
+    q.cyl(3, 0.0007, 0.0007, (0.0085, 0, -0.012), (0.010, 0, -0.045), LINE_C, rnd, 0.0, cap=False)
+    hook(q, (0.010, 0, -0.045), 1.0)
+
+
+def hook(q, at, s):
+    """A thorn hook hanging from `at`: a shank, the bend and the point turned back up, s times its size."""
+    x, y, z = at
+    pts = [(0, 0), (0, -0.010), (0.0015, -0.0145), (0.0045, -0.0155), (0.0065, -0.0125), (0.0065, -0.0080)]
+    pts = [Vector((x + px * s, y, z + pz * s)) for px, pz in pts]
+    for a_, b_ in zip(pts, pts[1:]):
+        q.cyl(4, 0.0011 * s, 0.0011 * s, a_, b_, (92, 64, 42), rnd, 0.03)
+
+
+q = Part()
+winder(q)
+q.finish("carry__line")
+# sat on the bank: a short hazel rod held out over the water, the line dropping from its tip to a float and the
+# hook below. Modelled in the fisher's own frame (feet at the origin, facing -Y): the hand in the lap, the water
+# below and in front
+q = Part()
+hand = Vector((0.055, -0.06, 0.10))
+tip = Vector((0.04, -0.36, 0.20))
+q.cyl(5, 0.0042, 0.0022, hand, tip, (120, 92, 60), rnd, 0.03)
+q.cyl(6, 0.0075, 0.0075, hand + (tip - hand).normalized() * 0.01, hand + (tip - hand).normalized() * 0.04, LINE_C, rnd, 0.04)
+fl = Vector((0.045, -0.40, -0.02))
+q.cyl(3, 0.0007, 0.0007, tip, fl, LINE_C, rnd, 0.0, cap=False)
+q.blob(fl, (0.006, 0.006, 0.004), (196, 180, 140), rnd, 0.0)  # a float of bark
+q.cyl(3, 0.0007, 0.0007, fl, fl + Vector((0, 0, -0.05)), LINE_C, rnd, 0.0, cap=False)
+q.finish("carry__lineCast")
+
+
+def net_mesh(q, ends, bulge, rows, cols, z0, depth):
+    """A net hung from a float line: the floats along a curve from one end to the other through the bulge, the
+    meshes (vertical and slanting cords) hanging below it to the foot line, weighted with stones."""
+    def at(u):
+        # a quadratic curve through the two ends and the bulge
+        a, b = ends
+        return (1 - u) ** 2 * a + 2 * (1 - u) * u * bulge + u * u * b
+    top = [at(k / cols) + Vector((0, 0, z0)) for k in range(cols + 1)]
+    foot = [v + Vector((0, 0, -depth)) for v in top]
+    for a_, b_ in zip(top, top[1:]):
+        q.cyl(4, 0.0024, 0.0024, a_, b_, NET_DK, rnd, 0.0, cap=False)
+    for a_, b_ in zip(foot, foot[1:]):
+        q.cyl(4, 0.0012, 0.0012, a_, b_, NET_DK, rnd, 0.0, cap=False)
+    for k in range(cols + 1):
+        q.cyl(3, 0.0009, 0.0009, top[k], foot[k], NET_C, rnd, 0.0, cap=False)
+        if k < cols:  # the diamonds of the mesh
+            for r_ in range(rows):
+                f0, f1 = r_ / rows, (r_ + 1) / rows
+                q.cyl(3, 0.0008, 0.0008, top[k].lerp(foot[k], f0), top[k + 1].lerp(foot[k + 1], f1), NET_C, rnd, 0.0, cap=False)
+                q.cyl(3, 0.0008, 0.0008, top[k + 1].lerp(foot[k + 1], f0), top[k].lerp(foot[k], f1), NET_C, rnd, 0.0, cap=False)
+        if k % 2 == 0:
+            q.blob(top[k] + Vector((0, 0, 0.003)), (0.012, 0.008, 0.006), FLOAT_C, rnd, 0.06)
+        else:
+            q.blob(foot[k], (0.005, 0.005, 0.004), (128, 124, 116), rnd, 0.06, noise=0.2)
+
+
+# the net out in the water, in the hauler's frame (feet at the origin, facing -Y): its ends at the bank either side
+# of them, where the others hold it, bellying out into the water. The game sets it at the water's surface.
+q = Part()
+net_mesh(q, (Vector((-0.36, -0.04, 0)), Vector((0.36, -0.04, 0))), Vector((0, -1.2, 0)), 2, 16, 0.004, 0.035)
+q.finish("carry__netOut")
+# carried to the water on the shoulder, bundled up with its floats and stones bunched
+q = Part()
+q.blob((0, 0, 0), (0.07, 0.03, 0.026), NET_C, rnd, 0.08, noise=0.18)
+for k in range(9):
+    a = k / 9 * math.tau
+    q.cyl(3, 0.0012, 0.0012, (-0.06 + k * 0.015, math.cos(a) * 0.03, math.sin(a) * 0.026), (-0.055 + k * 0.015, math.cos(a + 2) * 0.03, math.sin(a + 2) * 0.026), NET_DK, rnd, 0.0, cap=False)
+for x in (-0.05, -0.01, 0.03, 0.06):
+    q.blob((x, 0.006, 0.024), (0.008, 0.005, 0.004), FLOAT_C, rnd, 0.06)
+    q.blob((x + 0.01, -0.008, -0.026), (0.005, 0.005, 0.004), (128, 124, 116), rnd, 0.06, noise=0.2)
+q.finish("carry__net")
 q = Part()  # a stone axe: a stout haft, the head lashed on near the top, blade facing forward
 q.cyl(5, 0.0075, 0.0065, (0, 0, -0.04), (0, 0, 0.175), (120, 92, 60), rnd, 0.03)
 q.box((0, -0.02, 0.152), (0.016, 0.05, 0.034), (132, 126, 118), rnd, 0.08, taper=0.7)
@@ -3429,6 +3524,13 @@ item_copy("trap__fishtrap", "item__fishtrap")
 item_copy("trap__deadfall", "item__deadfall")
 item_copy("carry__basket", "item__basket")
 item_copy("pile__pot", "item__pot")
+item_copy("carry__harpoon", "item__harpoon")
+q = Part()  # a hook and line: the line wound on its stick, and the thorn hook
+winder(q)
+q.finish("item__line")
+q = Part()  # a net laid out flat: a short length of it, floats along the top and stones along the foot
+net_mesh(q, (Vector((-0.12, 0, 0)), Vector((0.12, 0, 0))), Vector((0, 0, 0)), 4, 8, 0.03, 0.06)
+q.finish("item__net")
 repaint(item_copy("villager__cloak", "item__cloak"), [(L_(CLOAK_CODE), HIDE_TAN), ((0, 0, 0), THONG)], 61)
 item_copy("villager__furcloak", "item__furcloak")
 repaint(item_copy("villager__hat", "item__hat"), [(HAT_CODE, HIDE_BROWN), (FUR_CODE, FUR_PALE)], 62)

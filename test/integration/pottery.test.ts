@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { SK, RECIPE_KEYS, Task, TaskKind, Stock, POT_HOLDS, POT_KEEP, JAR_HOLDS, JAR_KEEP, LAMP_FAT, ITEMS, Item, ItemKind } from '../../src/sim/band';
 import { DISCOVERY, meets } from '../../src/sim/know';
-import { TICKS_PER_DAY, isDark, seasonOf } from '../../src/sim/time';
+import { TICKS_PER_DAY, isDark, seasonOf, dayOf } from '../../src/sim/time';
 import { runTask } from '../../src/sim/ai';
 import { Sim } from '../../src/sim/sim';
 import { sim, runTo, runYears } from '../helpers';
@@ -190,6 +190,8 @@ describe('clay lamps', () => {
   it('keep those not yet tired up on a winter evening, making and mending by the fire', () => {
     const count = (lamps: boolean) => {
       const s = potters(2, lamps ? ['pottery', 'lamps'] : ['pottery']);
+      // (without lamps, a band that worked them out on its own forgets them for the test)
+      if (!lamps) s.camp.knows = s.camp.knows.filter((k) => k !== 'lamps');
       // on into the winter, when the evenings are long
       while (seasonOf(s.tick) !== 3) s.step();
       clear(s, 'lamp');
@@ -200,6 +202,9 @@ describe('clay lamps', () => {
         s.camp.stock.fiber = Math.max(s.camp.stock.fiber, 30);
         s.camp.stock.cordage = Math.min(s.camp.stock.cordage, 1);
         s.camp.stock.meat = Math.max(s.camp.stock.meat, 20);
+        // (no stories told: they would draw everyone from their work to listen, lamps or no lamps)
+        s.camp.storyNight = dayOf(s.tick);
+        if (!lamps) s.camp.knows = s.camp.knows.filter((k) => k !== 'lamps');
         runTo(s, s.tick + 2);
         if (isDark(s.tick)) n += s.members().filter((q) => (q.task?.kind === 'craft' || q.task?.kind === 'mend') && q.task.stage === 1).length;
       }

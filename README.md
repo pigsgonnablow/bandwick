@@ -112,6 +112,19 @@ of the hares are drawn near the camera, more on open grass than in the woods and
 snares have thinned them out: they feed, hop about, sit up to watch anyone passing and bolt when
 someone comes close (only for show: the count is what the snares catch from). The hares from the
 snares come home dangling from the trapper's hand.
+
+Fishers learn better gear as they go, each a discovery made at the fire and fetched from the pile to
+the water. A fisher who can work bone (fishing 10, toolmaking 8), watching fish slip off the spear,
+thinks of a **barbed harpoon**: an antler point lashed with cord or sinew (1 bone, 1 wood, 1 cord),
+which lands 16 more stabs in 100 and 20% more fish, and minds the winter cold half as much. Sitting
+by the fire while the lakes are frozen, the same fisher thinks of a **hook and line** (1 wood, 1 cord
+or sinew): patient work sat on the bank, rarely coming home empty but bringing 40% fewer fish, the
+one way to fish a frozen lake or river (through the ice), and the gear children from 8 fish with. A
+fisher who weaves (fishing 12, weaving 12), emptying full fish traps, thinks of a **net** (4 cord and
+a stone for the sinkers): its keeper lays it out at the water's edge and waits for one or two others
+to come and haul it, and the haul grows by 90% for each extra pair of hands, swept from the water by
+the bank and the water round it, then shared out for each to carry home. Cast alone it does little
+better than a spear.
 Fish show too: trout glimpsed under the surface near the camera, scattering from anyone swimming
 or a spear going in, and rises dimpling the water with now and then a fish leaping clear, all more
 often where the water is full and less where it has been fished out. Lakes and rivers go still under

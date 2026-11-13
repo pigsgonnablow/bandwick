@@ -259,6 +259,7 @@ describe('penned pigs', () => {
       p.carryAmt = 1;
       p.x = gate.x;
       p.z = gate.z;
+      p.path = null;
       p.task = { kind: 'hunt', stage: 2, alive: true, goal: s.tileOf(gate), gx: gate.x, gz: gate.z, ref: -1, timer: 0, started: s.tick, amount: 0, near: true };
       s.camp = c;
       runTask(s, p);
