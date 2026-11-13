@@ -197,6 +197,18 @@ the midwinter feast and laid in the graves of the dead. A master weaver is a mas
 others. The stockpile card counts the thread, the loom shed's card says who is weaving what and how many
 of the band have tunics and blankets, and people in tunics are drawn in pale or dyed cloth.
 
+**Pots, lamps and jars.** A band's clay pots keep the foods that spoil fastest, greens first, then eggs,
+berries and mushrooms (6 to a pot, going off 60% slower), and a band that keeps greens, eggs or
+mushrooms wants a pot more for each. A potter (pottery 10) who knows hides (hidework 6), at work by the
+fire after dark, may think of clay lamps: a pinched dish of fat with a moss wick. On a dark evening,
+with a lamp to light and something to make or mend, those not yet tired stay up and work by it until
+nine; each evening a lamp is lit burns a little of the meat or fish in the stores, and the lamp is drawn
+burning beside them. Once the band has a kiln, a skilled potter (pottery 12, with gardening 5 or
+foraging 10) firing in it or carrying grain to the stores may think of storage jars, fired only in the
+kiln: each holds 20 of the herbs, grain or acorns (those first) and keeps them going off 80% slower.
+The band keeps a jar for every 20 of them it has put by, and one over, up to ten, standing in two files
+beside the stockpile.
+
 **Penned pigs.** A hunter with a garden at home who brings down a boar (a striped piglet most of all), or
 a gardener who finds a plot rooted up by the boar in the night, may think of keeping one: penned pigs, a
 discovery once the band knows its gardens and the boar (hunting 10, gardening 8). The band builds a pen by

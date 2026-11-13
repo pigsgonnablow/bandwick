@@ -41,6 +41,8 @@ export type Practice =
   | 'gift' // a necklace strung for someone dear
   | 'knap' // a stone knapped into a chopper or an axe head
   | 'fire_pot' // a pot or bowl fired in the embers of the hearth (twice over when it cracks)
+  | 'fire_kiln' // a pot, bowl or lamp fired in the kiln
+  | 'night_work' // a spell of sitting work (making something, or mending) finished by the fire after dark
   | 'twist' // a length of cordage twisted by the fire
   | 'spin' // a hank of thread spun on a spindle
   | 'weave' // a basket, a fish trap or a reed cape woven by the fire
@@ -382,6 +384,22 @@ export const DISCOVERIES: Discovery[] = [
     practice: { fire_pot: 1 }, odds: 22,
     found: 'walled the firing in a dome of clay with a hole to stoke it, and the pots came out whole and ringing hard: the band\'s first kiln',
     taught: 'build a kiln and fire their pots in it', memory: 'Built the first kiln.',
+  },
+  {
+    // (a potter at work by the fire after dark, squinting at it in the firelight, pinches a little dish of clay,
+    // fills it with fat from the kills and lays a twist of moss in its lip for a wick: a light to work by)
+    key: 'lamps', label: 'Clay lamps', needs: ['pottery'], requires: [skill(SK.pot, ABLE), skill(SK.hide, 6)],
+    practice: { night_work: 1 }, odds: 14,
+    found: 'pinched a little dish of clay, filled it with fat from the kills and lit a wick of moss in its lip: a light to work by after dark',
+    taught: 'make clay lamps and burn fat in them', memory: 'Lit the first clay lamp.',
+  },
+  {
+    // (a potter firing in the kiln, who has seen the grain go musty and the mice get into the stores, thinks of a
+    // jar big enough to hold it, fired hard and sealed with a clay stopper)
+    key: 'jars', label: 'Storage jars', needs: ['kiln'], requires: [skill(SK.pot, 12), any(skill(SK.garden, 5), skill(SK.forage, ABLE))], near: 'mud',
+    practice: { fire_kiln: 1, store_grain: 1 }, odds: 30,
+    found: 'coiled a tall jar, fired it hard in the kiln, filled it with grain and sealed its mouth with clay: it came out dry and sweet a year later',
+    taught: 'fire tall jars in the kiln and seal the stores in them', memory: 'Sealed the first storage jar.',
   },
   {
     // (a weaver who has twisted more cord than anyone, rolling it on their thigh, hangs a stone on a stick to

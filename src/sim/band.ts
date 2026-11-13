@@ -121,7 +121,7 @@ export const TASK_KINDS: TaskKind[] = [
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap', 'deadfall'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -178,6 +178,11 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   tunic: { label: 'Woven tunic', uses: 300 },
   // a heavy blanket woven on the loom, slept under on cold nights: four or five winters
   blanket: { label: 'Woven blanket', uses: 400 },
+  // a pinched clay dish, its lip drawn out to hold the wick, filled with fat from the kills: each evening it is lit is a use
+  lamp: { label: 'Clay lamp', uses: 120 },
+  // a tall jar fired hard in the kiln, its mouth sealed with a clay stopper: grain, acorns and herbs keep in it for
+  // years (each day it holds food counts as a use)
+  jar: { label: 'Storage jar', uses: 1200 },
   // a narrow band woven in a pattern of its own, made in the free hours: it does not wear out lying with the goods
   sash: { label: 'Woven sash', uses: 1000 },
 };
@@ -302,9 +307,37 @@ export const BAD_MUSHROOM_DAYS = 3;
 /** Bundles of dried healing herbs a band likes to keep by, and how long one nursing keeps a fever in check. */
 export const HERBS_WANT = 6;
 export const NURSE_DAYS = 2;
-/** Berries kept in one pot, and how much of the usual going-off still happens to them there. */
+/**
+ * Food kept in one pot, and how much of the usual going-off still happens to it there. Pots hold the foods that
+ * go off fastest, those first: greens, eggs, berries and mushrooms.
+ */
 export const POT_HOLDS = 6;
 export const POT_KEEP = 0.4;
+export const POTTED = ['greens', 'eggs', 'berries', 'mushrooms'] as const;
+/**
+ * Food kept in one sealed storage jar, and how much of the usual going-off still happens to it there (damp and
+ * mice can't get in). Jars hold the dry foods kept the year round: herbs first, then grain, then acorns.
+ */
+export const JAR_HOLDS = 20;
+export const JAR_KEEP = 0.2;
+export const JARRED = ['herbs', 'grain', 'nuts'] as const;
+/** Storage jars a band keeps at most. */
+export const JARS_MAX = 10;
+/**
+ * Fat burned in a clay lamp for one evening's work by it (taken from the meat, fish or dried meat in the
+ * stores), and how keen someone is to sit down to make or mend things by the fire on a dark evening with a lamp
+ * to light, against firelight alone (against the same work by day, 0.85).
+ */
+export const LAMP_FAT = 0.15;
+export const LAMP_NIGHT = 2.2;
+export const FIRE_NIGHT = 0.4;
+/**
+ * A lamp keeps people up: on a dark evening before this hour, with a lamp to light and something to make or
+ * mend, those still this rested put off sleep (it weighs only this much against the work) to sit up by it.
+ */
+export const LAMP_UNTIL = 21;
+export const LAMP_REST = 45;
+export const LAMP_SLEEP = 0.5;
 /** Berries brought home in one trip with a basket: several bushes' worth, where bare hands manage one. */
 export const BASKET_HOLDS = 8;
 
@@ -318,7 +351,7 @@ export const FIBER_PER_THREAD = 2;
 /** Hanks of thread a band spins to try the spindle before it has a loom, and keeps by at most once it has. */
 export const THREAD_TRY = 4;
 export const THREAD_KEPT = 16;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage or a hank of thread into the stores, or an item onto the pile */
@@ -439,7 +472,19 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
     makes: 'sash', uses: { thread: 2 }, work: 120, skill: SK.weave, grow: 0.08, knows: 'loom', doing: 'Weaving a sash',
     thought: 'Weaving a patterned sash at the loom.', done: 'Wove a patterned sash and set it with the band\'s goods.',
   },
+  lamp: {
+    // a lump of clay pinched into a shallow dish with a spout for the wick, and fired
+    makes: 'lamp', uses: { mud: 1 }, work: 28, skill: SK.pot, grow: 0.06, knows: 'lamps', doing: 'Making a clay lamp',
+    thought: 'Pinching clay into a lamp, with a lip for the wick.', done: 'Fired a clay lamp for working by after dark.',
+  },
+  jar: {
+    // a tall jar coiled up from a lot of clay, with a stopper to seal it, fired hard in the kiln (see KILNED)
+    makes: 'jar', uses: { mud: 3, wood: 2 }, work: 80, skill: SK.pot, grow: 0.09, knows: 'jars', doing: 'Making a storage jar',
+    thought: 'Coiling a tall storage jar and a stopper to seal it.', done: 'Fired a storage jar and sealed the stores in it.',
+  },
 };
+/** The recipes fired only in the kiln: too big for the embers of the hearth. */
+export const KILNED: RecipeKey[] = ['jar'];
 /** The recipes woven at the loom: they can't be made without a loom shed, and are made in it. */
 export const LOOMED: RecipeKey[] = ['tunic', 'blanket', 'sash'];
 /** The recipes that go faster with a bone needle and awl: sewing hides, weaving baskets and traps. */
