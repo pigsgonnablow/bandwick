@@ -3,10 +3,11 @@
 import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
-import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, HERBS_WANT, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND,
+import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, HERBS_WANT, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
   PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
+import { runOn, weirBank } from './runs';
 import { addPig, gateOf, feedPigs, pigToKill, killPig, pigsHungry, pigsOf, grown } from './pigs';
 import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, daylight, yearOf, TICKS_PER_DAY, TICKS_PER_HOUR } from './time';
 import { WATER, DIRS4, treeId } from './types';
@@ -144,7 +145,7 @@ export function workSkill(q: Person): number {
   if (!t) return -1;
   switch (t.kind) {
     case 'fell': case 'haul': case 'deadwood': return SK.wood;
-    case 'fish': return SK.fish;
+    case 'fish': case 'weir': return SK.fish;
     case 'build': case 'supply': case 'dig': case 'quarry': return SK.build;
     case 'forage': case 'reap': case 'roots': case 'nuts': case 'herbs': case 'eggs': case 'honey': case 'mushrooms': return SK.forage;
     case 'preserve': case 'mend': return SK.hide;
@@ -244,7 +245,7 @@ function giftFor(s: Sim, p: Person) {
 }
 
 /** The everyday work a master craftsman is spared while the band is fed. */
-const SPARED: TaskKind[] = ['fell', 'haul', 'deadwood', 'forage', 'fish', 'hunt', 'reap', 'dig', 'quarry', 'roots', 'nuts', 'eggs', 'mushrooms', 'trap', 'tend', 'pigs'];
+const SPARED: TaskKind[] = ['fell', 'haul', 'deadwood', 'forage', 'fish', 'hunt', 'reap', 'dig', 'quarry', 'roots', 'nuts', 'eggs', 'mushrooms', 'trap', 'tend', 'pigs', 'weir'];
 
 function busyWith(s: Sim, kind: TaskKind) {
   let n = 0;
@@ -364,6 +365,8 @@ export function decide(s: Sim, p: Person) {
     if (age >= 16 && s.knows('herbs') && c.stock.herbs >= 1 && busyWith(s, 'nurse') < 2 && feverish(s, p)) add('nurse', 1.25 * fit(p, SK.forage) * (healerOf(s) === p ? 1.3 : 0.8));
     // an armful of dry grass from the stores, laid in a home where the old bedding has gone flat
     if (age >= 9 && !dark && (j.bed ?? 0) > 0 && busyWith(s, 'bed') < 2) add('bed', j.bed * drive * fit(p, SK.forage));
+    // the basket at the weir emptied and the fish carried home: one person at a time, by daylight
+    if (age >= 12 && !dark && (j.weir ?? 0) > 0 && busyWith(s, 'weir') === 0) add('weir', j.weir * drive * fit(p, SK.fish));
     // the round of the snares and fish traps: one person, once a day, by daylight
     if (age >= 12 && !dark && (j.trap ?? 0) > 0 && c.trapRound !== dayOf(s.tick) && busyWith(s, 'trap') === 0)
       add('trap', j.trap * drive * fit(p, SK.hunt));
@@ -762,6 +765,15 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       p.thought = b.kind === 'barrow' ? 'Heaping earth on the burial mound.' : 'Levering a stone upright in the ring.';
       return newTask(s, kind, b.tile, b.x + 0.5, b.z + 0.5, b.id, true);
     }
+    case 'weir': {
+      // the band's weir with the most in its basket, from the bank beside it
+      const weir = s.buildings.filter((b) => b.kind === 'weir' && b.built && b.band === c.id && (b.catch ?? 0) >= 1).sort((a, b) => (b.catch ?? 0) - (a.catch ?? 0))[0];
+      const bank = weir ? weirBank(s, weir.tile) : -1;
+      if (!weir || bank < 0 || (s.unreachable.get(-3 * N * N - (bank + 1)) ?? 0) > s.tick) return null;
+      const at = fishStand(N, bank, weir.tile);
+      p.thought = 'Off to empty the basket at the weir.';
+      return newTask(s, kind, bank, at.x, at.z, weir.id);
+    }
     case 'pigs': {
       const pen = s.penOf(c);
       if (!pen || !pigsOf(s, c).length) return null;
@@ -1013,6 +1025,12 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
           const owner = s.byId.get(b.owner);
           const label = labelOf(b).toLowerCase();
           p.thought = owner && owner.alive ? `Building a ${label} for ${owner.id === p.id ? 'their family' : owner.name + "'s family"}.` : `Building the ${label}.`;
+          // (a weir is built from the bank, wading out to drive in the stakes)
+          const bank = b.kind === 'weir' ? weirBank(s, b.tile) : -1;
+          if (bank >= 0) {
+            const at = fishStand(N, bank, b.tile);
+            return newTask(s, 'build', bank, at.x, at.z, b.id);
+          }
           return newTask(s, 'build', b.tile, b.x + 0.5, b.z + 0.5, b.id, true);
         }
       }
@@ -1648,7 +1666,7 @@ export function runTask(s: Sim, p: Person) {
       if (propTask && t.ref >= 0) s.unreachable.set(t.ref, s.tick + 2 * TICKS_PER_DAY);
       // (the bank they were making for, not the pile they fetch gear from or the stores they carry the catch to)
       if (t.kind === 'fish' && t.stage === 0) s.unreachable.set(-((t.bank ?? t.goal) + 1), s.tick + 2 * TICKS_PER_DAY);
-      if (t.kind === 'trap' && t.stage >= 0) s.unreachable.set(-3 * s.N * s.N - (t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
+      if ((t.kind === 'trap' || t.kind === 'weir') && t.stage >= 0 && t.stage < 2) s.unreachable.set(-3 * s.N * s.N - (t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
       if ((t.kind === 'dig' || t.kind === 'quarry') && t.stage >= 0) s.unreachable.set((t.kind === 'dig' ? -1 : -2) * s.N * s.N - (t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
       // (the next bush can't be reached, but home can: what is in hand goes there)
       if (bringHome(s, p)) return true;
@@ -3104,7 +3122,11 @@ export function runTask(s: Sim, p: Person) {
         if ((kind === 'spear' || kind === 'harpoon') && t.timer % 9 === 4 && t.timer > 6) flash(p, FLASH.Stab);
         if (--t.timer > 0) return;
         const winter = seasonOf(s.tick) === 3;
-        const stocked = s.fish[w] / Math.max(1, s.fishCap[w]);
+        // (a run passing makes the water thick with fish, but there are only so many a spear or a net can take at once)
+        const stocked = Math.min(RUN_STOCKED, s.fish[w] / Math.max(1, s.fishCap[w]));
+        // fishing a river thick with the run, watching the fish nose along the bank for a way up, sets a fisher who
+        // builds thinking of a fence across it
+        if (runOn(s, w) && s.fish[w] > s.fishCap[w]) s.practise(p, 'run');
         const cold = winter ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1;
         if (kind === 'net') {
           // whoever has come to help is here by now, or nearly: wait a little longer for those on the way
@@ -3204,6 +3226,44 @@ export function runTask(s: Sim, p: Person) {
       }
       return;
     }
+    case 'weir': {
+      const weir = s.building(t.ref);
+      if (!weir || !weir.built) {
+        if (t.stage < 2) return finish(s, p);
+      }
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 1;
+        t.timer = 24;
+        p.thought = 'Lifting the basket out of the weir.';
+      }
+      if (t.stage === 1) {
+        p.act = ACT.Fish;
+        face(p, weir!.x + 0.5, weir!.z + 0.5);
+        if (--t.timer > 0) return;
+        // whole fish: what is left over stays in the basket for the next trip
+        const got = Math.min(WEIR_LOAD, Math.floor(weir!.catch ?? 0));
+        if (got < 1) {
+          p.thought = 'Nothing in the weir yet.';
+          return finish(s, p);
+        }
+        weir!.catch = (weir!.catch ?? 0) - got;
+        s.buildingsVersion++;
+        s.book('weir', got);
+        train(p, 'fish.catch');
+        // (a basket full of fish crowded into it, like a trap's)
+        s.practise(p, 'trap_fish', got / 4);
+        p.carry = CARRY.Fish;
+        p.carryAmt = got;
+        p.thought = `Carrying ${got} fish home from the weir.`;
+        goStore(s, p, t, 2);
+        return;
+      }
+      if (moving(go(s, p, t))) return;
+      deposit(s, p);
+      finish(s, p);
+      return;
+    }
     case 'supply': {
       const b = s.building(t.ref);
       if (!b || b.built) {
@@ -3222,6 +3282,15 @@ export function runTask(s: Sim, p: Person) {
         t.gz = b.z + 0.5;
         t.near = true;
         p.path = null;
+        // (what goes into a weir is laid on the bank beside it)
+        const bank = b.kind === 'weir' ? weirBank(s, b.tile) : -1;
+        if (bank >= 0) {
+          const at = fishStand(s.N, bank, b.tile);
+          t.goal = bank;
+          t.gx = at.x;
+          t.gz = at.z;
+          t.near = false;
+        }
       }
       if (moving(go(s, p, t))) return;
       const m = t.res ?? 'wood';

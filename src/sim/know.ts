@@ -26,6 +26,7 @@ export type Practice =
   | 'fish_miss' // a stab at the water that missed (a quarter as much: a fish that wriggled off the point while the catch was landed)
   | 'ice' // an evening by the fire while the lakes and rivers are frozen over (each adult)
   | 'trap_fish' // a fish trap emptied on the round with fish in it (more the fuller it was)
+  | 'run' // a fishing trip to a river while the salmon or the eels are running in it
   | 'carcass' // a deer or boar carried home and skinned (half again when it is butchered)
   | 'rack' // a batch of meat or fish hung on the drying rack
   | 'deadwood' // an armful of fallen branches gathered under a tree
@@ -195,6 +196,14 @@ export const DISCOVERIES: Discovery[] = [
     practice: { trap_fish: 1, fish_fiber: 0.1 }, odds: 14,
     found: 'knotted cord into a long net, weighted its foot with stones, and with two others hauled it through the shallows full of fish',
     taught: 'knot nets and haul them through the water together', memory: 'Hauled the first fishing net.',
+  },
+  {
+    // (a fisher who builds and knows the woven trap, standing in a river thick with the run and watching the fish
+    // nose along the bank for a way up, thinks of fencing the river so that the only way is into a trap)
+    key: 'weir', label: 'Fish weirs', needs: ['fishtraps'], requires: [skill(SK.fish, 12), skill(SK.build, 10)],
+    practice: { run: 1, trap_fish: 0.1 }, odds: 60,
+    found: 'drove stakes across the river and wove withies between them, and the run swam into a basket at the point: the first fish weir',
+    taught: 'fence a river with a weir that leads the fish into a trap', memory: 'Built the first fish weir across the river.',
   },
   {
     // (the picker who already twists cord thinks of weaving something to carry more home in)

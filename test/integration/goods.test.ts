@@ -446,6 +446,8 @@ describe('the band\'s goods', () => {
 
   it('wears the bowls on the pile a little each day, and never the beads', () => {
     const s = fedBand();
+    // (on a pile with room: a full one sends its plainest bowl into everyday use when the next is made)
+    for (const it of s.items.filter((i) => GOODS.includes(i.kind))) s.items.splice(s.items.indexOf(it), 1);
     const bowl = mk(s, 'bowl', 0), beads = mk(s, 'beads', 0);
     runTo(s, s.tick + 3 * TICKS_PER_DAY);
     expect(bowl.wear).toBeGreaterThan(0);

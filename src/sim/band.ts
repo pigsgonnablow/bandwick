@@ -114,14 +114,14 @@ export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
   | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast' | 'eggs' | 'honey' | 'mushrooms' | 'mend'
-  | 'sow' | 'tend' | 'harvest' | 'pigs' | 'raise';
+  | 'sow' | 'tend' | 'harvest' | 'pigs' | 'raise' | 'weir';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
   'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen', 'bed', 'roots', 'nuts', 'herbs', 'nurse', 'gift', 'feast', 'eggs', 'honey', 'mushrooms', 'mend',
-  'sow', 'tend', 'harvest', 'pigs', 'raise',
+  'sow', 'tend', 'harvest', 'pigs', 'raise', 'weir',
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
@@ -415,6 +415,43 @@ export const NET_CREW = 2;
 export const NET_WAIT = 50;
 export const NET_ALONE = 0.6;
 export const NET_HAND = 0.9;
+
+/**
+ * The autumn runs. Salmon come in from the sea and run up the rivers that reach it, a few days at each stretch of
+ * water as they pass, the run arriving later the further upstream; eels run down out of the lakes toward the sea
+ * on the dark nights at the end of autumn. While a run is passing, the river holds this many more fish than it
+ * does the rest of the year (at the mouth: fewer further up, where the run has thinned), and fills back up fast
+ * however hard it is fished.
+ */
+export const RUN_FISH = 6;
+export const EEL_FISH = 3;
+/** The day of the year the salmon reach the river mouths (the first days of autumn), give or take a couple. */
+export const RUN_DAY = 26;
+/** How far a day the run gets upstream (tiles), how long it takes to pass a stretch (days), and how far up it goes. */
+export const RUN_SPEED = 7;
+export const RUN_DAYS = 4;
+export const RUN_REACH = 60;
+/** The eels run late in autumn, for a few days, as far as this below the lake they come from. */
+export const EEL_DAY = 32;
+export const EEL_DAYS = 4;
+export const EEL_REACH = 40;
+/** The most a run's thick water adds to a spear's or a net's catch (as if the water were this many times full). */
+export const RUN_STOCKED = 1.3;
+/** While a run is passing, the share of what the river is short of the run that comes in again every six hours. */
+export const RUN_FILL = 0.35;
+/**
+ * A fish weir: a fence of stakes and wattle across a narrow river, angled to lead the fish into a basket trap in a
+ * gap. Every six hours it takes this share of the run passing through the water it stands in and the water either
+ * side (the fish over what the river holds the rest of the year), and a trickle of the river's own fish the rest
+ * of the year, up to what its basket holds; the run below it is thinned for the water above.
+ */
+export const WEIR_TAKE = 0.12;
+export const WEIR_TRICKLE = 0.006;
+export const WEIR_HOLDS = 20;
+/** What the run is above a weir, against below it (the weir takes the rest). */
+export const WEIR_PASS = 0.6;
+/** Fish carried home from a weir in one trip. */
+export const WEIR_LOAD = 10;
 /** Berries brought home in one trip with a basket: several bushes' worth, where bare hands manage one. */
 export const BASKET_HOLDS = 8;
 
@@ -776,7 +813,7 @@ export interface Person {
   gave?: number;
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -827,6 +864,9 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   barrow: spec({ stone: 10, work: 15000, label: 'Burial mound' }),
   // and a ring of standing stones out past the huts, each dragged in and levered upright, a tall one at the centre
   stones: spec({ stone: 26, work: 24000, label: 'Stone ring' }),
+  // a fish weir: stakes driven into the bed of a narrow river in a V pointing downstream, hazel withies and reeds
+  // woven between them, and a long basket trap lashed in the gap at the point
+  weir: spec({ wood: 8, fiber: 6, cordage: 3, work: 90, label: 'Fish weir' }),
 };
 /** The buildings a band raises for its own sake, in its spare hours over years, and never as a job of work. */
 export const MONUMENTS: readonly BuildKind[] = ['barrow', 'stones'];
@@ -891,6 +931,8 @@ export interface Building {
   bedding?: number;
   /** a garden plot: what is growing in it (absent or 0: nothing), and how it is coming on */
   plot?: Plot;
+  /** a fish weir: the fish in its basket, waiting to be carried home */
+  catch?: number;
   work: number; // done
   built: boolean;
   owner: number; // person id of the household head
