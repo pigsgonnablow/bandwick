@@ -145,6 +145,33 @@ describe('clay lamps', () => {
     expect(lamp.holder).toBe(-1);
   });
 
+  it('are filled once an evening, burning on for whoever picks them up again that night', () => {
+    const s = potters(2, ['pottery', 'lamps']);
+    clear(s, 'lamp');
+    give(s, 'lamp', 1);
+    const lamp = s.toolsOf(s.camp, 'lamp')[0];
+    const [p, q] = s.members().filter((m) => s.age(m) >= 18 && s.age(m) <= 50);
+    toNight(s);
+    const fat = () => s.camp.stock.meat + s.camp.stock.fish + s.camp.stock.preserved;
+    const before = fat();
+    expect(s.lightLamp(p)).toBe(true);
+    const wear = lamp.wear;
+    s.putOutLamp(p);
+    // later the same night, with the stores bare, it is still burning for the next sitter
+    Object.assign(s.camp.stock, { meat: 0, fish: 0, preserved: 0 });
+    expect(s.lightLamp(q)).toBe(true);
+    expect(s.heldBy(q)).toBe(lamp);
+    expect(lamp.wear).toBe(wear);
+    s.putOutLamp(q);
+    expect(before - LAMP_FAT).toBeGreaterThan(0);
+    // the next evening it needs filling again
+    s.camp.stock.meat = 5;
+    s.tick += TICKS_PER_DAY;
+    expect(s.lightLamp(p)).toBe(true);
+    expect(s.camp.stock.meat).toBeCloseTo(5 - LAMP_FAT, 5);
+    expect(lamp.wear).toBeGreaterThan(wear);
+  });
+
   it('are not lit by day, nor without fat to burn', () => {
     const s = potters(2, ['pottery', 'lamps']);
     clear(s, 'lamp');

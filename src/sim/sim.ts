@@ -1323,9 +1323,13 @@ export class Sim {
     }
   }
 
-  /** Whether someone of the band is feeding its fire, near enough to it to do so soon. */
+  /**
+   * Whether someone of the band is feeding its fire, near enough to it to do so soon: the wood already in hand,
+   * or a step or two from the pile (someone still walking in from the edge of camp, slow in the snow, can take
+   * hours, and the fire dies waiting for them while the rest sit by it).
+   */
   fuelOnHand(c: Camp) {
-    return this.people.some((q) => q.alive && q.band === c.id && q.task?.kind === 'fuel' && hyp(q.x - c.x, q.z - c.z) < 6);
+    return this.people.some((q) => q.alive && q.band === c.id && q.task?.kind === 'fuel' && (q.task.stage >= 1 || hyp(q.x - c.x, q.z - c.z) < 3));
   }
   private urgent(p: Person) {
     const k = p.task?.kind;
@@ -1436,6 +1440,8 @@ export class Sim {
     // return anything set aside for their task, lay down a body they carried; logs drop where they fall
     abandon(this, p, true);
     if (p.carry !== CARRY.None) this.dropCarry(p);
+    // and the tool or lamp in their hand goes back on the pile, or it is lost to the band for good
+    this.returnTool(p);
     p.act = ACT.Dead;
     this.stats.deaths++;
     if (cause === 'starvation') this.stats.starved++;
@@ -1717,20 +1723,34 @@ export class Sim {
     const dry = JARRED.reduce((n, k) => n + c.stock[k], 0);
     return Math.min(JARS_MAX, Math.ceil(dry / JAR_HOLDS) + 1);
   }
+  /** Which evening it is: the night after a day counts as that day's evening, past midnight too. */
+  evening(tick = this.tick) {
+    return Math.floor((tick - TICKS_PER_DAY / 2) / TICKS_PER_DAY);
+  }
   /**
-   * A lamp someone in this band could light now to work by after dark: one on the pile, with fat for it in the
-   * stores (undefined: none, or the band doesn't know lamps).
+   * A lamp someone in this band could light now to work by after dark: one on the pile already burning this
+   * evening, or else one with fat for it in the stores (undefined: none, or the band doesn't know lamps).
    */
   lampToLight(c = this.camp) {
-    if (!this.knows('lamps', c) || c.stock.meat + c.stock.fish + c.stock.preserved < LAMP_FAT) return undefined;
-    return this.items.find((i) => i.kind === 'lamp' && i.band === c.id && i.holder < 0);
+    if (!this.knows('lamps', c)) return undefined;
+    const free = this.items.filter((i) => i.kind === 'lamp' && i.band === c.id && i.holder < 0);
+    const tonight = this.evening();
+    const lit = free.find((i) => i.lit === tonight);
+    if (lit) return lit;
+    return c.stock.meat + c.stock.fish + c.stock.preserved < LAMP_FAT ? undefined : free[0];
   }
-  /** Light a lamp to work by, if there is one: the fat comes out of the stores, and it is an evening nearer cracking. */
+  /**
+   * Light a lamp to work by, if there is one. Filling it is once an evening: the fat comes out of the stores,
+   * and it is an evening nearer cracking; picked up again later the same night, it is still burning.
+   */
   lightLamp(p: Person) {
     if (this.heldBy(p)?.kind === 'lamp') return true;
     const c = this.campOf(p), lamp = this.lampToLight(c);
     if (!lamp) return false;
     this.takeTool(p, lamp);
+    const tonight = this.evening();
+    if (lamp.lit === tonight) return true;
+    lamp.lit = tonight;
     let fat = LAMP_FAT;
     for (const k of ['meat', 'fish', 'preserved'] as const) {
       const n = Math.min(fat, c.stock[k]);
@@ -1738,7 +1758,8 @@ export class Sim {
       fat -= n;
     }
     this.book('lamp.fat', LAMP_FAT, c);
-    this.wearTool(lamp);
+    // (cracked in the lighting: gone, and they work on by the fire)
+    if (this.wearTool(lamp)) return false;
     return true;
   }
   /** Put out the lamp they worked by and set it back on the pile. */

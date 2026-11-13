@@ -502,6 +502,8 @@ export interface Item {
   made: number;
   /** who made it (-1: brought from beyond the map); for a necklace, who strung it and gave it */
   maker: number;
+  /** a lamp: the evening it was last filled with fat (it burns the night through, whoever sits by it) */
+  lit?: number;
   /** a trap: the tile it is set on (absent or -1: on the pile; -2: in the basket of whoever is setting it); beads: -3, set aside for a gift */
   tile?: number;
   /** a trap: what it has caught and is holding, waiting for the round (meat for a snare, fish for a fish trap) */
