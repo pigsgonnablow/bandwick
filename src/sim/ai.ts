@@ -3292,8 +3292,10 @@ function penIt(s: Sim, p: Person, pen: Building) {
   addPig(s, c, pen, sow, true);
   p.carry = CARRY.None;
   p.carryAmt = 0;
-  s.book('pigs.caught', 1);
-  if (!herd.length) {
+  // (the band's first pig ever, not the first into a pen that has stood empty since its last pigs went)
+  const first = !herd.length && !(c.ledger?.total['pigs.caught'] ?? 0) && !(c.ledger?.total['pigs.born'] ?? 0);
+  s.book('pigs.caught', 1, c);
+  if (first) {
     s.event('pigs', `${p.name} brought a striped piglet home alive from the boar hunt and put it in the new pen at ${c.name}.`, [p.id], pen.x + 0.5, pen.z + 0.5, 3);
     s.remember(p, 'pigs', 10, 2, -1, 'Brought the first piglet home alive for the pen.');
   }

@@ -905,7 +905,7 @@ export class Sim {
       this.clearTile(tile);
       const b = this.newBuilding('stockpile', tile, -1);
       b.built = true;
-        b.finished = this.tick;
+      b.finished = this.tick;
     }
     this.camp = prev;
   }
@@ -1586,12 +1586,12 @@ export class Sim {
     return seasonOf(t) >= 2 && !this.hasBuilt('woodshed', band);
   }
 
-  /** A winter that came in bitter (the year's weather turned well below the usual): the fish lie deeper still. */
-  /** What the wild crops (acorns, roots, the hares' young) come to this year against an ordinary one: half in a lean year. */
+  /** What the wild crops (acorns, roots, the hares' young) come to this year against an ordinary one: less in a lean year. */
   leanCrop(t = this.tick) {
     return this.blightYear === yearOf(t) ? LEAN_CROP : 1;
   }
 
+  /** A winter that came in bitter (the year's weather turned well below the usual): the fish lie deeper still. */
   bitterWinter(t = this.tick) {
     return seasonOf(t) === 3 && this.anomaly < -2.5;
   }
@@ -2916,12 +2916,7 @@ export class Sim {
     // wood and food set aside for a job (or carried in) go back to the stores before they are packed up
     for (const p of ms) abandon(this, p);
     // the pigs can't be driven so far: they are killed and go with the stores
-    const herd = pigsOf(this, c);
-    if (herd.length) {
-      for (const g of herd) c.stock.meat += pigMeat(this, g);
-      this.book('pigs.killed', herd.length, c);
-      this.pigs = this.pigs.filter((g) => g.band !== c.id);
-    }
+    this.butcherHerd(c);
     const stock = { ...c.stock };
     for (const k of Object.keys(stock) as (keyof Stock)[]) stock[k] *= 0.8; // not everything can be carried
     const nc = this.foundCamp(site, stock, c.id, lead.id);
@@ -2951,6 +2946,18 @@ export class Sim {
     return true;
   }
 
+  /** A band leaving its pen behind kills its pigs, and the meat goes into its stores to be carried off. */
+  private butcherHerd(c: Camp) {
+    const herd = pigsOf(this, c);
+    if (!herd.length) return;
+    let meat = 0;
+    for (const g of herd) meat += pigMeat(this, g);
+    c.stock.meat += meat;
+    this.book('pigs.killed', herd.length, c);
+    this.book('pigs.meat', meat, c);
+    this.pigs = this.pigs.filter((g) => g.band !== c.id);
+  }
+
   private considerMerge(c: Camp, cold = false) {
     const ms = this.members(c);
     const adults = ms.filter((p) => this.age(p) >= 16);
@@ -2959,7 +2966,10 @@ export class Sim {
     const to = this.liveCamps().filter((o) => o !== c && (!cold || (o.stock.wood >= 30 && hyp(o.x - c.x, o.z - c.z) < 60))).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
     if (!to || !ms.length) return false;
     this.join(ms, to);
-    // they bring what they can carry of their stores (what was set aside for a job is back in them now)
+    // their pigs can't be driven to another band's pen: they are killed, and the meat goes with the stores
+    // (what was set aside for a job, a piglet carried home included, is back in them now)
+    this.butcherHerd(c);
+    // they bring what they can carry of their stores
     this.carryStores(c, to);
     to.seed = (to.seed ?? 0) + (c.seed ?? 0);
     c.seed = 0;

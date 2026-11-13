@@ -137,8 +137,10 @@ export function pigsDaily(s: Sim) {
       g.farrowed = yearOf(s.tick);
       const n = Math.min(PEN_HOLDS * 2 - herd.length, r.int(LITTER[0], LITTER[1] + 1));
       for (let k = 0; k < n; k++) addPig(s, c, pen, r.chance(0.5), false, { x: g.x + r.range(-0.05, 0.05), z: g.z + r.range(-0.05, 0.05) });
+      // (the band's first litter: by its own books, not by its name in the chronicle, which another band's may contain)
+      const first = !(c.ledger?.total['pigs.born'] ?? 0);
       s.book('pigs.born', n, c);
-      if (!s.events.some((e) => e.kind === 'farrow' && e.text.includes(c.name))) s.event('farrow', `The first litter was born in the pig pen at ${c.name}: ${n} piglets.`, [], pen.x + 0.5, pen.z + 0.5, 2);
+      if (first) s.event('farrow', `The first litter was born in the pig pen at ${c.name}: ${n} piglets.`, [], pen.x + 0.5, pen.z + 0.5, 2);
     }
   }
   for (const [c, n] of lost) {
