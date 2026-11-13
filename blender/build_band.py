@@ -22,9 +22,11 @@ Conventions (read by src/render/band.ts):
   carry__{log,berries,meat,fish,spear,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,grain,greens,piglet,basket,basketFull,hare} attached to a person's hands or shoulder.
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
+  pile__jar                                                       a tall storage jar sealed with a clay stopper (origin at its foot).
+  pile__lamp                                                      a clay lamp set down beside someone working after dark (origin at its foot, the wick's lip to +X).
   pile__{bowl,beads,sash}                                         the band's goods on the stockpile: a patterned clay bowl, a string of beads lying coiled, a woven sash.
   boat__dugout                                                    the dugout the first band lands in (origin at the waterline, bow to -Y).
-  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace,bowl,beads,tunic,blanket,sash}  each made thing in real colours,
+  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace,bowl,beads,tunic,blanket,sash,lamp,jar}  each made thing in real colours,
       for the picture in its window (the game fits it to the picture).
   bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit,kiln,loom,pen}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
@@ -3961,6 +3963,115 @@ q.finish("pile__sash")
 q = Part()
 sash(q, random.Random(95), coiled=False)
 q.finish("item__sash")
+
+# ---------------------------------------------------------------- clay lamps and storage jars
+LAMP = (166, 112, 74)       # pinched clay, fired in the embers
+LAMP_DK = (120, 82, 56)
+LAMP_SOOT = (52, 44, 40)    # blackened round the lip where the wick burns
+FAT = (226, 214, 176)       # the fat it burns, set pale in the dish
+FAT_MELT = (238, 196, 112)  # melted and glowing round the wick
+WICK = (70, 58, 40)         # a twist of moss
+# the lip the wick lies in points to +X; its tip, where the game puts the flame (Blender x, y, z)
+LAMP_WICK = (0.0155, 0.0, 0.0085)
+
+
+def lamp(q, rr):
+    """A clay lamp: a little round dish pinched up by hand from a lump of clay, its rim drawn out at one side
+    into a lip for the wick; pale fat set in the dish, a twist of moss lying in the lip, the lip sooted where
+    it burns. Origin at the foot, centred on the dish."""
+    segs = 14
+    bm = q.bm
+    # rings, foot to rim and back down inside: (radius, z); the rim pulled out into a pointed lip toward +X
+    outer = [(0.006, 0.0), (0.0095, 0.0015), (0.0115, 0.0045), (0.0122, 0.0075)]
+    inner = [(0.0105, 0.0072), (0.0085, 0.0052)]
+    rings = []
+    for i, (r, z) in enumerate(outer + inner):
+        ring = []
+        for k in range(segs):
+            a = k / segs * math.tau
+            lip = max(0.0, math.cos(a)) ** 6  # only the very front
+            rr_ = r * (1 + rr.uniform(-0.03, 0.03)) + (0.0045 if i >= 2 else 0.002 if i == 1 else 0.0) * lip
+            ring.append(bm.verts.new((math.cos(a) * rr_, math.sin(a) * rr_ * (1 - 0.45 * lip if i >= 2 else 1), z + (0.0006 * lip if i == 3 else 0))))
+        rings.append(ring)
+    for i in range(len(rings) - 1):
+        a, b = rings[i], rings[i + 1]
+        for k in range(segs):
+            f = bm.faces.new((a[k], a[(k + 1) % segs], b[(k + 1) % segs], b[k]))
+            front = math.cos(k / segs * math.tau) > 0.85
+            q.paint([f], LAMP_SOOT if front and i >= 2 else LAMP_DK if i == 0 else LAMP, rr, 0.05)
+    q.paint([bm.faces.new(list(reversed(rings[0])))], LAMP_DK, rr, 0.03)
+    # the fat in the dish: a flat pool, melted gold toward the wick
+    last = rings[-1]
+    centre = bm.verts.new((0.0, 0.0, 0.0052))
+    for k in range(segs):
+        f = bm.faces.new((last[k], last[(k + 1) % segs], centre))
+        q.paint([f], FAT_MELT if math.cos(k / segs * math.tau) > 0.6 else FAT, rr, 0.04)
+    # the wick: a twist of moss from the middle of the pool out along the lip
+    q.cyl(5, 0.0011, 0.0009, (0.004, 0.0, 0.0056), (LAMP_WICK[0], 0.0, LAMP_WICK[2] - 0.0012), WICK, rr, 0.05)
+
+
+q = Part()
+lamp(q, random.Random(96))
+q.finish("pile__lamp")
+q = Part()
+lamp(q, random.Random(97))
+q.finish("item__lamp")
+
+JAR = (186, 132, 90)        # fired hard and even in the kiln: paler and redder than a pot fired in the embers
+JAR_DK = (150, 102, 68)     # the incised band on the shoulder, and the foot
+JAR_SEAL = (128, 96, 72)    # the clay stopper pressed into the mouth, unfired, and smeared round
+JAR_FIRE = (140, 100, 72)   # a faint fire cloud: the kiln leaves few
+
+
+def jar(q, rr):
+    """A storage jar: coiled tall from a lot of clay and fired hard in the kiln, with a wide shoulder, a short
+    neck and a thick rolled rim; a band of herringbone cut into the shoulder, two pierced lugs with a cord
+    through them for lifting, and the mouth sealed with a clay stopper smeared over the rim. Origin at the
+    foot, centred."""
+    prof = [(0.0, 0.020), (0.004, 0.026), (0.014, 0.032), (0.028, 0.037), (0.044, 0.040), (0.058, 0.040),
+            (0.070, 0.037), (0.080, 0.031), (0.088, 0.023), (0.093, 0.017), (0.097, 0.016), (0.100, 0.018), (0.103, 0.018)]
+    segs = 14
+    bm = q.bm
+    loops = [[bm.verts.new((math.cos(k / segs * math.tau) * r, math.sin(k / segs * math.tau) * r, z)) for k in range(segs)] for z, r in prof]
+    cloud = rr.randrange(segs)
+    for i in range(len(loops) - 1):
+        a, b = loops[i], loops[i + 1]
+        for k in range(segs):
+            f = bm.faces.new((a[k], a[(k + 1) % segs], b[(k + 1) % segs], b[k]))
+            if i == 6:  # a band of notches cut round the shoulder with a stick
+                col = JAR_DK if k % 2 else JAR
+            elif i == 0:
+                col = JAR_DK
+            elif 1 <= i <= 4 and (k - cloud) % segs < 2:
+                col = JAR_FIRE
+            else:
+                col = JAR
+            q.paint([f], col, rr, 0.04)
+    q.paint([bm.faces.new(list(reversed(loops[0])))], JAR_DK, rr, 0.03)
+    # the stopper: a cap of clay over the mouth, domed, smeared down over the rim
+    top = loops[-1]
+    seal = [bm.verts.new((math.cos(k / segs * math.tau) * 0.0205, math.sin(k / segs * math.tau) * 0.0205, 0.1015)) for k in range(segs)]
+    q.paint([bm.faces.new((seal[k], seal[(k + 1) % segs], top[(k + 1) % segs], top[k])) for k in range(segs)], JAR_SEAL, rr, 0.05)
+    dome = [bm.verts.new((math.cos(k / segs * math.tau) * 0.013, math.sin(k / segs * math.tau) * 0.013, 0.1075)) for k in range(segs)]
+    q.paint([bm.faces.new((seal[k], seal[(k + 1) % segs], dome[(k + 1) % segs], dome[k])) for k in range(segs)], JAR_SEAL, rr, 0.05)
+    centre = bm.verts.new((0, 0, 0.109))
+    q.paint([bm.faces.new((dome[k], dome[(k + 1) % segs], centre)) for k in range(segs)], JAR_SEAL, rr, 0.04)
+    # two lugs on the shoulder, and a cord looped through them for lifting
+    for side in (1, -1):
+        lug = (0.0, side * 0.035, 0.071)
+        q.blob(lug, (0.0065, 0.005, 0.005), JAR, rr, 0.04)
+        loop = [(math.cos(t / 6 * math.tau) * 0.0055, side * (0.0395 + math.sin(t / 6 * math.tau) * 0.003), 0.068 - math.sin(t / 6 * math.tau) * 0.004) for t in range(7)]
+        for u, v in zip(loop, loop[1:]):
+            q.cyl(4, 0.0011, 0.0011, u, v, CORD, rr, 0.04)
+    q.cyl(segs, 0.0185, 0.0185, (0, 0, 0.0935), (0, 0, 0.0955), CORD, rr, 0.0, cap=False)  # tied round the neck
+
+
+q = Part()
+jar(q, random.Random(98))
+q.finish("pile__jar")
+q = Part()
+jar(q, random.Random(99))
+q.finish("item__jar")
 
 import json
 

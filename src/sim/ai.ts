@@ -4,7 +4,7 @@ import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
 import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR,
-  PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER } from './band';
+  PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
 import { addPig, gateOf, feedPigs, pigToKill, killPig, pigsHungry, pigsOf } from './pigs';
@@ -227,7 +227,9 @@ export function decide(s: Sim, p: Person) {
   const mealtime = ((hour >= 6.5 && hour < 8.5) || (hour >= 17.5 && hour < 19.5)) && p.food < 82 ? 0.5 : 0;
   if (stock >= 0.4) add('eat', hunger + mealtime);
   else if (berriesRipe(s.tick)) add('eatwild', hunger * 1.1);
-  if (dark) add('sleep', p.rest < 94 ? 1.45 + (hour > 21 || hour < 5 ? 0.3 : 0) : 0.2);
+  // (on a dark evening, with a lamp to light and work to sit down to, those not yet tired stay up by it)
+  const byLamp = dark && age >= 12 && hour >= 15 && hour < LAMP_UNTIL && p.rest >= LAMP_REST && !!s.lampToLight() && (!!craftFor(s, p) || (c.jobs.mend ?? 0) > 0);
+  if (dark) add('sleep', p.rest < 94 ? (byLamp ? LAMP_SLEEP : 1.45 + (hour > 21 || hour < 5 ? 0.3 : 0)) : 0.2);
   else add('sleep', p.rest < 32 ? ((32 - p.rest) / 32) * 1.7 : 0);
   // (with the fire out and no wood in the stores, sitting by the cold hearth warms nobody: those fit to fetch
   // wood go for it first, and only the very cold, the weak and the children shelter at home)
@@ -316,11 +318,12 @@ export function decide(s: Sim, p: Person) {
     // crafting (cordage, tools): sitting work by the fire, the thing they'd make best among what's wanted
     if (age >= 10) {
       const pick = craftFor(s, p);
-      if (pick) add('craft', pick.score * drive * (dark ? (s.hearthLit() ? 0.4 : 0.06) : 0.85) * crowd('craft'));
+      // (after dark, by firelight only if they must; a lamp lit beside them makes it easy work)
+      if (pick) add('craft', pick.score * drive * (dark ? (byLamp ? LAMP_NIGHT : s.hearthLit() ? FIRE_NIGHT : 0.06) : 0.85) * crowd('craft'));
     }
     // something worn thin, mended by the fire before it wears through: evening work, like the sewing
     if (age >= 12 && (j.mend ?? 0) > 0 && busyWith(s, 'mend') < 2)
-      add('mend', j.mend * drive * fit(p, SK.hide) * (dark ? (s.hearthLit() ? 0.9 : 0.05) : 0.7));
+      add('mend', j.mend * drive * fit(p, SK.hide) * (dark ? (byLamp ? LAMP_NIGHT : s.hearthLit() ? 0.9 : 0.05) : 0.7));
     // logs lying within a walk of camp are fetched before another tree comes down
     const logsNear = logsNearCamp(s);
     if (age >= 13) {
@@ -1989,7 +1992,10 @@ export function runTask(s: Sim, p: Person) {
       }
       p.act = ACT.Sit;
       face(p, c.x, c.z);
+      if (t.timer % 10 === 0 && isDark(s.tick)) s.lightLamp(p);
       if (--t.timer > 0) return;
+      if (isDark(s.tick)) s.practise(p, 'night_work');
+      s.putOutLamp(p);
       // patched and restitched: not new, but good for a while yet
       it.wear = Math.max(0, it.wear - MEND_BY * (0.8 + Math.min(20, p.skills[SK.hide]) * 0.02));
       it.mended = (it.mended ?? 0) + 1;
@@ -2611,6 +2617,8 @@ export function runTask(s: Sim, p: Person) {
         if (s.hearthLit()) p.thought = rc.thought.replace(/\.$/, ' by the fire.');
       }
       p.act = ACT.Sit;
+      // after dark, a lamp lit beside them to see the work by
+      if (t.timer % 10 === 0 && isDark(s.tick) && s.lightLamp(p)) p.thought = rc.thought.replace(/\.$/, ' by lamplight.');
       const at = s.workshopFor(key);
       if (at) face(p, at.x + 0.5, at.z + 0.5);
       else face(p, c.x, c.z);
@@ -2623,6 +2631,9 @@ export function runTask(s: Sim, p: Person) {
       const kiln = fired && !!s.kilnOf();
       const cracked = fired && r.chance(kiln ? KILN_CRACK : HEARTH_CRACK * Math.max(0.25, 1 - p.skills[SK.pot] / 20));
       if (fired && !kiln) s.practise(p, 'fire_pot', cracked ? 2 : 1);
+      if (fired && kiln) s.practise(p, 'fire_kiln');
+      if (isDark(s.tick)) s.practise(p, 'night_work');
+      s.putOutLamp(p);
       if (key === 'chopper' || key === 'axe') s.practise(p, 'knap');
       // twisting cord sets a weaver thinking of a finer thread; spinning it, and weaving baskets and traps, of a loom
       if (key === 'cordage') s.practise(p, 'twist');

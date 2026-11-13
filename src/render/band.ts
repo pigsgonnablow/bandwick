@@ -2,7 +2,7 @@
 // carried items, buildings rising as they're built, the hearth fire, its light and smoke.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { ACT, CARRY, FLASH, TASK_KINDS, POT_HOLDS } from '../sim/band';
+import { ACT, CARRY, FLASH, TASK_KINDS, ITEM_KINDS, POT_HOLDS } from '../sim/band';
 import { SHAKE } from './props';
 import type { Frame } from '../sim/runner';
 import { BASE_TPS } from '../sim/runner';
@@ -31,6 +31,13 @@ const STICK = 97, SNARE = 96, FISHTRAP = 95;
 const BASKET = 94, BASKET_FULL = 93;
 /** A hare from the snares, carried home dangling from the fist on the trap round. */
 const HARE = 92;
+/** A clay lamp set down beside someone at work after dark, burning (the tool in hand is the lamp they lit). */
+const LAMP = 91;
+const LAMP_TOOL = ITEM_KINDS.indexOf('lamp') + 1;
+/** The tip of the lamp's wick, where its flame burns, in the lamp model's own space (see LAMP_WICK in blender/build_band.py). */
+const LAMP_WICK = new THREE.Vector3(0.0155, 0.0085, 0);
+/** Where the lamp is set down: in front of the sitter and a little to one side, on the ground (drawn at twice its size, or it would be lost at the scale of the camp). */
+const LAMP_AT = new THREE.Matrix4().makeRotationY(-0.6).scale(new THREE.Vector3(2, 2, 2)).setPosition(0.13, 0, 0.07);
 const TRAP_TASK = TASK_KINDS.indexOf('trap') + 1;
 const HUNT_TASK = TASK_KINDS.indexOf('hunt') + 1;
 const EGGS_TASK = TASK_KINDS.indexOf('eggs') + 1, HONEY_TASK = TASK_KINDS.indexOf('honey') + 1;
@@ -262,12 +269,16 @@ export class BandLayer {
   private buildingMeshes = new Map<string, THREE.InstancedMesh>();
   private flames: THREE.InstancedMesh;
   /** what lies on each stockpile (by building id), and the meshes that show it */
-  private piles = new Map<number, { wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number; bowls?: number; beads?: number; sashes?: number }>();
+  private piles = new Map<number, { wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number; bowls?: number; beads?: number; sashes?: number; jars?: number }>();
   private pileMeshes = new Map<string, THREE.InstancedMesh>();
   /** the snares and fish traps standing in the world, and their meshes (set, and holding a catch) */
   private traps: NonNullable<Frame['traps']> = [];
   private trapMeshes = new Map<string, THREE.InstancedMesh>();
   private glow: THREE.Sprite[] = [];
+  /** the lamps burning beside those at work after dark: a little flame at each wick, and a soft halo */
+  private lampFlames!: THREE.InstancedMesh;
+  private lampGlow: THREE.Sprite[] = [];
+  private lampsLit: THREE.Vector3[] = [];
   private lights: THREE.PointLight[] = [];
   private smoke: THREE.Points;
   private smokeMat: THREE.ShaderMaterial;
@@ -319,8 +330,8 @@ export class BandLayer {
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
     carryMat.customProgramCacheKey = () => 'carry';
-    for (const [id, name] of carryNames) {
-      const g = geoms.get(`carry__${name}`) ?? geoms.get(`trap__${name}`);
+    for (const [id, name] of [...carryNames, [LAMP, 'lamp'] as [number, string]]) {
+      const g = geoms.get(`carry__${name}`) ?? geoms.get(`trap__${name}`) ?? geoms.get(`pile__${name}`);
       if (!g) continue;
       const m = new THREE.InstancedMesh(g, carryMat, 128);
       m.count = 0;
@@ -355,7 +366,7 @@ export class BandLayer {
       const pm = new THREE.MeshLambertMaterial({ vertexColors: true });
       pm.onBeforeCompile = (sh) => addCommon(sh);
       pm.customProgramCacheKey = () => 'pile';
-      for (const [key, geo] of [['log', 'pile__log'], ['basket', 'carry__berries'], ['meat', 'carry__meat'], ['fish', 'carry__fish'], ['pot', 'pile__pot'], ['bowl', 'pile__bowl'], ['beads', 'pile__beads'], ['sash', 'pile__sash']] as const) {
+      for (const [key, geo] of [['log', 'pile__log'], ['basket', 'carry__berries'], ['meat', 'carry__meat'], ['fish', 'carry__fish'], ['pot', 'pile__pot'], ['bowl', 'pile__bowl'], ['beads', 'pile__beads'], ['sash', 'pile__sash'], ['jar', 'pile__jar']] as const) {
         const g = geoms.get(geo);
         if (!g) continue;
         const m = new THREE.InstancedMesh(g, pm, 64);
@@ -383,7 +394,20 @@ export class BandLayer {
     this.flames.frustumCulled = false;
     this.flames.renderOrder = 4;
     this.group.add(this.flames);
+    // a lamp's flame is the fire's, small
+    this.lampFlames = new THREE.InstancedMesh(flameGeo.clone().scale(0.11, 0.13, 0.11), this.flameMaterial(), 16);
+    this.lampFlames.count = 0;
+    this.lampFlames.frustumCulled = false;
+    this.lampFlames.renderOrder = 4;
+    this.group.add(this.lampFlames);
     const glowTex = radialTexture();
+    for (let k = 0; k < 8; k++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffb860, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+      sp.visible = false;
+      sp.renderOrder = 6;
+      this.lampGlow.push(sp);
+      this.group.add(sp);
+    }
     for (let k = 0; k < 4; k++) {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffa040, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
       sp.visible = false;
@@ -1037,6 +1061,7 @@ export class BandLayer {
     const skin = this.villagers.geometry.attributes.iSkin as THREE.InstancedBufferAttribute;
     const hair = this.villagers.geometry.attributes.iHair as THREE.InstancedBufferAttribute;
     const carryCount = new Map<number, number>();
+    this.lampsLit.length = 0;
     const col = new THREE.Color();
     let n = 0;
     this.remains.begin();
@@ -1281,6 +1306,17 @@ export class BandLayer {
           carryCount.set(held, ak + 1);
         }
       }
+      // a lamp lit beside someone sitting at their work after dark
+      if (s.tool === LAMP_TOOL && s.shownAct === ACT.Sit && s.act !== ACT.Dead) {
+        const lm = this.carryMeshes.get(LAMP);
+        const lk = carryCount.get(LAMP) ?? 0;
+        if (lm && lk < lm.instanceMatrix.count) {
+          const at = m4.clone().multiply(LAMP_AT);
+          lm.setMatrixAt(lk, at);
+          carryCount.set(LAMP, lk + 1);
+          this.lampsLit.push(LAMP_WICK.clone().applyMatrix4(at));
+        }
+      }
       if (bc && s.act !== ACT.Dead) this.auraList.push({ x, y: s.y, z, r: 1.0 * Math.max(0.7, scale), c: bc.color, k: 0.6 });
       this.visible.push({ id, x, y: s.y + 0.42 * scale, z, child: s.age < 14 });
       if ((s.task === EGGS_TASK && s.shownAct === ACT.Gather) || (s.task === HONEY_TASK && s.shownAct === ACT.Tend))
@@ -1358,6 +1394,25 @@ export class BandLayer {
     for (const [kind, cm] of this.carryMeshes) {
       cm.count = carryCount.get(kind) ?? 0;
       cm.instanceMatrix.needsUpdate = true;
+    }
+    // the lamps' flames, and a halo round the nearest few
+    {
+      this.lampFlames = this.grow(this.lampFlames, this.lampsLit.length);
+      const fm = new THREE.Matrix4();
+      this.lampsLit.forEach((w, k) => this.lampFlames.setMatrixAt(k, fm.makeTranslation(w.x, w.y - 0.002, w.z)));
+      this.lampFlames.count = this.lampsLit.length;
+      this.lampFlames.instanceMatrix.needsUpdate = true;
+      const near = [...this.lampsLit].sort((p1, p2) => p1.distanceToSquared(camTarget) - p2.distanceToSquared(camTarget));
+      this.lampGlow.forEach((g, k) => {
+        const w = near[k];
+        g.visible = !!w;
+        if (!w) return;
+        // (lifted by a third of its size, so the ground never cuts through it)
+        const size = 0.07 + night * 0.07;
+        g.position.set(w.x, w.y + size * 0.3, w.z);
+        g.scale.setScalar(size);
+        (g.material as THREE.SpriteMaterial).opacity = 0.25 + night * 0.45;
+      });
     }
     this.selRing.visible = sel.y > -90;
     this.selRing.position.set(sel.x, sel.y + 0.02, sel.z);
@@ -1663,7 +1718,7 @@ export class BandLayer {
     if (this.auras.instanceColor) this.auras.instanceColor.needsUpdate = true;
   }
 
-  setPiles(p: { id: number; wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number; bowls?: number; beads?: number; sashes?: number }[]) {
+  setPiles(p: { id: number; wood: number; berries: number; meat: number; fish: number; preserved: number; pots?: number; bowls?: number; beads?: number; sashes?: number; jars?: number }[]) {
     this.piles = new Map(p.map((q) => [q.id, q]));
   }
 
@@ -1752,6 +1807,10 @@ export class BandLayer {
       const sashes = Math.min(5, p.sashes ?? 0);
       for (let i = 0; i < sashes; i++)
         place('sash', 0.22 + (h(i + 700) - 0.5) * 0.02, 0.003 + i * 0.004, -0.1 + (h(i + 720) - 0.5) * 0.02, 0, h(i + 740) * Math.PI * 2);
+      // sealed storage jars standing in two files along the side of the mat
+      const jars = Math.min(10, p.jars ?? 0);
+      for (let i = 0; i < jars; i++)
+        place('jar', 0.33 + (i % 2) * 0.085 + (h(i + 800) - 0.5) * 0.01, 0, -0.22 + Math.floor(i / 2) * 0.09 + (h(i + 820) - 0.5) * 0.01, 0, h(i + 840) * Math.PI * 2);
       items.slice(0, 15).forEach((it, i) => {
         const col = i % 5, row = Math.floor(i / 5);
         const x = -0.2 + col * 0.1 + (h(i + 200) - 0.5) * 0.02, z = 0.05 + row * 0.085 + (h(i + 300) - 0.5) * 0.02;

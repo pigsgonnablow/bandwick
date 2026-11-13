@@ -12,7 +12,7 @@ import {
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, FURS_PER_CLOAK, FURS_KEPT, BEAST, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
   BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, REMAINS, ROT_FROM, BONES_FROM, remainsStage,
   QUALITY_WEAR, GOODS, GOODS_EACH, GOODS_OVER, WOOD_PLENTY, KILN_CRACK, HEARTH_CRACK,
-  LOOMED, THREAD_TRY, THREAD_KEPT, FIBER_PER_THREAD, BLANKET_REST,
+  LOOMED, KILNED, POTTED, JAR_HOLDS, JAR_KEEP, JARRED, JARS_MAX, LAMP_FAT, THREAD_TRY, THREAD_KEPT, FIBER_PER_THREAD, BLANKET_REST,
   CROP, CROP_NAMES, newPlot, GROW_DAYS, PLOT_YIELD, SEED_PER_PLOT, GREENS_PER_DAY, GREENS_LOAD, LEAN_GARDEN, PLENTY_GARDEN, SOIL_REST, SOIL_FALLOW,
 } from './band';
 import {
@@ -128,6 +128,7 @@ const ITEM_USE: Record<ItemKind, string> = {
   basket: 'trips with it', pot: 'days of holding food', cloak: 'cold days', needle: 'things sewn', hat: 'cold days',
   mittens: 'cold days', shoes: 'stretches of walking', cape: 'cold days', bag: 'loads carried', necklace: 'years worn', deadfall: 'days set', furcloak: 'cold days',
   bowl: 'days in use', beads: 'years worn', tunic: 'cold days', blanket: 'cold nights', sash: 'years kept',
+  lamp: 'evenings lit', jar: 'days of holding food',
 };
 /** What kind of thing it is, in a few words. */
 const ITEM_ABOUT: Record<ItemKind, string> = {
@@ -135,6 +136,7 @@ const ITEM_ABOUT: Record<ItemKind, string> = {
   pot: 'for the stores', cloak: 'clothing', needle: 'a tool', hat: 'clothing', mittens: 'clothing', shoes: 'clothing',
   cape: 'clothing', bag: 'for gathering', necklace: 'an ornament', deadfall: 'a trap', furcloak: 'clothing',
   bowl: 'one of the band\'s goods', beads: 'one of the band\'s goods', tunic: 'clothing', blanket: 'bedding', sash: 'one of the band\'s goods',
+  lamp: 'for working after dark', jar: 'for the stores',
 };
 /** How it is made and how long it lasts. */
 const ITEM_NOTE: Record<ItemKind, string> = {
@@ -144,7 +146,7 @@ const ITEM_NOTE: Record<ItemKind, string> = {
   snare: 'A running loop of cord set at the foot of a bush on a hare run. The cord rots or is chewed through in about a season.',
   fishtrap: 'A funnel of woven reeds set in the shallows: fish swim in and cannot find the way out. It lasts about a year.',
   basket: 'Grass woven round a ring of willow withies, carried out empty and brought home full. It lasts a season or two of picking.',
-  pot: 'Clay coiled into a pot and fired in the embers of the hearth, kept in the stores with a lid on. It lasts a few years before it cracks.',
+  pot: 'Clay coiled into a pot and fired in the embers of the hearth, kept in the stores with a hide tied over its mouth. Greens, eggs, berries and mushrooms keep longer in it. It lasts a few years before it cracks.',
   cloak: 'Two deer hides scraped soft and sewn with cord, tied at the throat. Worn every cold day, it lasts two or three winters.',
   needle: 'A sliver of deer bone ground to a point with an eye, and an awl to punch the holes.',
   hat: 'A cap of hide with the fur turned in and a rolled fur brim. It lasts a few winters.',
@@ -160,6 +162,8 @@ const ITEM_NOTE: Record<ItemKind, string> = {
   tunic: 'Thread spun from nettle and grass fiber, woven into cloth on the loom and sewn into a tunic. It is worn next to the skin, under a cloak or cape, and lasts three or four winters.',
   blanket: 'A thick blanket woven on the loom from spun thread. Slept under on cold nights, it keeps the warmth in and lets them sleep deeper; it lasts four or five winters.',
   sash: 'A narrow band woven on the loom with a pattern picked out in the thread, made in the hours the band had to spare. It is set out at the midwinter feast and laid in the graves of the dead.',
+  lamp: 'A little dish of clay pinched up by hand, with a lip drawn out for a wick of moss. Filled with fat from the kills, it burns for an evening and lets its keeper sew, mend and make things by the fire after dark. It lasts a winter or two before it cracks.',
+  jar: 'A tall jar coiled from clay and fired hard in the kiln, its mouth sealed with a clay stopper. Herbs, grain and acorns stay dry and sweet in it, out of reach of the damp and the mice. It lasts for years.',
 };
 /** How well a thing was made, for its card. */
 const QUALITY_WORDS = ['Plain: the work of someone still learning the craft', 'Good: the work of someone who knows the craft', 'Fine: the work of a master of the craft'];
@@ -1276,7 +1280,8 @@ export class Sim {
       // a tool nobody is working with goes back on the pile when they pass by it
       if ((t + p.id) % 10 === 0 && p.alive && !TOOL_TASKS.includes(p.task?.kind as TaskKind) && this.heldBy(p)) {
         const st = this.storeSpot(true);
-        if (hyp(p.x - st.x, p.z - st.z) < 3.5) this.returnTool(p);
+        // (a lamp is put out and set down as soon as the work by it is left)
+        if (hyp(p.x - st.x, p.z - st.z) < 3.5 || (this.heldBy(p)!.kind === 'lamp' && p.task?.kind !== 'craft' && p.task?.kind !== 'mend')) this.returnTool(p);
       }
     }
     this.updateDeer();
@@ -1318,9 +1323,13 @@ export class Sim {
     }
   }
 
-  /** Whether someone of the band is feeding its fire, near enough to it to do so soon. */
+  /**
+   * Whether someone of the band is feeding its fire, near enough to it to do so soon: the wood already in hand,
+   * or a step or two from the pile (someone still walking in from the edge of camp, slow in the snow, can take
+   * hours, and the fire dies waiting for them while the rest sit by it).
+   */
   fuelOnHand(c: Camp) {
-    return this.people.some((q) => q.alive && q.band === c.id && q.task?.kind === 'fuel' && hyp(q.x - c.x, q.z - c.z) < 6);
+    return this.people.some((q) => q.alive && q.band === c.id && q.task?.kind === 'fuel' && (q.task.stage >= 1 || hyp(q.x - c.x, q.z - c.z) < 3));
   }
   private urgent(p: Person) {
     const k = p.task?.kind;
@@ -1431,6 +1440,8 @@ export class Sim {
     // return anything set aside for their task, lay down a body they carried; logs drop where they fall
     abandon(this, p, true);
     if (p.carry !== CARRY.None) this.dropCarry(p);
+    // and the tool or lamp in their hand goes back on the pile, or it is lost to the band for good
+    this.returnTool(p);
     p.act = ACT.Dead;
     this.stats.deaths++;
     if (cause === 'starvation') this.stats.starved++;
@@ -1694,13 +1705,66 @@ export class Sim {
     { const k = small(1); if (k) return k; }
     // and a reed cape for whoever has no cloak and no hide to make one
     if (this.knows('capes', c) && c.stock.fiber >= 5 && c.stock.cordage >= 1 && cloaks + have('cape') < dressed && (!this.knows('cloaks', c) || c.stock.hides < HIDES_PER_CLOAK)) return 'cape';
-    if (this.knows('pottery', c) && have('pot') < Math.min(6, 2 + Math.floor(ms.length / 4))) return 'pot';
+    // pots for the stores (more where there are greens, eggs and mushrooms to keep as well as berries)
+    const fresh = ['garden', 'eggs', 'mushrooms'].filter((k) => this.knows(k, c)).length;
+    if (this.knows('pottery', c) && have('pot') < Math.min(6 + fresh, 2 + Math.floor(ms.length / 4) + fresh)) return 'pot';
+    // a lamp or two to work by after dark, and storage jars (fired in the kiln) for the dry stores the band keeps
+    if (this.knows('lamps', c) && have('lamp') < Math.min(4, 1 + Math.floor(ms.length / 6))) return 'lamp';
+    if (this.knows('jars', c) && this.kilnOf(c) && have('jar') < this.jarsWanted(c)) return 'jar';
     // cloth from the loom: a tunic for everyone past their first year, then a blanket each to sleep under
     if (this.loomOf(c)) {
       if (c.stock.thread >= RECIPES.tunic.uses.thread! && have('tunic') < dressed) return 'tunic';
       if (c.stock.thread >= RECIPES.blanket.uses.thread! && have('blanket') < dressed) return 'blanket';
     }
     return null;
+  }
+  /** Storage jars a band would keep: enough for the herbs, grain and acorns it has put by, and one to spare. */
+  jarsWanted(c = this.camp) {
+    const dry = JARRED.reduce((n, k) => n + c.stock[k], 0);
+    return Math.min(JARS_MAX, Math.ceil(dry / JAR_HOLDS) + 1);
+  }
+  /** Which evening it is: the night after a day counts as that day's evening, past midnight too. */
+  evening(tick = this.tick) {
+    return Math.floor((tick - TICKS_PER_DAY / 2) / TICKS_PER_DAY);
+  }
+  /**
+   * A lamp someone in this band could light now to work by after dark: one on the pile already burning this
+   * evening, or else one with fat for it in the stores (undefined: none, or the band doesn't know lamps).
+   */
+  lampToLight(c = this.camp) {
+    if (!this.knows('lamps', c)) return undefined;
+    const free = this.items.filter((i) => i.kind === 'lamp' && i.band === c.id && i.holder < 0);
+    const tonight = this.evening();
+    const lit = free.find((i) => i.lit === tonight);
+    if (lit) return lit;
+    return c.stock.meat + c.stock.fish + c.stock.preserved < LAMP_FAT ? undefined : free[0];
+  }
+  /**
+   * Light a lamp to work by, if there is one. Filling it is once an evening: the fat comes out of the stores,
+   * and it is an evening nearer cracking; picked up again later the same night, it is still burning.
+   */
+  lightLamp(p: Person) {
+    if (this.heldBy(p)?.kind === 'lamp') return true;
+    const c = this.campOf(p), lamp = this.lampToLight(c);
+    if (!lamp) return false;
+    this.takeTool(p, lamp);
+    const tonight = this.evening();
+    if (lamp.lit === tonight) return true;
+    lamp.lit = tonight;
+    let fat = LAMP_FAT;
+    for (const k of ['meat', 'fish', 'preserved'] as const) {
+      const n = Math.min(fat, c.stock[k]);
+      c.stock[k] -= n;
+      fat -= n;
+    }
+    this.book('lamp.fat', LAMP_FAT, c);
+    // (cracked in the lighting: gone, and they work on by the fire)
+    if (this.wearTool(lamp)) return false;
+    return true;
+  }
+  /** Put out the lamp they worked by and set it back on the pile. */
+  putOutLamp(p: Person) {
+    if (this.heldBy(p)?.kind === 'lamp') this.returnTool(p);
   }
   /** How many of a thing the band's crafters are making right now (its materials already set aside). */
   making(c: Camp, key: string) {
@@ -1969,6 +2033,8 @@ export class Sim {
     const rc = RECIPES[key];
     // cloth is woven only at a loom
     if (LOOMED.includes(key) && !this.loomOf(c)) return false;
+    // and storage jars fired only in a kiln
+    if (KILNED.includes(key) && !this.kilnOf(c)) return false;
     return (!rc.knows || this.knows(rc.knows, c)) && Object.entries(rc.uses).every(([m, n]) => c.stock[m as keyof typeof rc.uses] >= n);
   }
   /** The band's goods lying on its pile: things made for their own sake, not set aside for a gift. */
@@ -2211,11 +2277,16 @@ export class Sim {
     const cold = seasonOf(this.tick) === 3 ? 0.4 : seasonOf(this.tick) === 0 || seasonOf(this.tick) === 2 ? 0.75 : 1;
     const house = this.buildings.find((b) => b.band === this.camp.id && b.kind === 'storehouse' && b.built);
     const store = house ? specOf(house).keep : 1;
-    // berries in a lidded pot keep far longer; each pot that holds some is a day nearer cracking
-    const pots = this.toolsOf(this.camp, 'pot');
-    const potted = Math.min(s.berries, pots.length * POT_HOLDS);
-    s.berries -= 0.06 * cold * store * (potted * POT_KEEP + (s.berries - potted));
-    for (const it of pots.slice(0, Math.ceil(potted / POT_HOLDS))) this.wearTool(it);
+    // the foods that go off fastest keep far longer in a lidded pot, and the dry stores in a sealed jar (each
+    // pot or jar that holds some is a day nearer cracking)
+    const potted = this.stored(s, 'pot', POTTED, POT_HOLDS);
+    const jarred = this.stored(s, 'jar', JARRED, JAR_HOLDS);
+    /** what is left of a food going off at `rate` a day, with some of it in pots or jars */
+    const keep = (k: keyof Stock, rate: number) => {
+      const inPots = potted[k] ?? 0, inJars = jarred[k] ?? 0, open = s[k] - inPots - inJars;
+      s[k] -= rate * (open + inPots * POT_KEEP + inJars * JAR_KEEP);
+    };
+    keep('berries', 0.06 * cold * store);
     s.fish *= 1 - 0.05 * cold * store;
     s.meat *= 1 - 0.035 * cold * store;
     s.preserved *= 1 - 0.004;
@@ -2224,17 +2295,35 @@ export class Sim {
     const pitKeep = pit ? specOf(pit).keep : 1;
     s.roots *= 1 - 0.01 * cold * store * (pit ? 0.6 : 1);
     // threshed and dried, grain keeps the year round, and goes musty only slowly (hardly at all sealed in a pit)
-    s.grain *= 1 - 0.003 * pitKeep;
+    keep('grain', 0.003 * pitKeep);
     // greens wilt in a few days, like berries
-    s.greens *= 1 - 0.08 * cold * store;
+    keep('greens', 0.08 * cold * store);
     // dried acorns keep the year round
-    s.nuts *= 1 - 0.003;
+    keep('nuts', 0.003);
     // dried herbs lose their strength slowly
-    s.herbs *= 1 - 0.005;
+    keep('herbs', 0.005);
     // eggs go off nearly as fast as berries, mushrooms a little slower; honey keeps for ever
-    s.eggs *= 1 - 0.07 * cold * store;
-    s.mushrooms *= 1 - 0.05 * cold * store;
+    keep('eggs', 0.07 * cold * store);
+    keep('mushrooms', 0.05 * cold * store);
     s.honey *= 1 - 0.0005;
+  }
+
+  /**
+   * How much of each of these foods the band's pots (or jars) hold, filling them in the order given (the
+   * quickest to spoil first); each one that holds some is a day nearer cracking.
+   */
+  private stored(s: Stock, kind: 'pot' | 'jar', foods: readonly (keyof Stock)[], holds: number) {
+    const vessels = this.toolsOf(this.camp, kind).filter((i) => i.holder < 0);
+    let room = vessels.length * holds;
+    const out: Partial<Record<keyof Stock, number>> = {};
+    for (const k of foods) {
+      const n = Math.max(0, Math.min(s[k], room));
+      out[k] = n;
+      room -= n;
+    }
+    const used = Math.ceil((vessels.length * holds - room) / holds - 1e-9);
+    for (const it of vessels.slice(0, used)) this.wearTool(it);
+    return out;
   }
 
   // ------------------------------------------------------------------ gardens
@@ -3393,6 +3482,8 @@ export class Sim {
       'craft.stick': make === 'stick' ? 0.5 : 0,
       'craft.basket': make === 'basket' ? 0.45 : 0,
       'craft.pot': make === 'pot' ? 0.4 : 0,
+      'craft.lamp': make === 'lamp' ? 0.35 : 0,
+      'craft.jar': make === 'jar' ? 0.4 : 0,
       // cloaks matter most with the cold coming
       'craft.cloak': make === 'cloak' ? (s >= 1.5 ? 0.6 : 0.4) : 0,
       'craft.needle': make === 'needle' ? 0.45 : 0,
@@ -3429,7 +3520,7 @@ export class Sim {
       trap: c.trapRound !== today && this.toolsOf(c).some((i) => TRAP_KINDS.includes(i.kind)) ? (provided ? 0.4 : 0.75 + (foodP > 0.8 ? 0.25 : 0)) : 0,
       // mud and stone are fetched only for a site that needs them (mud can't be dug from frozen ground)
       // (and clay for a pot)
-      dig: (siteMud > c.stock.mud || (make === 'pot' && c.stock.mud < 2)) && !winterNow ? 0.75 : bowls && c.stock.mud < 3 && !winterNow ? 0.4 : 0,
+      dig: (siteMud > c.stock.mud || (make && c.stock.mud < (RECIPES[make].uses.mud ?? 0))) && !winterNow ? 0.75 : bowls && c.stock.mud < 3 && !winterNow ? 0.4 : 0,
       // stone for walls, and a lump or two for knapping tools
       // (with nothing left to fell with, the stone for a new chopper is as urgent as the knapping)
       quarry: siteStone > c.stock.stone ? 0.75 : make && c.stock.stone < (RECIPES[make].uses.stone ?? 0) ? (unarmed ? 0.95 : 0.5) : beads && c.stock.stone < 2 ? 0.35
@@ -3454,7 +3545,7 @@ export class Sim {
     if (foodP > 0.8) c.plan.push(winterNow ? 'Find food to last the winter' : 'Store food before winter');
     if (woodP > 0.5) c.plan.push(s > 2.0 && !winterNow ? 'Lay in firewood for the winter' : 'Gather wood');
     if (siteFiber > fiberHave) c.plan.push('Cut grass and reeds for thatch and cordage');
-    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : make === 'stick' ? 'Make a digging stick' : make === 'basket' ? 'Weave a basket for gathering' : make === 'pot' ? 'Make a clay pot for the stores' : make === 'cloak' ? 'Sew hide cloaks against the cold' : make === 'needle' ? 'Grind a bone needle and awl' : 'Knap a hand chopper');
+    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : make === 'stick' ? 'Make a digging stick' : make === 'basket' ? 'Weave a basket for gathering' : make === 'pot' ? 'Make a clay pot for the stores' : make === 'lamp' ? 'Make a clay lamp to work by after dark' : make === 'jar' ? 'Fire storage jars for the dry stores' : make === 'cloak' ? 'Sew hide cloaks against the cold' : make === 'needle' ? 'Grind a bone needle and awl' : 'Knap a hand chopper');
     if (this.knows('roots') && seasonOf(this.tick) === 2) c.plan.push('Dig roots for the winter stores');
     if (this.knows('nuts') && seasonOf(this.tick) === 2) c.plan.push('Gather acorns under the oaks');
     if (this.knows('mushrooms') && seasonOf(this.tick) === 2) c.plan.push('Pick mushrooms in the woods');
@@ -4511,7 +4602,9 @@ export class Sim {
       const pots = inside || !c ? 0 : this.toolsOf(c, 'pot').length;
       const goods = c && !c.gone ? this.goodsOf(c) : [];
       const bowls = goods.filter((i) => i.kind === 'bowl').length, sashes = goods.filter((i) => i.kind === 'sash').length, beads = goods.length - bowls - sashes;
-      return { id: b.id, wood: st.wood, berries: inside ? 0 : st.berries, meat: inside ? 0 : st.meat, fish: inside ? 0 : st.fish, preserved: inside ? 0 : st.preserved, pots, bowls, beads, sashes };
+      // (sealed storage jars stand out by the pile, storehouse or not)
+      const jars = c ? this.toolsOf(c, 'jar').filter((i) => i.holder < 0).length : 0;
+      return { id: b.id, wood: st.wood, berries: inside ? 0 : st.berries, meat: inside ? 0 : st.meat, fish: inside ? 0 : st.fish, preserved: inside ? 0 : st.preserved, pots, bowls, beads, sashes, jars };
     });
   }
   /** The traps standing in the world: snares and deadfalls on land, fish traps in the water (kind 0 snare, 1 fish trap, 2 deadfall). */
@@ -4743,7 +4836,9 @@ export class Sim {
       case 'fishtrap': return 'Catching fish in the shallows while no one is there';
       case 'deadfall': return 'Taking a fox or a beaver for its pelt, at an earth or a lodge with a pair still living there';
       case 'basket': return `Picking: ${BASKET_HOLDS} handfuls of berries in one trip, where bare hands carry one bush's worth`;
-      case 'pot': return `Keeping ${POT_HOLDS} berries in the stores, going off ${Math.round((1 - POT_KEEP) * 100)}% slower`;
+      case 'pot': return `Keeping ${POT_HOLDS} of the greens, eggs, berries or mushrooms in the stores, going off ${Math.round((1 - POT_KEEP) * 100)}% slower`;
+      case 'lamp': return `Light to work by after dark: people sit down to make and mend things by the fire in the evening far more readily, for ${LAMP_FAT} of the meat or fish in fat each evening`;
+      case 'jar': return `Keeping ${JAR_HOLDS} of the herbs, grain or acorns in the stores, going off ${Math.round((1 - JAR_KEEP) * 100)}% slower`;
       case 'needle': return `Sewing and weaving at the fire take ${Math.round((1 - NEEDLE_SPEED) * 100)}% less time for the whole band`;
       case 'shoes': return `Walking: long walks tire them ${Math.round((1 - SHOES_REST) * 100)}% less`;
       case 'bag': return `Gathering: brings home ${Math.round((BAG_LOAD - 1) * 100)}% more in one trip`;
