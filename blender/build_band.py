@@ -11,6 +11,7 @@ Conventions (read by src/render/band.ts):
   fish__{body,tail}                                                a brown trout in two parts, bent in the shader as it swims and leaps.
   wolf__{body,head,jaw,tail,legFL,legFR,legBL,legBR}, dog__{...the same}   a grey wolf and a tawny dog, posed in the shader.
   carcass__deer                                                     a deer pulled down by wolves, lying on its side, torn open.
+  carry__{carcass,boarCarcass}                                      a deer or boar laid on its hide being butchered, on the ground in front of the butcher.
   corpse__{rot,rotBare,bones,bonesRags,scatter}                     someone left unburied, rotting, a skeleton, then scattered bones
       (rot and bonesRags region-coded like the villager; the rest real colours).
   fox__{...as the wolf}                                             a red fox from the same build, with its brush and black stockings.
@@ -1118,6 +1119,85 @@ for _k in range(4):
     _y = -0.022 + _k * 0.013
     q.cyl(5, 0.0026, 0.0022, (-0.018, _y - 0.002, 0.100), (0.024, _y + 0.004, 0.103), RIB, rnd, 0.03)
 q.finish("carcass__deer")
+
+
+# ---------------------------------------------------------------- a carcass being butchered
+# A deer (carry__carcass) or a boar (carry__boarCarcass), laid on its side on its own hide on the ground in front
+# of whoever kneels to butcher it at the stores (in the villager's frame: across in front of them, the spine
+# toward them): the hide peeled back off the upper flank, the raw meat and white fat and the ribs showing, a hind
+# leg already off and laid on the hide with its bone end showing, a slab of fat cut away, and a hank of sinew
+# drawn from the back. Drawn on the ground at the butcher's feet while they work.
+BUTCHER_RAW, BUTCHER_DARK, BUTCHER_FAT, BUTCHER_SINEW = (156, 44, 38), (110, 28, 26), (236, 224, 196), (222, 206, 172)
+BUTCHER_HIDE_IN, BUTCHER_BONE, BUTCHER_STAIN = (196, 160, 118), (226, 214, 190), (92, 40, 30)
+
+
+def butchered(prefix, parts, half, coat, coat_dk, name, seed):
+    global q
+    br = random.Random(seed)
+    q = Part()
+    # on its side, head to the butcher's left, the spine toward them
+    lay = (Matrix.Translation((0, -0.15, 0)) @ Matrix.Rotation(-math.pi / 2, 4, "Z") @ Matrix.Translation((0, 0, half))
+           @ Matrix.Rotation(math.pi / 2, 4, "Y") @ Matrix.Translation((0, 0, -half)))
+    nbody = 0
+    for n, M in parts:
+        _pose(f"{prefix}__{n}", lay @ M)
+        if n == "body":
+            nbody = len(q.bm.verts)
+    q.bm.verts.ensure_lookup_table()
+    lo = min(v.co.z for v in q.bm.verts)
+    for v in q.bm.verts:
+        v.co.z += 0.006 - lo
+    # (the flank and the hide under it are laid out by the body alone, not the legs)
+    body = [q.bm.verts[i].co for i in range(nbody)]
+    xs = [v.x for v in body]
+    ys = [v.y for v in body]
+    top = max(v.z for v in body)
+    cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+    length = max(xs) - min(xs)
+    # the highest line along the flank, where the cut is opened
+    fy = sum(v.y for v in body if v.z > top - 0.01) / max(1, sum(1 for v in body if v.z > top - 0.01))
+    # the hide spread out under it, flesh side up, the fur at its ragged edge
+    q.blob((cx, cy - 0.01, 0.0015), (length * 0.62, 0.115, 0.0025), BUTCHER_HIDE_IN, br, 0.06, noise=0.12, subdiv=2)
+    q.blob((cx + 0.01, cy - 0.016, 0.0006), (length * 0.66, 0.125, 0.0016), coat, br, 0.06, noise=0.16, subdiv=2)
+    # and the hide peeled back off the upper flank, hanging in a fold down its side toward the butcher
+    q.blob((cx, fy + 0.045, top * 0.6), (length * 0.24, 0.022, top * 0.32), BUTCHER_HIDE_IN, br, 0.05, noise=0.1)
+    q.blob((cx, fy + 0.05, top * 0.6 - 0.003), (length * 0.25, 0.022, top * 0.33), coat_dk, br, 0.05, noise=0.1)
+    # the flank laid bare: dark meat, the fat over it, the ribs
+    q.blob((cx, fy, top - 0.006), (length * 0.24, 0.04, 0.012), BUTCHER_RAW, br, 0.08, noise=0.15)
+    q.blob((cx + length * 0.1, fy + 0.012, top + 0.002), (length * 0.09, 0.02, 0.006), BUTCHER_FAT, br, 0.05, noise=0.2)
+    q.blob((cx - length * 0.08, fy - 0.006, top + 0.001), (length * 0.1, 0.016, 0.005), BUTCHER_DARK, br, 0.08, noise=0.2)
+    for k in range(5):
+        x = cx - length * 0.07 + k * length * 0.04
+        q.cyl(5, 0.0026, 0.0022, (x - 0.004, fy - 0.024, top + 0.001), (x + 0.004, fy + 0.026, top + 0.003), BUTCHER_BONE, br, 0.03)
+    # a hind leg off and laid on the hide in front, the white knob of bone at the cut
+    hx, hy = cx + length * 0.42, cy - 0.085
+    q.blob((hx, hy, 0.016), (0.042, 0.022, 0.014), BUTCHER_RAW, br, 0.08, noise=0.12)
+    q.blob((hx + 0.018, hy + 0.004, 0.022), (0.02, 0.014, 0.006), BUTCHER_FAT, br, 0.05, noise=0.15)
+    q.cyl(6, 0.006, 0.005, (hx - 0.03, hy, 0.016), (hx - 0.06, hy - 0.004, 0.012), BUTCHER_BONE, br, 0.03)
+    q.blob((hx - 0.062, hy - 0.004, 0.012), (0.009, 0.009, 0.008), BUTCHER_BONE, br, 0.03)
+    q.cyl(5, 0.0045, 0.004, (hx + 0.03, hy, 0.014), (hx + 0.07, hy + 0.01, 0.008), coat_dk, br, 0.05)
+    # a slab of fat cut away, and a hank of sinew drawn from the back, laid out on the hide to the side
+    sx, sy = cx - length * 0.42, cy - 0.08
+    q.blob((sx, sy, 0.008), (0.026, 0.018, 0.006), BUTCHER_FAT, br, 0.05, noise=0.2)
+    q.blob((sx + 0.012, sy - 0.012, 0.006), (0.016, 0.012, 0.005), BUTCHER_FAT, br, 0.05, noise=0.2)
+    for k in range(4):
+        a = sx + 0.035 + k * 0.004
+        q.cyl(4, 0.0016, 0.0014, (a, sy - 0.02, 0.004 + k * 0.0008), (a + 0.012, sy + 0.03, 0.004), BUTCHER_SINEW, br, 0.03)
+    # and blood soaked into the ground at the edge of the hide
+    for k in range(3):
+        q.blob((cx + br.uniform(-0.6, 0.6) * length * 0.5, cy + 0.11 + br.uniform(-0.01, 0.01), 0.0003),
+               (br.uniform(0.02, 0.035), br.uniform(0.012, 0.02), 0.0012), BUTCHER_STAIN, br, 0.08, noise=0.25)
+    q.finish(name)
+
+
+_lift = lambda a, p: Matrix.Translation(p) @ Matrix.Rotation(a, 4, "X") @ Matrix.Translation(-Vector(p))
+# a deer: the near hind leg is the one already off
+butchered("deer", [("body", Matrix()), ("head", _lift(0.95, (0, -0.10, 0.21))), ("legFL", _lift(-0.55, (0, -0.09, 0.15))),
+                   ("legFR", _lift(-0.35, (0, -0.09, 0.15))), ("legBL", _lift(0.45, (0, 0.09, 0.15)))],
+          0.2, DEER, DEER_DARK, "carry__carcass", 93)
+butchered("boar", [("body", Matrix()), ("head", _lift(0.3, (0, -0.07, 0.11))), ("legFL", _lift(-0.5, (0, -0.07, 0.09))),
+                   ("legFR", _lift(-0.3, (0, -0.07, 0.09))), ("legBL", _lift(0.45, (0, 0.076, 0.1))), ("tail", Matrix())],
+          0.1, BOAR_COAT, BOAR_DARK, "carry__boarCarcass", 94)
 
 
 # ---------------------------------------------------------------- the unburied dead

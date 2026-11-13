@@ -23,7 +23,7 @@ export type Practice =
   | 'hunt' // a hunt, kill or no kill
   | 'forage' // a bush's berries picked
   | 'fish_fiber' // a fishing trip, with fiber in the stores to think of weaving with (more when the catch is thin)
-  | 'carcass' // a deer carried home and skinned
+  | 'carcass' // a deer or boar carried home and skinned (half again when it is butchered)
   | 'rack' // a batch of meat or fish hung on the drying rack
   | 'deadwood' // an armful of fallen branches gathered under a tree
   | 'sickbed' // a day sitting with someone sick with fever (each adult at camp)
@@ -400,6 +400,14 @@ export const DISCOVERIES: Discovery[] = [
     practice: { fire_kiln: 1, store_grain: 1 }, odds: 30,
     found: 'coiled a tall jar, fired it hard in the kiln, filled it with grain and sealed its mouth with clay: it came out dry and sweet a year later',
     taught: 'fire tall jars in the kiln and seal the stores in them', memory: 'Sealed the first storage jar.',
+  },
+  {
+    // (a hunter skinning a kill at the stores, beside the drying rack, sees how much goes to the crows with what
+    // is thrown away: the marrow in the bones, the fat, the long cords of sinew along the back)
+    key: 'butchering', label: 'Butchering', needs: ['preserving'], requires: [skill(SK.hide, 8), skill(SK.hunt, ABLE)],
+    practice: { carcass: 1, rack: 0.2 }, odds: 12,
+    found: 'laid a deer out on its hide at the stores and took it apart joint by joint: the marrow cracked from the bones, the fat cut away for the lamps and the rack, and the sinew drawn from its back and dried to sew with',
+    taught: 'butcher a kill properly', memory: 'Butchered the first carcass properly, nothing wasted.',
   },
   {
     // (a weaver who has twisted more cord than anyone, rolling it on their thigh, hangs a stone on a stick to

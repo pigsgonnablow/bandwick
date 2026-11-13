@@ -326,6 +326,8 @@ export class BandLayer {
       [CARRY.Eggs, 'eggs'], [CARRY.Honey, 'honey'], [CARRY.Mushrooms, 'mushrooms'], [CARRY.Grain, 'grain'], [CARRY.Greens, 'greens'],
       // a piglet carried home from the hunt in the arms, for the pen
       [CARRY.Piglet, 'piglet'],
+      // a deer, or a boar or pig, laid out on its hide on the ground in front of whoever is butchering it
+      [CARRY.Carcass, 'carcass'], [CARRY.BoarCarcass, 'boarCarcass'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
@@ -1204,6 +1206,9 @@ export class BandLayer {
       // a picker sets their basket down at their feet while both hands are in the bush
       const basketDown = s.tool === 6 && s.shownAct === ACT.Gather && s.act !== ACT.Dead ? (carry === CARRY.Berries ? BASKET_FULL : BASKET) : 0;
       if (basketDown) carry = CARRY.None;
+      // a carcass being butchered lies on the ground in front of them, not in their hands
+      const carcassDown = (carry === CARRY.Carcass || carry === CARRY.BoarCarcass) && s.act !== ACT.Dead ? carry : 0;
+      if (carcassDown) carry = CARRY.None;
       // a fisher's catch comes home on the spear it was caught with
       const onSpear = carry === CARRY.Fish && s.task === FISH_TASK;
       if (onSpear) carry = CARRY.Spear;
@@ -1268,6 +1273,17 @@ export class BandLayer {
         if (bm && bk < bm.instanceMatrix.count) {
           bm.setMatrixAt(bk, m4.clone().multiply(new THREE.Matrix4().setPosition(0.1, 0.092, 0.03)));
           carryCount.set(basketDown, bk + 1);
+        }
+      }
+      if (carcassDown) {
+        const cm = this.carryMeshes.get(carcassDown);
+        const ck = carryCount.get(carcassDown) ?? 0;
+        if (cm && ck < cm.instanceMatrix.count) {
+          // (modelled in the butcher's own frame on the ground in front of them, set a little further out to leave
+          // room for their knees; never scaled with a child)
+          const un = 1 / Math.max(0.5, scale);
+          cm.setMatrixAt(ck, m4.clone().multiply(new THREE.Matrix4().makeScale(un, un, un).setPosition(0, 0, 0.04 * un)));
+          carryCount.set(carcassDown, ck + 1);
         }
       }
       if (toolCarry && s.act !== ACT.Dead) {

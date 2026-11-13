@@ -13,7 +13,7 @@ import { DAYS_PER_YEAR, DAYS_PER_SEASON } from '../../src/sim/time';
 import { PHRASE, INTEREST } from '../../src/render/director';
 import { PROP_TASKS } from '../../src/sim/sim';
 
-const empty = (): Stock => ({ berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0, thread: 0 });
+const empty = (): Stock => ({ berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0, thread: 0, fat: 0, sinew: 0 });
 
 describe('food', () => {
   it('counts acorns and roots in the stores, but not herbs, bones, teeth or hides', () => {

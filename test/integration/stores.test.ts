@@ -8,7 +8,7 @@ import { TICKS_PER_SEASON, TICKS_PER_DAY, TICKS_PER_HOUR, TICKS_PER_YEAR, isDark
 import { sim } from '../helpers';
 import type { Sim } from '../../src/sim/sim';
 
-const full = (): Stock => ({ berries: 100, meat: 100, fish: 100, preserved: 100, wood: 100, fiber: 100, cordage: 100, mud: 100, stone: 100, hides: 100, roots: 100, nuts: 100, herbs: 100, bones: 100, trinkets: 100, eggs: 100, honey: 100, mushrooms: 100, grain: 0, greens: 0, furs: 100, thread: 100 });
+const full = (): Stock => ({ berries: 100, meat: 100, fish: 100, preserved: 100, wood: 100, fiber: 100, cordage: 100, mud: 100, stone: 100, hides: 100, roots: 100, nuts: 100, herbs: 100, bones: 100, trinkets: 100, eggs: 100, honey: 100, mushrooms: 100, grain: 0, greens: 0, furs: 100, thread: 100, fat: 0, sinew: 0 });
 
 /** One morning's spoilage of a full store, in a given season (0 spring .. 3 winter). */
 function spoilIn(s: Sim, season: number): Stock {
