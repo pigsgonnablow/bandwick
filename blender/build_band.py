@@ -9,6 +9,7 @@ Conventions (read by src/render/band.ts):
   deer__{body,head,jaw,antlers,spots,legFL,legFR,legBL,legBR}  animated in parts, real colours (antlers on stags, spots on fawns).
   finch__{body,wingL,wingR}, goose__{body,wingL,wingR}             birds, wings spread from the shoulder; beaten, held out or folded in the shader.
   fish__{body,tail}                                                a brown trout in two parts, bent in the shader as it swims and leaps.
+  salmon__{body,tail}                                              a cock salmon in spawning colours, the same two parts, seen while the autumn run passes.
   wolf__{body,head,jaw,tail,legFL,legFR,legBL,legBR}, dog__{...the same}   a grey wolf and a tawny dog, posed in the shader.
   carcass__deer                                                     a deer pulled down by wolves, lying on its side, torn open.
   carry__{carcass,boarCarcass}                                      a deer or boar laid on its hide being butchered, on the ground in front of the butcher.
@@ -31,6 +32,8 @@ Conventions (read by src/render/band.ts):
       for the picture in its window (the game fits it to the picture).
   bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit,kiln,loom,pen}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
+  bld__{weir,weirFull}                                            a fish weir across a river tile, origin on the river bed, its point (and basket trap)
+      downstream to -y; ...Full with fish in the basket.
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
   bld__{plot,plotSown,plotRoots,plotGrain,plotRipe,plotStubble}  a garden plot through its year (bare or fallow, sown, roots in
       leaf, young grain, ripe grain, stubble with stooks); the fence goes round the same tile.
@@ -1514,6 +1517,72 @@ fin(q, [(0, 0.040, 0.0035), (0, 0.058, 0.014), (0, 0.054, 0.0), (0, 0.058, -0.01
 fin(q, [(0, 0.020, 0.0085), (0, 0.030, 0.0065), (0, 0.028, 0.0110)])  # adipose fin
 fin(q, [(0, 0.018, -0.0090), (0, 0.030, -0.0060), (0, 0.026, -0.0130)])  # anal fin
 q.finish("fish__tail")
+
+# A salmon running up the river in autumn, in the same two parts as the trout and bent by the same shader, but half
+# again as long and deeper in the body: a cock fish in his spawning colours, the back gone dark bronze, the flanks
+# flushed a dull red with dark spots, the belly smoky, and the lower jaw grown into a hook (the kype).
+SALMON_BACK = (58, 56, 40)
+SALMON_SIDE = (128, 84, 58)
+SALMON_FLUSH = (138, 58, 44)
+SALMON_BELLY = (176, 160, 140)
+SALMON_SPOT = (40, 30, 26)
+SALMON_FIN = (78, 62, 44)
+K = 1.55  # against the trout
+
+
+def salmon_col(c, rz):
+    if c.z > rz * 0.42:
+        return SALMON_BACK
+    if c.z < -rz * 0.5:
+        return SALMON_BELLY
+    return SALMON_FLUSH if c.z < 0 else SALMON_SIDE
+
+
+def salmon_part(rings):
+    q = Part()
+    rmax = max(r[2] for r in rings)
+    bm = q.bm
+    segs = 10
+    loops = [[bm.verts.new((math.cos(k / segs * math.tau) * rx, y, cz + math.sin(k / segs * math.tau) * rz)) for k in range(segs)] for (y, rx, rz, cz) in rings]
+    faces = []
+    for i in range(len(loops) - 1):
+        a, b = loops[i], loops[i + 1]
+        faces += [bm.faces.new((a[k], b[k], b[(k + 1) % segs], a[(k + 1) % segs])) for k in range(segs)]
+    faces.append(bm.faces.new(loops[0]))
+    faces.append(bm.faces.new(list(reversed(loops[-1]))))
+    for f in faces:
+        q.paint([f], salmon_col(f.calc_center_median(), rmax), fr, 0.05)
+    return q
+
+
+# (a longer head, a deeper back behind it, a thick wrist before the tail)
+SALMON = [(-0.054, 0.0025, 0.004, -0.001), (-0.048, 0.0060, 0.0095, 0.0), (-0.038, 0.0085, 0.0140, 0.0008), (-0.024, 0.0095, 0.0168, 0.0016),
+          (-0.008, 0.0096, 0.0170, 0.0016), (0.006, 0.0088, 0.0150, 0.0012), (0.016, 0.0074, 0.0122, 0.0008)]
+SALMON_TAIL = [(0.016, 0.0074, 0.0122, 0.0008), (0.028, 0.0054, 0.0086, 0.0005), (0.038, 0.0040, 0.0062, 0.0003), (0.046, 0.0032, 0.0050, 0.0)]
+SALMON = [(y * K, rx * K, rz * K, cz * K) for y, rx, rz, cz in SALMON]
+SALMON_TAIL = [(y * K, rx * K, rz * K, cz * K) for y, rx, rz, cz in SALMON_TAIL]
+q = salmon_part(SALMON)
+fin(q, [(0, -0.014 * K, 0.0165 * K), (0, 0.004 * K, 0.0145 * K), (0, 0.000, 0.025 * K), (0, -0.009 * K, 0.026 * K)], SALMON_FIN)  # dorsal fin
+# the kype: the lower jaw hooked up over the snout
+q.box((0, -0.0500 * K, -0.0040 * K), (0.0036 * K, 0.0070 * K, 0.0024 * K), SALMON_BACK, fr, 0.0, rot=Matrix.Rotation(-0.3, 3, "X"))
+q.box((0, -0.0535 * K, -0.0012 * K), (0.0024 * K, 0.0024 * K, 0.0040 * K), SALMON_BACK, fr, 0.0, rot=Matrix.Rotation(0.4, 3, "X"))
+for ex in (-1, 1):
+    fin(q, [(ex * 0.006 * K, -0.036 * K, -0.009 * K), (ex * 0.006 * K, -0.032 * K, -0.009 * K), (ex * 0.015 * K, -0.025 * K, -0.014 * K), (ex * 0.013 * K, -0.030 * K, -0.015 * K)], SALMON_FIN, axis=(0, 0, 1))
+    q.box((ex * 0.0060 * K, -0.046 * K, 0.0028 * K), (0.0016 * K, 0.0030 * K, 0.0030 * K), (24, 20, 18), fr, 0.0)
+    # the gill cover, a little paler, and dark spots scattered over the back and upper flank
+    q.box((ex * 0.0074 * K, -0.039 * K, -0.0005 * K), (0.0012 * K, 0.0050 * K, 0.0090 * K), (110, 84, 60), fr, 0.0)
+    for k in range(9):
+        y = -0.032 * K + k * 0.0062 * K + fr.uniform(-0.002, 0.002)
+        z = fr.uniform(0.002, 0.012) * K
+        rx = 0.0095 * K * math.sqrt(max(0.05, 1 - (z / (0.017 * K)) ** 2))
+        q.box((ex * rx, y, z), (0.0012, 0.0018, 0.0016), SALMON_SPOT, fr, 0.0)
+q.finish("salmon__body")
+
+q = salmon_part(SALMON_TAIL)
+fin(q, [(0, 0.042 * K, 0.004 * K), (0, 0.062 * K, 0.016 * K), (0, 0.059 * K, 0.0), (0, 0.062 * K, -0.015 * K), (0, 0.042 * K, -0.0036 * K)], SALMON_FIN)  # the broad tail, nearly square
+fin(q, [(0, 0.022 * K, 0.0095 * K), (0, 0.032 * K, 0.0072 * K), (0, 0.030 * K, 0.0120 * K)], SALMON_FIN)  # adipose fin
+fin(q, [(0, 0.020 * K, -0.0100 * K), (0, 0.032 * K, -0.0066 * K), (0, 0.028 * K, -0.0145 * K)], SALMON_FIN)  # anal fin
+q.finish("salmon__tail")
 
 # ---------------------------------------------------------------- birds
 # Two birds, each in three parts the game poses in the shader: the body (head, beak, tail, feet), and the left and
@@ -3147,7 +3216,7 @@ FH = 0.15
 FR = 0.48
 
 
-def hurdle(q, a, b, rnd, h=FH, n=7):
+def hurdle(q, a, b, rnd, h=FH, n=7, courses=5, col=None):
     """A straight run of wattle from a to b: stakes driven in, withies woven between them in courses."""
     a, b = Vector(a), Vector(b)
     stakes = [a.lerp(b, k / n) for k in range(n + 1)]
@@ -3155,11 +3224,12 @@ def hurdle(q, a, b, rnd, h=FH, n=7):
         q.cyl(4, 0.0075, 0.006, p + Vector((0, 0, -0.01)), p + Vector((rnd.uniform(-0.004, 0.004), rnd.uniform(-0.004, 0.004), h + 0.02 + rnd.uniform(0, 0.015))), POLE, rnd, 0.06)
     d = (b - a).normalized()
     side = Vector((-d.y, d.x, 0))
-    for j in range(5):
-        z = 0.02 + j * (h - 0.02) / 5
+    for j in range(courses):
+        z = 0.02 + j * (h - 0.02) / courses
         for k in range(n):
             off = side * (0.006 if (k + j) % 2 else -0.006)
-            q.cyl(3, 0.0045, 0.0045, stakes[k] + off + Vector((0, 0, z)), stakes[k + 1] - off + Vector((0, 0, z)), jit(WATTLE, rnd, 0.08), rnd, 0.0, cap=False)
+            c = col(j) if col else WATTLE
+            q.cyl(3, 0.0045, 0.0045, stakes[k] + off + Vector((0, 0, z)), stakes[k + 1] - off + Vector((0, 0, z)), jit(c, rnd, 0.08), rnd, 0.0, cap=False)
 
 
 hurdle(q, (-FR, FR, 0), (FR, FR, 0), rnd)
@@ -3909,6 +3979,67 @@ q.box(((TX0 + TX1) / 2, TY, 0.046), (TX1 - TX0 - 0.02, 0.036, 0.008), (64, 50, 3
 for k in range(6):
     q.blob((rnd.uniform(TX0 + 0.03, TX1 - 0.03), TY + rnd.uniform(-0.01, 0.01), 0.05), (0.008, 0.006, 0.005), (120, 92, 52) if k % 2 else (96, 120, 60), rnd, 0.05)
 q.finish("bld__pen")
+
+
+# ---------------------------------------------------------------- the fish weir
+# A fish weir across a narrow river (the tile runs bank to bank along x; the river flows toward -y, the game's +z;
+# the origin is the river bed, the water stands about 0.27 deep and the banks 0.38 up). Two wings of stakes driven
+# into the bed and woven with withies and reeds run from either bank down to a V pointing downstream, leaving a gap
+# at its point between two taller posts. A long basket trap, its funnel mouth upstream in the gap, lies half sunk
+# below it, tied off to a stake. Stones heaped along the foot of the wings hold them against the current, and a
+# pole is lashed along the top of each wing to walk out on to the trap. In bld__weirFull the basket is full.
+WEIR_STONE = [(112, 106, 96), (96, 92, 84), (126, 118, 104)]
+WEIR_POLE = (92, 70, 48)
+
+
+def weir(q, full):
+    rnd = random.Random(117)
+    gap = 0.075
+    tip_y = -0.15
+    for sx in (-1, 1):
+        a = (sx * 0.56, 0.17, 0.0)
+        b = (sx * gap, tip_y, 0.0)
+        # (withies low down where the fish are, bundled reeds woven in above them)
+        hurdle(q, a, b, rnd, h=0.35, n=8, courses=11, col=lambda j: REED if j % 3 == 2 else WATTLE)
+        A, B = Vector(a), Vector(b)
+        # the stones heaped along its foot, on the upstream side
+        d = (B - A).normalized()
+        up = Vector((-d.y, d.x, 0)) * (1 if sx < 0 else -1)
+        if up.y < 0:
+            up = -up
+        for k in range(9):
+            p = A.lerp(B, (k + 0.5) / 9) + up * rnd.uniform(0.02, 0.05)
+            q.blob((p.x, p.y, 0.02), (rnd.uniform(0.022, 0.034), rnd.uniform(0.018, 0.028), rnd.uniform(0.016, 0.026)), rnd.choice(WEIR_STONE), rnd, 0.06, noise=0.2)
+        # the pole along the top to walk out on, lashed to every other stake
+        q.cyl(5, 0.010, 0.009, A + Vector((0, 0, 0.385)), B + Vector((0, 0, 0.385)), WEIR_POLE, rnd, 0.05)
+        for k in range(1, 8, 2):
+            p = A.lerp(B, k / 8) + Vector((0, 0, 0.385))
+            q.cyl(5, 0.0125, 0.0125, p - Vector((0, 0, 0.008)), p + Vector((0, 0, 0.008)), ROPE, rnd, 0.03, cap=False)
+        # the tall posts either side of the gap
+        q.cyl(5, 0.013, 0.010, (sx * gap, tip_y, -0.01), (sx * gap, tip_y, 0.47), POLE, rnd, 0.05)
+        q.cyl(6, 0.016, 0.016, (sx * gap, tip_y, 0.37), (sx * gap, tip_y, 0.385), ROPE, rnd, 0.03, cap=False)
+    # a cross-pole over the gap, lashed to the posts' tops
+    q.cyl(5, 0.008, 0.008, (-gap - 0.01, tip_y, 0.455), (gap + 0.01, tip_y, 0.455), WEIR_POLE, rnd, 0.04)
+    # the basket trap: the fish trap's shape, much bigger, its mouth turned upstream into the gap and lying half under
+    before = set(q.bm.verts)
+    fishtrap(q, full)
+    m = Matrix.Rotation(math.pi, 3, "Z") @ Matrix.Rotation(0.06, 3, "X")
+    for v in [v for v in q.bm.verts if v not in before]:
+        v.co = m @ (v.co * 1.9) + Vector((0.0, tip_y - 0.15, 0.24))
+    if full:
+        # and more of the run nosing along under the fence for a way through
+        for x, y, ang in ((-0.22, 0.02, 0.55), (0.18, 0.0, -0.6), (0.3, 0.06, -0.5)):
+            mm = Matrix.Rotation(ang, 3, "Z")
+            for v in q.blob((0, 0, 0), (0.011, 0.05, 0.012), (70, 66, 50), rnd, 0.05):
+                v.co = Vector((x, y, 0.255)) + mm @ v.co
+
+
+q = Part()
+weir(q, False)
+q.finish("bld__weir")
+q = Part()
+weir(q, True)
+q.finish("bld__weirFull")
 
 
 # ---------------------------------------------------------------- the monuments

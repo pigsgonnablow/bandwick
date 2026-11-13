@@ -125,6 +125,23 @@ a stone for the sinkers): its keeper lays it out at the water's edge and waits f
 to come and haul it, and the haul grows by 90% for each extra pair of hands, swept from the water by
 the bank and the water round it, then shared out for each to carry home. Cast alone it does little
 better than a spear.
+
+**The autumn runs.** In the first days of autumn the salmon come in from the sea and run up every
+river that reaches it, a few days at each stretch of water, arriving a day later for every seven
+tiles or so of river upstream, and thinner the further they go. At the end of autumn the eels run down
+the rivers out of the lakes toward the sea, on the dark nights. While a run passes, the river holds
+far more fish than usual and fills back up however hard it is fished, so the fishers go there; a
+band that knows drying puts the catch on the rack, since fresh fish keeps only days. The runs are
+thin in a lean year and thick in a year of plenty. They show in the water: salmon in spawning
+colours (a Blender model) crowd the stretch, nosing upstream against the current and leaping
+upstream, high and far. A fisher who builds (fishing 12, building 10), fishing the run once the band
+knows the fish trap, thinks of a **fish weir**: stakes driven across a narrow stretch of river near
+camp in a V pointing downstream, woven with withies and reeds (8 wood, 6 thatch, 3 cord), with a long
+basket trap in the gap at its point. It is built from the bank, takes a share of any run passing it
+(and only a trickle of fish the rest of the year), and thins the run for the water above it; someone
+goes out to lift the basket and carry the fish home (up to 10 a trip). Its basket shows full when
+there are fish in it. `npx tsx tools/runtrace.ts` shows, year by year, the fish each band brought in,
+how much of it in autumn and from a weir, and when the weir was found and built.
 Fish show too: trout glimpsed under the surface near the camera, scattering from anyone swimming
 or a spear going in, and rises dimpling the water with now and then a fish leaping clear, all more
 often where the water is full and less where it has been fished out. Lakes and rivers go still under

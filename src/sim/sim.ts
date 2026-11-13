@@ -13,7 +13,7 @@ import {
   BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HARPOON_HIT, HARPOON_CATCH, LINE_CATCH, LINE_AGE, NET_CREW, NET_HAND, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, REMAINS, ROT_FROM, BONES_FROM, remainsStage,
   QUALITY_WEAR, GOODS, GOODS_EACH, GOODS_OVER, WOOD_PLENTY, KILN_CRACK, HEARTH_CRACK,
   LOOMED, KILNED, POTTED, JAR_HOLDS, JAR_KEEP, JARRED, JARS_MAX, LAMP_FAT, FAT_KEPT, SINEW_KEPT, SINEW_SEWN, THREAD_TRY, THREAD_KEPT, FIBER_PER_THREAD, BLANKET_REST,
-  CROP, CROP_NAMES, newPlot, GROW_DAYS, PLOT_YIELD, SEED_PER_PLOT, GREENS_PER_DAY, GREENS_LOAD, LEAN_GARDEN, PLENTY_GARDEN, SOIL_REST, SOIL_FALLOW,
+  RUN_FISH, WEIR_PASS, WEIR_HOLDS, CROP, CROP_NAMES, newPlot, GROW_DAYS, PLOT_YIELD, SEED_PER_PLOT, GREENS_PER_DAY, GREENS_LOAD, LEAN_GARDEN, PLENTY_GARDEN, SOIL_REST, SOIL_FALLOW,
 } from './band';
 import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
@@ -23,6 +23,7 @@ import { decide, runTask, abandon, sendHome, delivering, foodInHand, FAR_GRAVE }
 import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard, deadfallNight, DEADFALL_RANGE } from './beasts';
 import { updatePigs, pigsDaily, packPigs, pigCard, penOf, pigsOf, pigsWanted, pigToKill, pigFeed, pigMeat, grown, PIG_ID } from './pigs';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets, ELITE } from './know';
+import { RunMap, mapRuns, runsTick, runOn, runExtra, runNear, weirSite, weirRot } from './runs';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 const TREE_TYPES = SPECIES.length * STAGES * TREE_VARIANTS;
@@ -238,6 +239,9 @@ export interface Camp {
   leanWinters?: number;
   /** the day someone last set out on the round of the band's traps */
   trapRound?: number;
+  /** the last year the salmon and the eels were seen running in the rivers by the camp (absent: never) */
+  salmonYear?: number;
+  eelYear?: number;
   /** the day someone last went out to feed the band's pigs */
   pigRound?: number;
   /** winter days running the band's fire has been out with no wood to light it */
@@ -381,6 +385,8 @@ export class Sim {
   /** bumped whenever the hares on the land change (for the renderer, which shows a few of them) */
   gameVersion = 1;
   fishingSpots: number[] = [];
+  /** where the autumn runs of salmon and eels go (from the world alone: not saved) */
+  runs: RunMap;
   /** dry land where mud can be dug: riverbank clay, and the banks of rivers and lakes */
   mudSpots: number[] = [];
   /** walkable ground at the foot of (or on) rock that holds stone: where stone can be quarried */
@@ -434,6 +440,7 @@ export class Sim {
       this.gameCap[i] = cap;
       this.game[i] = cap;
     }
+    this.runs = mapRuns(world);
     for (let i = 0; i < NN; i++) {
       if (world.water[i] === WATER.None) continue;
       const cap2 = world.water[i] === WATER.Lake ? 9 : world.water[i] === WATER.River ? 6 : world.terrain[i] === T.ShallowWater ? 7 : 0;
@@ -1518,6 +1525,8 @@ export class Sim {
         const c = this.fishCap[i];
         if (c > 0 && this.fish[i] < c) this.fish[i] = Math.min(c, this.fish[i] + (FISH_REGROW * c * (1 - this.fish[i] / (c * 1.05)) + 0.02) * slow);
       }
+      // and in autumn the runs come up the rivers (and down them), and the weirs fill
+      runsTick(this);
       this.fishVersion++;
     }
   }
@@ -2262,6 +2271,7 @@ export class Sim {
     beastsDaily(this, dayOfYear);
     pigsDaily(this);
     this.traps();
+    this.runsDaily();
     this.dressAndBed();
     // each band's own day: stores, births and deaths, and the morning plan
     for (const c of this.liveCamps()) {
@@ -2278,6 +2288,21 @@ export class Sim {
     }
     this.stats.peak = Math.max(this.stats.peak, this.living().length);
     if (day % HISTORY_EVERY_DAYS === 0) this.sample();
+  }
+
+  /** The runs reaching the rivers by each camp: news the first morning of each, every year. */
+  private runsDaily() {
+    const year = yearOf(this.tick);
+    for (const c of this.liveCamps()) {
+      const run = runNear(this, c);
+      if (run === 1 && c.salmonYear !== year) {
+        c.salmonYear = year;
+        this.event('run', `The salmon are running up the river by ${c.name}, in from the sea.`, [], c.x, c.z, 2);
+      } else if (run === 2 && c.eelYear !== year) {
+        c.eelYear = year;
+        this.event('run', `The eels are running down the river by ${c.name} in the dark nights, on their way to the sea.`, [], c.x, c.z, 1.5);
+      }
+    }
   }
 
   private spoil() {
@@ -3469,6 +3494,9 @@ export class Sim {
     const unarmed = !this.toolsOf(c).some((i) => i.kind === 'axe' || i.kind === 'chopper');
     const traps = this.trapsWanted(c, foodP);
     const today = dayOf(this.tick);
+    // a run passing up (or down) the river near camp, and the band's weir with fish in its basket
+    const run = runNear(this, c);
+    const weir = mine.find((b) => b.kind === 'weir' && b.built && (b.catch ?? 0) >= 3);
     // the gardens: plots to sow this spring, plots to weed, pick or guard, and ripe ones to bring in
     const plots = this.knows('garden') ? this.plots(c) : [];
     let claimed = 0;
@@ -3486,7 +3514,10 @@ export class Sim {
       wood: woodP + (logsLying > 0 ? 0.1 : 0),
       build: sites.length ? 0.85 : 0,
       fuel: this.hearth().fuel < 5 ? 0.9 : 0.15,
-      preserve: this.knows('preserving') && mine.some((b) => b.kind === 'rack' && b.built) && c.stock.meat + c.stock.fish > 6 ? 0.7 : 0,
+      // (the run's catch above all: fresh fish keeps only days, dried it keeps the winter through)
+      preserve: this.knows('preserving') && mine.some((b) => b.kind === 'rack' && b.built) && c.stock.meat + c.stock.fish > 6 ? (run && c.stock.fish > 6 ? 0.85 : 0.7) : 0,
+      // the weir's basket emptied, once a day or so (before it fills and the fish swim on past it)
+      weir: weir ? 0.55 + ((weir.catch ?? 0) >= WEIR_HOLDS * 0.6 ? 0.25 : 0) : 0,
       fiber: fiberHave < fiberWant ? clamp01((fiberWant - fiberHave) / (fiberWant + 2) * 1.1 + (siteFiber > fiberHave ? 0.25 : 0), 0.1, 0.9) : 0,
       // crafting by the fire, in a fixed order: cordage a building site is waiting on (or an axe needs),
       // then the tools today's work is missing, then a few lengths of cordage put by
@@ -3572,6 +3603,9 @@ export class Sim {
     if (this.knows('eggs') && seasonOf(this.tick) === 0) c.plan.push('Look for eggs in the nests');
     if (this.knows('honey') && seasonOf(this.tick) === 1) c.plan.push('Smoke out a wild hive for honey');
     if (c.jobs.herbs) c.plan.push('Gather healing herbs');
+    if (run === 1) c.plan.push(this.knows('preserving') ? 'The salmon are running: fish the river, and dry the catch for the winter' : 'The salmon are running: fish the river');
+    else if (run === 2) c.plan.push('The eels are running: fish the river by night and day');
+    if (weir) c.plan.push('Empty the basket at the weir');
     if (c.feastDay === dayOf(this.tick)) c.plan.push('Feast by the fire tonight, on the longest night');
     if (c.jobs.bed) c.plan.push('Lay fresh grass in the homes to sleep on');
     if (toSow) c.plan.push(this.knows('grain') && (c.seed ?? 0) >= SEED_PER_PLOT ? 'Sow grain and set roots in the gardens' : 'Set roots in the gardens');
@@ -3689,6 +3723,16 @@ export class Sim {
         this.clearTile(tile);
         this.newBuilding('loom', tile, -1);
         c.plan.push('Build a loom shed for the weavers');
+      }
+    }
+    // a weir across a narrow stretch of river near camp, once the band knows how (where a run passes, if any does),
+    // built outside the winter, when the river is not too cold to stand in
+    if (this.knows('weir', c) && !winterNow && !this.bandBuildings(c).some((b) => b.kind === 'weir')) {
+      const tile = weirSite(this, c);
+      if (tile >= 0) {
+        const b = this.newBuilding('weir', tile, -1);
+        b.rot = weirRot(this.world.flow[tile]);
+        c.plan.push('Build a fish weir across the river');
       }
     }
     // and a pig pen by the gardens, once the band knows how to keep pigs
@@ -4570,10 +4614,19 @@ export class Sim {
     });
     return out;
   }
-  /** The fish in each water tile, for the renderer: 0 where none live, else 1 + 200 times how full the water is. */
+  /**
+   * The fish in each water tile, for the renderer: 0 where none live, else 1 + 200 times how full the water is, and
+   * from 202 up, a run passing (salmon 202..228 and eels 229..255, by how thick it is).
+   */
   packFish(): Uint8Array {
     const out = new Uint8Array(this.fish.length);
     for (let i = 0; i < out.length; i++) if (this.fishCap[i] > 0) out[i] = 1 + Math.round(Math.max(0, Math.min(1, this.fish[i] / this.fishCap[i])) * 200);
+    for (const i of this.runs.tiles) {
+      const c = this.fishCap[i];
+      if (c <= 0 || this.fish[i] <= c * 1.1) continue;
+      const k = Math.min(1, (this.fish[i] - c) / RUN_FISH);
+      out[i] = (runOn(this, i) === 2 ? 229 : 202) + Math.round(k * 26);
+    }
     return out;
   }
   /** The hares on each tile, for the renderer: 0 where no hares live, else 1 + twenty times how many there are. */
@@ -4594,6 +4647,8 @@ export class Sim {
       fuel: b.fuel, owner: b.owner, bedding: (b.bedding ?? 0) > 0,
       // a garden plot's look: bare, sown, in leaf or green, ripe, or stubble after the reaping
       ...(b.kind === 'plot' ? { look: this.plotLook(b) } : {}),
+      // a weir's basket with fish in it
+      ...(b.kind === 'weir' && b.built && (b.catch ?? 0) >= 4 ? { look: 'weirFull' } : {}),
       // a monument goes up in stages: each its own model, drawn whole (not risen from the ground like a roof)
       ...(isMonument(b.kind) ? { look: this.monumentLook(b), progress: 1 } : {}),
     }));
@@ -5033,6 +5088,10 @@ export class Sim {
           notes.push('A long mound of earth heaped over a chamber of stone slabs, its foot ringed with kerb stones, by the band\'s burial ground. The band\'s dead are laid beside it, with those who went before. A band that has raised a mound over its dead is slow to leave them.');
         } else notes.push('A ring of standing stones out past the huts, each one dragged in and levered upright, a tall one at the centre. On the longest night the band goes out to the stones after the feast to see the year turn. A band that has raised a ring of stones together holds together.');
       }
+      if (b.kind === 'weir') {
+        if (b.built) lines.push(L('In the basket', (b.catch ?? 0) >= 1 ? `${Math.floor(b.catch!)} fish` : 'Nothing yet'));
+        notes.push(`Stakes driven into the river bed in a V pointing downstream, with withies and reeds woven between them. The fish nosing along the fence for a way through are led to the gap at the point, and into the basket trap lashed there. It fishes day and night, most of all while a run is passing, when the river above it gets only ${Math.round(WEIR_PASS * 100)} fish in 100 of the run.`);
+      }
       if (b.kind === 'rack') {
         lines.push(L('Dried food', `${Math.round(this.camp.stock.preserved)} meals`));
         notes.push('Meat and fish dried here keep for most of a year.');
@@ -5145,7 +5204,10 @@ export class Sim {
       lines.push(L('Air', `${Math.round(temp)}°C right now`));
       if (this.fishCap[i] > 0) {
         const f = this.fish[i] / this.fishCap[i];
-        lines.push(L('Fish', f > 0.7 ? 'Plenty' : f > 0.35 ? 'Some' : f > 0.1 ? 'Few, fished out' : 'None left'));
+        const run = runExtra(this, i) > 0 ? runOn(this, i) : 0;
+        lines.push(L('Fish', run === 1 ? 'Thick with salmon: the run is passing' : run === 2 ? 'Full of eels, running down to the sea' : f > 0.7 ? 'Plenty' : f > 0.35 ? 'Some' : f > 0.1 ? 'Few, fished out' : 'None left'));
+        if (!run && this.runs.salmon[i] >= 0) notes.push('The salmon run up this river from the sea in the first days of autumn.');
+        if (!run && this.runs.eel[i] >= 0) notes.push('The eels run down this river from the lake at the end of autumn.');
         if (wk !== WATER.Sea && freshFrozen(this.tick)) lines.push(L('Ice', this.knows('hooks') ? 'Frozen over: fished with a hook and line through the ice' : 'Frozen over: no fishing until the thaw'));
       }
       if (wk === WATER.River) notes.push('Shallow enough to wade across.');

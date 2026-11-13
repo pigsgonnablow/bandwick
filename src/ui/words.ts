@@ -49,5 +49,5 @@ export const TASK_PHRASE: Record<TaskKind, string> = {
   migrate: 'on the way to camp', reap: 'cutting grass', dig: 'digging', quarry: 'quarrying stone', watch: 'watching and learning',
   tell: 'telling a story', listen: 'listening to a story', bed: 'laying fresh bedding', roots: 'digging roots', nuts: 'gathering acorns',
   herbs: 'gathering herbs', nurse: 'tending the sick', gift: 'giving a gift', feast: 'at the feast', eggs: 'looking for eggs',
-  honey: 'smoking out a hive', mushrooms: 'picking mushrooms', mend: 'mending', sow: 'sowing', tend: 'weeding the garden', harvest: 'bringing in the harvest', pigs: 'tending the pigs', raise: 'raising the band\'s monument',
+  honey: 'smoking out a hive', mushrooms: 'picking mushrooms', mend: 'mending', sow: 'sowing', tend: 'weeding the garden', harvest: 'bringing in the harvest', pigs: 'tending the pigs', raise: 'raising the band\'s monument', weir: 'emptying the weir',
 };

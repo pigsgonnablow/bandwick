@@ -322,7 +322,7 @@ export class BandLayer {
             size: 0.006 + Math.random() * 0.005, r, g, b, floor: this.groundAt(x, z) });
         }
       });
-    this.group.add(this.beasts.group, this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh, this.birds.group, this.tracks.mesh, this.wolves.group, this.remains.group);
+    this.group.add(this.beasts.group, this.villagers, this.deerMesh, this.hares.mesh, this.fish.mesh, this.fish.salmonMesh, this.birds.group, this.tracks.mesh, this.wolves.group, this.remains.group);
     // carried things
     const carryNames: [number, string][] = [
       [CARRY.Log, 'log'], [CARRY.Berries, 'berries'], [CARRY.Meat, 'meat'], [CARRY.Fish, 'fish'],
@@ -352,7 +352,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones']) {
+      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -1606,8 +1606,8 @@ export class BandLayer {
 
   /** Which model draws a building: huts come in two shapes, each with wattle, daub and stone walls. */
   private modelOf(b: { kind: string; id: number; walls?: string; look?: string }) {
-    // (a garden plot as it grows, a monument as it goes up)
-    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
+    // (a garden plot as it grows, a monument as it goes up, a weir with fish in its basket)
+    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
     if (b.kind !== 'hut' && b.kind !== 'storehouse') return b.kind;
     const shape = b.kind === 'storehouse' ? b.kind : b.id % 2 ? 'hut1' : 'hut0';
     const own = shape + (b.walls === 'daub' ? 'd' : b.walls === 'stone' ? 's' : '');
@@ -1679,6 +1679,10 @@ export class BandLayer {
         if (b.kind === 'windbreak') {
           const side = rot + 0.3;
           put('site', cx - Math.sin(side) * 1.3, cz - Math.cos(side) * 1.3, rot + 0.6, 1, 0.8);
+        } else if (b.kind === 'weir') {
+          // (a weir's stakes and withies lie on the bank it is built from, not in the river: the bank to the
+          // left looking downstream, as weirBank picks it)
+          put('site', cx - Math.cos(rot) * 0.8, cz + Math.sin(rot) * 0.8, rot + 0.6, 1, 0.8);
         } else put('site', cx + 0.28, cz + 0.3, rot + 0.6, 1, 0.8);
       }
       // fresh grass laid under a lean-to (a hut's is out of sight inside)
