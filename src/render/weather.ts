@@ -46,7 +46,7 @@ export class Snowfall {
         void main() {
           if (vA < 0.5) discard;
           vec2 d = gl_PointCoord - 0.5;
-          float a = smoothstep(0.5, 0.15, length(d));
+          float a = (1.0 - smoothstep(0.15, 0.5, length(d)));
           gl_FragColor = vec4(uLight, a * 0.9);
           #include <colorspace_fragment>
         }`,

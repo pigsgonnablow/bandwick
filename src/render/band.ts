@@ -1897,7 +1897,7 @@ function makeSmoke() {
       varying float vLife;
       void main() {
         vec2 d = gl_PointCoord - 0.5;
-        float a = smoothstep(0.5, 0.0, length(d)) * (1.0 - vLife) * smoothstep(0.0, 0.08, vLife) * 0.32;
+        float a = (1.0 - smoothstep(0.0, 0.5, length(d))) * (1.0 - vLife) * smoothstep(0.0, 0.08, vLife) * 0.32;
         vec3 c = mix(vec3(0.82, 0.8, 0.78), vec3(0.32, 0.33, 0.38), uNight);
         gl_FragColor = vec4(c, a);
         #include <colorspace_fragment>

@@ -123,6 +123,32 @@ describe('monuments', () => {
     expect(b.built).toBe(true);
   });
 
+  it('come through a save half raised, with stone on the way, and go on going up the same', () => {
+    const s = settled();
+    s.plan();
+    const b = monumentOf(s)!;
+    for (const q of s.bandBuildings(s.camp)) if (q !== b) q.built = true;
+    b.work = 900;
+    b.stone = 2;
+    s.camp.stock.stone += 6;
+    // let the band take to it for a day, so there is work under way and stone being carried out
+    const end = s.tick + TICKS_PER_DAY * 2;
+    while (s.tick < end) s.step();
+    const at = s.people.filter((q) => q.alive && q.task?.ref === b.id && (q.task.kind === 'raise' || q.task.kind === 'supply'));
+    expect(at.length).toBeGreaterThan(0);
+    const t = new Sim(s.world, JSON.parse(JSON.stringify(s.serialize())));
+    const tb = t.building(b.id)!;
+    expect([tb.kind, tb.work, tb.stone, tb.builders]).toEqual([b.kind, b.work, b.stone, b.builders]);
+    expect(t.historyHash()).toBe(s.historyHash());
+    for (let k = 0; k < 3 * TICKS_PER_DAY; k++) {
+      s.step();
+      t.step();
+    }
+    expect(t.historyHash()).toBe(s.historyHash());
+    expect([tb.work, tb.stone, tb.builders]).toEqual([b.work, b.stone, b.builders]);
+    expect(b.work).toBeGreaterThan(900);
+  });
+
   it('outlast the band that raised them, and stand half raised where a band moved on', () => {
     const s = settled();
     const c = s.camp;

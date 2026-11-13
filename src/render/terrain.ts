@@ -134,7 +134,7 @@ export function createTerrainMaterials(world: WorldData) {
           vec4 gt = mix(gA, gB, smoothstep(0.42, 0.58, texture2D(uNoise, wp * 0.19 + 7.3).r));
           float turf = smoothstep(0.35, 0.8, veg);
           // forest floor (a little less 'veg' than open grass): darker, with old leaves among the blades
-          float wood = smoothstep(0.995, 0.955, veg) * smoothstep(0.8, 0.92, veg);
+          float wood = (1.0 - smoothstep(0.955, 0.995, veg)) * smoothstep(0.8, 0.92, veg);
           float clump = texture2D(uNoise, wp * 0.55 + 3.1).g;
           float dry = smoothstep(0.5, 0.68, texture2D(uNoise, wp * 0.23 + 11.7).b);
           vec3 blade = col * (0.58 + 0.85 * gt.r);
@@ -143,7 +143,7 @@ export function createTerrainMaterials(world: WorldData) {
           // bare earth: patches where the noise runs high, more of it in drier and thinner turf
           float dn = texture2D(uNoise, wp * 0.31 + 1.7).g * 0.75 + texture2D(uNoise, wp * 1.3 + 5.1).r * 0.25;
           float bare = smoothstep(0.62, 0.665, dn + dry * 0.05 + (1.0 - veg) * 0.4 + wood * 0.05);
-          bare *= 1.0 - gt.b * 0.7 * smoothstep(0.69, 0.63, dn);
+          bare *= 1.0 - gt.b * 0.7 * (1.0 - smoothstep(0.63, 0.69, dn));
           vec3 soil = mix(vec3(0.2, 0.12, 0.05), vec3(0.38, 0.27, 0.14), gt.g) * (0.8 + 0.4 * g);
           vec3 litter = mix(vec3(0.24, 0.13, 0.05), vec3(0.36, 0.24, 0.09), gt.g);
           soil = mix(soil, litter, wood * 0.7);

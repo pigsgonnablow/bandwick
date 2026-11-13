@@ -1,7 +1,7 @@
 // Penned pigs: piglets brought home alive from the boar hunt, kept in a pen by the gardens, fed from the stores,
 // farrowing in spring and killed for the stores in autumn (or when the band goes hungry).
 import { describe, it, expect } from 'vitest';
-import { Building, PIG_LOST_DAYS, PIG_MEAT, PIG_MEAT_YOUNG, PIG_SOWS_KEPT } from '../../src/sim/band';
+import { Building, CARRY, PIG_LOST_DAYS, PIG_MEAT, PIG_MEAT_YOUNG, PIG_SOWS_KEPT } from '../../src/sim/band';
 import { DISCOVERY } from '../../src/sim/know';
 import { TICKS_PER_DAY, TICKS_PER_SEASON, TICKS_PER_YEAR, dayOf } from '../../src/sim/time';
 import { Sim } from '../../src/sim/sim';
@@ -195,6 +195,82 @@ describe('penned pigs', () => {
     const nc = s.camps.find((q) => q.parent === c.id && q.origin === 'moved')!;
     // (with whatever meat was in hand when they packed up)
     expect(nc.stock.meat).toBeGreaterThanOrEqual(meat * 0.8 - 1e-6);
+  });
+
+  it('are killed and carried along when the last few of the band go to live with another', () => {
+    const { s, c, pen } = keepers();
+    // a small band with a pen of its own, close by
+    const tile = s.chooseSite({ from: c, min: 16, max: 36, avoid: 12 });
+    expect(tile).toBeGreaterThanOrEqual(0);
+    const near = s.foundCamp(tile, { ...c.stock, meat: 0, greens: 0, nuts: 0 }, -1, -1);
+    s.camp = c;
+    const lone = s.members(c).find((q) => s.age(q) >= 20)!;
+    (s as unknown as { join(ps: unknown[], to: unknown): void }).join([lone], near);
+    for (const q of s.members(near)) if (q !== lone) (s as unknown as { join(ps: unknown[], to: unknown): void }).join([q], c);
+    expect(s.members(near)).toEqual([lone]);
+    const theirs: Building = { ...pen, id: s.newId(), band: near.id, x: Math.floor(near.x) + 3, z: Math.floor(near.z), tile: s.tileOf({ x: near.x + 3, z: near.z }), builders: [] };
+    s.buildings.push(theirs);
+    aged(s, addPig(s, near, theirs, true, false), 2);
+    aged(s, addPig(s, near, theirs, false, false), 0.2);
+    const meat = c.stock.meat;
+    expect((s as unknown as { considerMerge(c: unknown): boolean }).considerMerge(near)).toBe(true);
+    // the pigs don't vanish with the old camp: their meat comes with the rest of the stores
+    expect(s.pigs.filter((g) => g.band === near.id)).toHaveLength(0);
+    expect(c.stock.meat - meat).toBeCloseTo((PIG_MEAT + PIG_MEAT_YOUNG) * 0.8, 6);
+    expect(near.ledger!.total['pigs.killed']).toBe(2);
+    expect(near.ledger!.total['pigs.meat']).toBe(PIG_MEAT + PIG_MEAT_YOUNG);
+    // and the band they joined keeps its own pigs
+    expect(pigsOf(s, c)).toHaveLength(0);
+  });
+
+  it('tell of a band\'s first litter, even when another band\'s name holds this one\'s', () => {
+    const { s, c, pen } = keepers();
+    // another band, whose name has this one's in it, has had its first litter already
+    s.events.push({ ...s.events[0], kind: 'farrow', text: `The first litter was born in the pig pen at ${c.name}wick: 4 piglets.` });
+    at(s, 0.2);
+    aged(s, addPig(s, c, pen, true, false), 2);
+    aged(s, addPig(s, c, pen, false, false), 2);
+    for (let d = 0; d < 10 && pigsOf(s, c).length === 2; d++) {
+      s.tick += TICKS_PER_DAY;
+      for (const g of pigsOf(s, c)) g.fed = s.tick;
+      pigsDaily(s);
+    }
+    expect(pigsOf(s, c).length).toBeGreaterThan(2);
+    expect(s.events.filter((e) => e.kind === 'farrow' && e.text.endsWith(`at ${c.name}: ${pigsOf(s, c).length - 2} piglets.`))).toHaveLength(1);
+    // and only of the first: next spring's litter is no news
+    const n = s.events.length;
+    at(s, 0.2);
+    for (const g of pigsOf(s, c)) g.born -= TICKS_PER_YEAR;
+    for (let d = 0; d < 10; d++) {
+      s.tick += TICKS_PER_DAY;
+      for (const g of pigsOf(s, c)) g.fed = s.tick;
+      pigsDaily(s);
+    }
+    expect(c.ledger!.total['pigs.born']).toBeGreaterThan(c.ledger!.last['pigs.born'] ?? 0);
+    expect(s.events.slice(n).filter((e) => e.kind === 'farrow')).toHaveLength(0);
+  });
+
+  it('are news when the first piglet goes in the pen, not each time an emptied pen is started again', () => {
+    const { s, c, pen } = keepers();
+    const p = s.members().find((q) => s.age(q) >= 18)!;
+    const gate = gateOf(pen);
+    const carry = () => {
+      p.carry = CARRY.Piglet;
+      p.carryAmt = 1;
+      p.x = gate.x;
+      p.z = gate.z;
+      p.task = { kind: 'hunt', stage: 2, alive: true, goal: s.tileOf(gate), gx: gate.x, gz: gate.z, ref: -1, timer: 0, started: s.tick, amount: 0, near: true };
+      s.camp = c;
+      runTask(s, p);
+    };
+    carry();
+    expect(pigsOf(s, c)).toHaveLength(1);
+    expect(s.events.filter((e) => e.kind === 'pigs')).toHaveLength(1);
+    // the pen emptied (the pig ran off), and a new piglet brought home
+    s.pigs.length = 0;
+    carry();
+    expect(pigsOf(s, c)).toHaveLength(1);
+    expect(s.events.filter((e) => e.kind === 'pigs')).toHaveLength(1);
   });
 
   it('count the day\'s round done only once they are fed: someone called away leaves it for another', () => {
