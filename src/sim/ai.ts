@@ -437,8 +437,9 @@ export function decide(s: Sim, p: Person) {
     if (t) {
       // put down the old task properly (setup may already have reserved things for the new one)
       // and whatever they carry for it, before picking up a spear for a hunt or a day's fishing
-      // (no spear for a day's fishing with a net or a line, or for hauling someone else's net)
-      const spear = o.kind === 'hunt' || (o.kind === 'fish' && t.crew === undefined && !['net', 'line'].includes(s.heldBy(p)?.kind ?? ''));
+      // (no spear for a day's fishing with a net or a line; a hand on someone else's net brings their own, and the
+      // share of the catch comes home on it)
+      const spear = o.kind === 'hunt' || (o.kind === 'fish' && (t.crew !== undefined || !['net', 'line'].includes(s.heldBy(p)?.kind ?? '')));
       const keep = spear && p.carry === CARRY.Spear;
       const prev = p.task;
       if (prev) {
@@ -945,7 +946,9 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
         p.thought = `Going to help ${netter.name} haul the net.`;
         return t;
       }
-      const gear = fishGear(s, p);
+      let gear = fishGear(s, p);
+      // a child fishes only with a hook and line (and the one there was may have been taken since)
+      if (s.age(p) < 11 && !gear) return null;
       // (only a hook and line fishes through the ice)
       const frozen = freshFrozen(s.tick) && gear?.kind !== 'line';
       let best = -1, bestS = -Infinity, bestW = -1;
@@ -971,6 +974,8 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       }
       if (best < 0) return null;
       const ice = freshFrozen(s.tick) && s.world.water[bestW] !== WATER.Sea;
+      // a grown-up who took a line for the ice but is going to the open sea after all takes a harpoon if there is one
+      if (gear?.kind === 'line' && !ice && s.age(p) >= 13) gear = s.toolFor(p, ['harpoon']);
       p.thought = ice ? 'Going to fish through the ice.' : s.world.water[bestW] === WATER.Sea ? 'Fishing from the shore.' : 'Fishing at the water.';
       // (with a net or a line they go right down to the water's edge)
       const at = gear ? fishStand(N, best, bestW) : { x: (best % N) + 0.5, z: Math.floor(best / N) + 0.5 };
@@ -1641,7 +1646,8 @@ export function runTask(s: Sim, p: Person) {
       // nobody tries this target again for a while (it is across a river, up a cliff...)
       const propTask = PROP_TASKS.includes(t.kind);
       if (propTask && t.ref >= 0) s.unreachable.set(t.ref, s.tick + 2 * TICKS_PER_DAY);
-      if (t.kind === 'fish') s.unreachable.set(-(t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
+      // (the bank they were making for, not the pile they fetch gear from or the stores they carry the catch to)
+      if (t.kind === 'fish' && t.stage === 0) s.unreachable.set(-((t.bank ?? t.goal) + 1), s.tick + 2 * TICKS_PER_DAY);
       if (t.kind === 'trap' && t.stage >= 0) s.unreachable.set(-3 * s.N * s.N - (t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
       if ((t.kind === 'dig' || t.kind === 'quarry') && t.stage >= 0) s.unreachable.set((t.kind === 'dig' ? -1 : -2) * s.N * s.N - (t.goal + 1), s.tick + 2 * TICKS_PER_DAY);
       // (the next bush can't be reached, but home can: what is in hand goes there)
@@ -3117,13 +3123,13 @@ export function runTask(s: Sim, p: Person) {
           let got = 0;
           if (!missed) {
             for (const k of [w, ...netReach(s, w)]) {
-              const take = Math.min(Math.max(0, s.fish[k] - 0.5), want - got);
+              // (whole fish: none lost to the rounding)
+              const take = Math.min(Math.floor(Math.max(0, s.fish[k] - 0.5)), want - got);
               if (take <= 0) continue;
               s.fish[k] -= take;
               got += take;
               if (got >= want) break;
             }
-            got = Math.floor(got);
           }
           s.fishVersion++;
           flash(p, FLASH.Thrust);

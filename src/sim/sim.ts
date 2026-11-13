@@ -1690,9 +1690,11 @@ export class Sim {
     // fishing gear, for the fishers: a harpoon or two while there is antler and bone, hooks and lines (more of them:
     // the children and the old fish with them too), and a net for the band (two in a big one)
     const cord = c.stock.cordage + c.stock.sinew;
-    if (this.knows('harpoon', c) && c.stock.bones >= 1 && cord >= 1 && have('harpoon') < Math.min(3, 1 + Math.floor(ms.length / 8))) return 'harpoon';
-    if (this.knows('hooks', c) && c.stock.wood >= 1 && cord >= 1 && have('line') < Math.min(4, 1 + Math.floor(ms.length / 6))) return 'line';
-    if (this.knows('nets', c) && c.stock.cordage >= 4 && c.stock.stone >= 1 && have('net') < (ms.length >= 16 ? 2 : 1)) return 'net';
+    // (only where there is fishing water within a walk of camp)
+    const fishing = this.fishingSpots.some((i) => hyp((i % this.N) + 0.5 - c.x, Math.floor(i / this.N) + 0.5 - c.z) < 28);
+    if (fishing && this.knows('harpoon', c) && c.stock.bones >= 1 && cord >= 1 && have('harpoon') < Math.min(3, 1 + Math.floor(ms.length / 8))) return 'harpoon';
+    if (fishing && this.knows('hooks', c) && c.stock.wood >= 1 && cord >= 1 && have('line') < Math.min(4, 1 + Math.floor(ms.length / 6))) return 'line';
+    if (fishing && this.knows('nets', c) && c.stock.cordage >= 4 && c.stock.stone >= 1 && have('net') < (ms.length >= 16 ? 2 : 1)) return 'net';
     // a cloak for everyone past their first year, while there are hides to make them from; but once three in four of
     // the band has a cloak or a cape, a first share of the smaller things sewn from a hide comes in between (shoes for
     // the walkers, hats and mittens, a bag for the gatherers), so the hides don't all go to cloaks

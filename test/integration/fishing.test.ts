@@ -91,6 +91,30 @@ describe('the fishing gear discoveries', () => {
   });
 });
 
+describe('fishing gear and the water', () => {
+  it('is made only by a band with fishing water within a walk of camp', () => {
+    const s = sim(2);
+    const c = s.camp;
+    s.giveTools(c, { axe: 4, chopper: 2 });
+    c.knows.push('hooks');
+    Object.assign(c.stock, { cordage: 10, wood: 200 });
+    expect(s.toolToMake()).toBe('line');
+    s.fishingSpots = [];
+    expect(s.toolToMake()).toBeNull();
+  });
+
+  it('sends a child fishing only with a hook and line', () => {
+    const s = sim(2);
+    while (freshFrozen(s.tick)) s.tick += TICKS_PER_DAY;
+    const kid = s.members().find((q) => s.age(q) >= LINE_AGE && s.age(q) < 11);
+    if (!kid) return;
+    expect(setup(s, kid, 'fish')).toBeNull();
+    s.giveTools(s.camp, { line: 1 });
+    expect(setup(s, kid, 'fish')).not.toBeNull();
+    expect(s.heldBy(kid)?.kind).toBe('line');
+  });
+});
+
 describe('fishing with gear', () => {
   it('takes the gear from the pile to the water: a net for a grown-up, a line for a child', () => {
     const s = sim(2);
@@ -114,6 +138,8 @@ describe('fishing with gear', () => {
     const at = bank(s);
     expect(at).not.toBeNull();
     while (!freshFrozen(s.tick)) s.tick += TICKS_PER_DAY;
+    // (no fish in the sea near by, so the open water is no draw)
+    for (let w = 0; w < s.fish.length; w++) if (s.world.water[w] === WATER.Sea) s.fish[w] = 0;
     const [a, b] = adults(s);
     for (const q of [a, b]) { q.x = s.camp.x; q.z = s.camp.z; }
     // with a spear, only the sea is open (and there may be none near)
@@ -180,9 +206,12 @@ describe('fishing with gear', () => {
     helper.task = ht;
     s.fish[at.w] = s.fishCap[at.w];
     const before = s.fish.reduce((a, v) => a + v, 0);
-    step(s, [keeper, helper], 200);
+    for (let i = 0; i < 200 && keeper.carry !== CARRY.Fish; i++) step(s, [keeper, helper], 1);
     const got = before - s.fish.reduce((a, v) => a + v, 0);
     expect(got).toBeGreaterThan(0);
+    // every fish taken from the water is carried home by one of them, none lost to rounding
+    expect(keeper.carryAmt + helper.carryAmt).toBeCloseTo(got, 4);
+    expect(helper.carryAmt).toBeCloseTo(keeper.carryAmt, 6);
     // shared between them, and more than the keeper would have netted alone at the best
     expect(Math.round(got)).toBeGreaterThanOrEqual(Math.round((4 + 10 / 4) * (1 + NET_HAND) * 0.6));
     expect(net.wear).toBeGreaterThan(0);
