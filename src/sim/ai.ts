@@ -1001,6 +1001,8 @@ export function sendHome(s: Sim, p: Person, c = s.campOf(p)) {
 export function abandon(s: Sim, p: Person, keepCarry = false) {
   const t = p.task;
   const st = s.camp.stock;
+  // a carcass half butchered is picked up again as the meat it is (never left lying in front of them as they go)
+  if (p.carry === CARRY.Carcass || p.carry === CARRY.BoarCarcass) p.carry = CARRY.Meat;
   // a piglet carried home for the pen is put in it (or let go, with no pen to put it in)
   if (p.carry === CARRY.Piglet) {
     const pen = s.penOf();
@@ -1369,8 +1371,9 @@ export function butcher(s: Sim, p: Person, kind: CarcassKind, meat: number) {
   }
   // (a stag's antlers are kept with the bones, for the needles and awls)
   if (k.antler > 0 && s.knows('needles') && st.bones < BONES_KEPT) {
-    st.bones = Math.min(BONES_KEPT, st.bones + k.antler);
-    s.book('gathered.bones', k.antler);
+    const n = Math.min(k.antler, BONES_KEPT - st.bones);
+    st.bones += n;
+    s.book('gathered.bones', n);
   }
   train(p, 'butcher');
   s.practise(p, 'carcass', 0.5);

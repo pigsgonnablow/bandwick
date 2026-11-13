@@ -146,6 +146,19 @@ describe('a kill brought home', () => {
   });
 });
 
+describe('a carcass half butchered', () => {
+  it('is never carried off as a carcass when the work is put down', () => {
+    const s = band();
+    const p = bringing(s, 'hunt', 'deer');
+    layDown(s, p);
+    expect(p.carry).toBe(CARRY.Carcass);
+    // (put down with the load kept in hand, as when there is nothing else to do)
+    abandon(s, p, true);
+    expect(p.carry).toBe(CARRY.Meat);
+    expect(p.carryAmt).toBeCloseTo(8, 5);
+  });
+});
+
 describe('fat', () => {
   it('fills the lamps before any is cut from the meat', () => {
     const s = band(2, ['preserving', 'butchering', 'pottery', 'lamps']);
