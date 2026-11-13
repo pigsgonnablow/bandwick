@@ -946,7 +946,8 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
     case 'fish': {
       // (a spear-fisher doesn't carry off the band's axe: only fishing gear stays in hand)
       const holding = s.heldBy(p);
-      if (holding && holding.kind !== 'net' && holding.kind !== 'line' && holding.kind !== 'harpoon') s.returnTool(p);
+      // (and a child keeps only the basic gear, a hook and line)
+      if (holding && (s.age(p) < 13 ? holding.kind !== 'line' : holding.kind !== 'net' && holding.kind !== 'line' && holding.kind !== 'harpoon')) s.returnTool(p);
       // a net waiting at the water for hands to haul it: go and help
       const netter = s.age(p) >= 13 ? netWaiting(s, p) : undefined;
       if (netter) {
@@ -3252,6 +3253,7 @@ export function runTask(s: Sim, p: Person) {
           return finish(s, p);
         }
         weir!.catch = (weir!.catch ?? 0) - got;
+        weir!.kept = s.tick;
         s.buildingsVersion++;
         s.book('weir', got);
         train(p, 'fish.catch');

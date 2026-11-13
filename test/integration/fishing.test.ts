@@ -242,6 +242,18 @@ describe('fishing with gear', () => {
     expect(t2?.crew).toBe(keeper.id);
   });
 
+  it('gives a child only the hook and line, never a net or harpoon', () => {
+    const s = sim(2);
+    while (freshFrozen(s.tick)) s.tick += TICKS_PER_DAY;
+    s.giveTools(s.camp, { net: 2, harpoon: 2 });
+    const kid = s.members().find((q) => s.age(q) >= 11 && s.age(q) < 13 && q.alive);
+    if (!kid) return;
+    const net = s.toolsOf(s.camp, 'net')[0];
+    s.takeTool(kid, net);
+    setup(s, kid, 'fish');
+    expect(['net', 'harpoon']).not.toContain(s.heldBy(kid)?.kind);
+  });
+
   it('hauls a net with others: a helper comes, and the catch is bigger and shared', () => {
     const s = sim(2);
     while (freshFrozen(s.tick)) s.tick += TICKS_PER_DAY;

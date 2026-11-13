@@ -9,7 +9,7 @@ import { WorldData, WATER, DIRS4 } from './types';
 import { hash3 } from './rng';
 import {
   Building, RUN_FISH, EEL_FISH, RUN_DAY, RUN_SPEED, RUN_DAYS, RUN_REACH, EEL_DAY, EEL_DAYS, EEL_REACH, RUN_FILL,
-  WEIR_TAKE, WEIR_TRICKLE, WEIR_HOLDS, WEIR_PASS,
+  WEIR_TAKE, WEIR_TRICKLE, WEIR_HOLDS, WEIR_PASS, WEIR_STAY_DAYS, WEIR_ESCAPE,
 } from './band';
 import { DAYS_PER_YEAR, TICKS_PER_DAY, freshFrozen, dayOf, yearOf } from './time';
 import type { Sim, Camp } from './sim';
@@ -187,6 +187,16 @@ export function runsTick(s: Sim) {
   if (!freshFrozen(s.tick)) {
     for (const b of weirs.values()) {
       const was = Math.floor(b.catch ?? 0);
+      if ((b.catch ?? 0) > 0 && b.kept === undefined) b.kept = s.tick;
+      // fish left in the basket too long find their way out, back into the river
+      if ((b.catch ?? 0) > 0 && b.kept !== undefined && s.tick - b.kept > WEIR_STAY_DAYS * TICKS_PER_DAY) {
+        const out = (b.catch ?? 0) * WEIR_ESCAPE;
+        b.catch = (b.catch ?? 0) - out;
+        if (b.catch < 0.05) b.catch = 0;
+        const water = weirWater(s, b.tile)[0];
+        s.fish[water] += out;
+        s.fishVersion++;
+      }
       for (const k of weirWater(s, b.tile)) {
         const room = WEIR_HOLDS - (b.catch ?? 0);
         if (room <= 0) break;
@@ -194,6 +204,7 @@ export function runsTick(s: Sim) {
         const take = Math.min(room, Math.max(0, s.fish[k] - cap) * WEIR_TAKE + Math.max(0, Math.min(s.fish[k], cap) - 1) * WEIR_TRICKLE);
         if (take <= 0) continue;
         s.fish[k] -= take;
+        if ((b.catch ?? 0) < 1) b.kept = s.tick;
         b.catch = (b.catch ?? 0) + take;
       }
       // (the basket's count, and how full it looks)

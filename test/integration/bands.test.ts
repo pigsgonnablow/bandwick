@@ -89,6 +89,39 @@ describe('a band that splits', () => {
     expect(s.events.at(-1)!.kind).toBe('split');
   });
 
+  it('takes a jar, a net and a line along when it parts on good terms, but only the plain tools in anger', () => {
+    const run = (kindly: boolean, seed = 2) => {
+      const s = sim(seed);
+      const c = s.camp;
+      const all = [...s.members(c), ...grow(s, 10)];
+      for (const p of all) for (const q of all) if (p !== q) p.rel.set(q.id, 40);
+      // (a hungry year sours a parting)
+      if (!kindly) c.lastFamine = s.tick;
+      c.stock.meat = 100;
+      c.stock.wood = 60;
+      s.giveTools(c, { jar: 4, net: 2, line: 2, axe: 4 });
+      if (!always(s, () => (s as any).considerSplit(c))) return null;
+      const nc = s.camps[s.camps.length - 1];
+      const has = (band: number, kind: string) => s.items.filter((i) => i.band === band && i.holder < 0 && i.kind === kind).length;
+      return { nc, c, has, origin: nc.origin };
+    };
+    // (a leader's own temper can sour a parting whatever the band feels, so look for a seed that parts kindly)
+    let good = run(true);
+    for (let seed = 3; (!good || good.origin !== 'amicable') && seed < 14; seed++) good = run(true, seed);
+    if (!good) throw new Error('no seed split');
+    expect(good.origin).toBe('amicable');
+    for (const k of ['jar', 'net', 'line']) {
+      expect(good.has(good.nc.id, k)).toBeGreaterThanOrEqual(1);
+      expect(good.has(good.c.id, k)).toBeGreaterThanOrEqual(1);
+    }
+    let bad = run(false);
+    for (let seed = 3; !bad && seed < 14; seed++) bad = run(false, seed);
+    if (!bad) throw new Error('no seed split');
+    expect(bad.origin).toBe('turmoil');
+    for (const k of ['jar', 'net', 'line']) expect(bad.has(bad.nc.id, k)).toBe(0);
+    expect(bad.has(bad.nc.id, 'axe')).toBeGreaterThanOrEqual(1);
+  });
+
   it('stays together while it is too small to part', () => {
     const s = sim(2);
     const camps = s.camps.length;

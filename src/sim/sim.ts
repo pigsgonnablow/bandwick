@@ -3008,6 +3008,15 @@ export class Sim {
     const bitter = tension > 0.05 || (stayers.length > 0 && regard / stayers.length < 12) || !!rival || hungry || blood || graves || cruel || grasping;
     const why = rival ? ` after falling out with ${rival.name}` : blood ? ' after the bloodshed' : hungry ? ' after the hungry year' : graves ? ' after a year of burials'
       : tension > 0.05 ? ' after a bitter quarrel' : cruel ? ', and few were sorry to see them go' : grasping ? ' to rule a band of their own' : ', glad to be gone';
+    // parting on good terms, they are given the gear a band can spare as well: jars, lamps, nets, lines and the like
+    // (one of each, where the band has two or more; a bitter parting takes only the plain tools above)
+    if (!bitter) {
+      for (const kind of ['jar', 'lamp', 'needle', 'net', 'line', 'harpoon'] as const) {
+        const pile = this.items.filter((i) => i.band === from.id && i.holder < 0 && i.kind === kind);
+        const n = Math.min(pile.length - 1, Math.max(1, Math.round(pile.length * share)));
+        for (const it of pile.slice(0, Math.max(0, n))) it.band = nc.id;
+      }
+    }
     const parentColor = from.color ?? this.distinctColor();
     nc.color = bitter ? this.contrastColor(parentColor) : this.lighterColor(parentColor);
     nc.origin = bitter ? 'turmoil' : 'amicable';

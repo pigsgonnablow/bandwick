@@ -192,6 +192,31 @@ describe('the fish weir', () => {
     expect(b.catch ?? 0).toBe(0);
   });
 
+  it('lets fish left in its basket too long slip out and back into the river', () => {
+    const s = runYears(sim(1, N), 1);
+    const b = withWeir(s);
+    onDay(s, 8);
+    b.catch = 20;
+    b.kept = s.tick;
+    const water = weirWater(s, b.tile)[0];
+    const before = s.fish[water];
+    // a few days on, they are all still there
+    s.tick += 3 * TICKS_PER_DAY;
+    runsTick(s);
+    expect(b.catch).toBe(20);
+    // left well past that, they start to go, and the river gets them back
+    s.tick += 3 * TICKS_PER_DAY;
+    for (let k = 0; k < 4; k++) runsTick(s);
+    expect(b.catch!).toBeLessThan(20);
+    expect(b.catch!).toBeGreaterThan(0);
+    expect(s.fish[water]).toBeGreaterThan(before);
+    // and taking the fish out starts the wait again
+    b.kept = s.tick;
+    const left = b.catch!;
+    runsTick(s);
+    expect(b.catch!).toBeGreaterThanOrEqual(left);
+  });
+
   it('is emptied by someone who carries the fish home to the stores', () => {
     const s = runYears(sim(1, N), 1);
     const c = s.camp;
