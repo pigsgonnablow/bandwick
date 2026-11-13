@@ -182,7 +182,7 @@ describe('cloth', () => {
     s.camp.stock.thread = 7;
     const mine = s.camp;
     // another band, with nothing spun, is the one being followed
-    const other = s.camps.find((c) => c !== mine && !c.gone) ?? { ...mine, id: -99, stock: { ...mine.stock, thread: 0 } };
+    const other = s.camps.find((c) => c !== mine && !c.gone) ?? { ...mine, id: -99, stock: { ...mine.stock, thread: 0, fat: 0, sinew: 0 } };
     if (!s.camps.includes(other)) s.camps.push(other);
     other.stock.thread = 0;
     s.camp = other;

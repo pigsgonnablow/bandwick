@@ -23,7 +23,7 @@ export const SKILL_TIPS: Record<string, string> = {
   toolmaking: 'Toolmaking: knapping stone and shaping wood into axes, spears and other tools by the fire.',
   weaving: 'Weaving: twisting grass into cordage and weaving baskets and mats.',
   pottery: 'Pottery: shaping and firing clay into pots, bowls, lamps and storage jars. More skill works faster, cracks fewer in the firing and makes finer things.',
-  hidework: 'Hidework: scraping hides and sewing cloaks, hats, shoes and bags, and mending them when they wear.',
+  hidework: 'Hidework: scraping hides and sewing cloaks, hats, shoes and bags, and mending them when they wear. Once the band knows butchering, a skilled hand gets more meat from every carcass.',
   gardening: 'Gardening: sowing, weeding and harvesting the garden plots. A skilled gardener works faster and brings in a bigger harvest: about 60% from a beginner, 140% from a master.',
 };
 export const SKILLS_NOTE = 'Skills grow with practice, slowest near the top. The band sends its most skilled to each job, and new ideas come only to those who have mastered the crafts around them.';
@@ -125,6 +125,8 @@ export const CARD_TIPS: Record<string, string> = {
   'Dried food': 'Dried food: meat and fish dried on the rack, in meals. Keeps for most of a year.',
   Hides: 'Hides: deer hides, kept for cloaks and other clothes.',
   Pelts: 'Pelts: fox and beaver furs from the deadfalls, kept to sew into fur cloaks.',
+  Fat: 'Fat: cut from deer, boar, pigs and beavers when they are butchered. It fills the clay lamps, and pounded into meat on the drying rack it makes more dried food. Animals are fattest in autumn.',
+  Sinew: 'Sinew: cords drawn from the back and legs of a butchered deer or boar and dried. Hide clothes are sewn with it instead of cordage, and a mend sewn with sinew holds longer.',
   Thread: 'Thread: hanks of nettle and grass fiber spun on a spindle by the fire, for weaving cloth at the loom.',
   Weaving: 'Weaving: who is at the loom now, and what they are weaving.',
   Cloth: 'Cloth: how many of the band have a woven tunic to wear and a blanket to sleep under.',

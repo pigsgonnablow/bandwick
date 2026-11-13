@@ -36,6 +36,8 @@ export const TRAINING = {
   preserve: [{ skill: SK.hide, gain: 0.1 }], // a batch hung on the drying rack
   // a carcass brought home and skinned, the hide scraped and pegged out
   skin: [{ skill: SK.hide, gain: 0.08 }],
+  // a carcass butchered at the stores: the fat cut away, the sinew drawn, the joints parted
+  butcher: [{ skill: SK.hide, gain: 0.12 }, { skill: SK.hunt, gain: 0.03 }],
   // a load of roots dug with a digging stick
   roots: [{ skill: SK.forage, gain: 0.04 }],
   // a load of acorns gathered under the oaks
@@ -104,7 +106,9 @@ export const FLASH = { Thrust: 1, Stab: 2 } as const;
 export const ACT_NAMES = Object.keys(ACT);
 
 /** What a person is carrying. */
-export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10, Roots: 11, Nuts: 12, Herbs: 13, Eggs: 14, Honey: 15, Mushrooms: 16, Grain: 17, Greens: 18, Piglet: 19 } as const;
+export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10, Roots: 11, Nuts: 12, Herbs: 13, Eggs: 14, Honey: 15, Mushrooms: 16, Grain: 17, Greens: 18, Piglet: 19,
+  /** a carcass laid on the ground at the stores, being butchered: a deer, or a boar or pig */
+  Carcass: 20, BoarCarcass: 21 } as const;
 
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
@@ -236,6 +240,46 @@ export const FURS_KEPT = 9;
 export const BEAVER_MEAT = 4;
 /** A boar's tusks, kept for ornaments along with the teeth. */
 export const TUSKS_PER_BOAR = 2;
+/**
+ * Butchering. Before it, a kill is skinned and the meat cut off it and that is all; a band that knows how
+ * works the whole carcass at the stores: the marrow cracked from the bones and the scraps trimmed (more meat,
+ * the more so for a skilled hand), the fat cut away, the sinew from the back and legs dried for sewing, and a
+ * stag's antlers kept with the bones. What each kind gives besides its meat:
+ */
+export type CarcassKind = 'deer' | 'stag' | 'fawn' | 'boar' | 'piglet' | 'pig';
+export const CARCASS: Record<CarcassKind, { label: string; fat: number; sinew: number; antler: number }> = {
+  deer: { label: 'deer', fat: 0.6, sinew: 1, antler: 0 },
+  stag: { label: 'stag', fat: 0.8, sinew: 1, antler: 2 },
+  fawn: { label: 'fawn', fat: 0.15, sinew: 0, antler: 0 },
+  boar: { label: 'boar', fat: 1.4, sinew: 1, antler: 0 },
+  piglet: { label: 'piglet', fat: 0.3, sinew: 0, antler: 0 },
+  pig: { label: 'pig', fat: 1.8, sinew: 0, antler: 0 },
+};
+/** Extra meat from cracking the marrow bones and trimming the carcass, and more for each point of hide skill (to 20). */
+export const BUTCHER_MARROW = 0.1;
+export const BUTCHER_SKILL = 0.01;
+/** Ticks kneeling over a carcass to butcher it (fewer for a skilled hand, down to the least). */
+export const BUTCHER_TICKS = 16;
+export const BUTCHER_LEAST = 8;
+/** How fat the animals are by season (spring, summer, autumn, winter): fattest going into winter, lean by its end. */
+export const FAT_SEASON = [0.6, 1, 1.5, 0.7];
+/** The fat of a beaver's tail, cut off a beaver taken in a deadfall. */
+export const BEAVER_FAT = 0.5;
+/** Fat and sinew kept in the stores at most (fat keeps for months, rendered down). */
+export const FAT_KEPT = 12;
+export const SINEW_KEPT = 10;
+/**
+ * Fat pounded into meat dried on the rack keeps it and makes it go further: each measure of fat worked in (at
+ * most this much in one rackful) adds this much to the stores.
+ */
+export const PEMMICAN_FAT = 1;
+export const PEMMICAN_GAIN = 2;
+/**
+ * The hide things sewn with sinew where there is some (it stands in for cordage), and a mend sewn with sinew
+ * holds this much better.
+ */
+export const SINEW_SEWN: RecipeKey[] = ['cloak', 'hat', 'mittens', 'shoes', 'bag', 'furcloak'];
+export const SINEW_MEND = 1.3;
 /** How much of the cold a woven tunic keeps off, worn under anything else; and a blanket, at night. */
 export const TUNIC_WARM = 0.1;
 export const BLANKET_WARM = 0.3;
@@ -324,8 +368,8 @@ export const JARRED = ['herbs', 'grain', 'nuts'] as const;
 /** Storage jars a band keeps at most. */
 export const JARS_MAX = 10;
 /**
- * Fat burned in a clay lamp for one evening's work by it (taken from the meat, fish or dried meat in the
- * stores), and how keen someone is to sit down to make or mend things by the fire on a dark evening with a lamp
+ * Fat burned in a clay lamp for one evening's work by it (from the fat in the stores, or else cut from the
+ * meat, fish or dried meat), and how keen someone is to sit down to make or mend things by the fire on a dark evening with a lamp
  * to light, against firelight alone (against the same work by day, 0.85).
  */
 export const LAMP_FAT = 0.15;
@@ -584,6 +628,14 @@ export interface Task {
   span?: number;
   /** a gift: the string of beads from the band's goods set aside to give (absent: a necklace strung of teeth and shells) */
   good?: number;
+  /** a carcass being brought home (or killed at the pen), to be butchered at the stores once the band knows how */
+  carcass?: CarcassKind;
+  /** the carcass is laid out at the stores and being butchered */
+  cutting?: boolean;
+  /** crafting and mending: how much of the cordage set aside was sinew */
+  sinew?: number;
+  /** the trap round: fat cut from the beavers taken in the deadfalls */
+  fat?: number;
 }
 
 export interface Memory {
@@ -1041,6 +1093,10 @@ export interface Stock {
   furs: number;
   /** hanks of thread spun from fiber, for the loom (absent in older saves until restored) */
   thread: number;
+  /** fat cut from the carcasses, and bundles of sinew dried for sewing, once the band butchers its kills
+   * (absent in older saves until restored) */
+  fat: number;
+  sinew: number;
 }
 
 export interface SimEvent {

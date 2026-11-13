@@ -7,6 +7,7 @@ export const CARRYING: Record<number, string> = {
   [CARRY.Body]: 'the body of the dead', [CARRY.Spear]: 'a spear', [CARRY.Baby]: 'a baby', [CARRY.Fiber]: 'grass and cordage', [CARRY.Mud]: 'a basket of mud', [CARRY.Stone]: 'stone',
   [CARRY.Roots]: 'roots', [CARRY.Nuts]: 'a bag of acorns', [CARRY.Herbs]: 'healing herbs', [CARRY.Eggs]: 'eggs from a nest', [CARRY.Honey]: 'honeycomb',
   [CARRY.Mushrooms]: 'a basket of mushrooms', [CARRY.Grain]: 'a sheaf of grain', [CARRY.Greens]: 'greens from the garden', [CARRY.Piglet]: 'a piglet for the pen',
+  [CARRY.Carcass]: 'a deer, laid out to butcher', [CARRY.BoarCarcass]: 'a boar, laid out to butcher',
 };
 
 /** Where on the body something is worn, as the Gear tab says it. */

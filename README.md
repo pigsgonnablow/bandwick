@@ -197,6 +197,14 @@ the midwinter feast and laid in the graves of the dead. A master weaver is a mas
 others. The stockpile card counts the thread, the loom shed's card says who is weaving what and how many
 of the band have tunics and blankets, and people in tunics are drawn in pale or dyed cloth.
 
+**Butchering.** A band that dries its meat may learn to butcher its kills properly. Every deer, boar and pig
+brought to the stores is then laid out on its own hide and knelt over for an hour or so. Cracking the marrow bones
+and trimming the carcass gives more meat (more again in a skilled hideworker's hands). The fat is cut away, most in
+autumn and least at the end of winter, along with the fat of a beaver's tail. Fat fills the clay lamps before any
+is cut from the meat, and pounded into meat on the drying rack it makes more dried food. Sinew drawn from a deer's
+or boar's back is dried for sewing: hide clothes are sewn with it instead of cordage, and a mend sewn with sinew
+holds longer. A stag's antlers go to the bone pile for needles.
+
 **Pots, lamps and jars.** A band's clay pots keep the foods that spoil fastest, greens first, then eggs,
 berries and mushrooms (6 to a pot, going off 60% slower), and a band that keeps greens, eggs or
 mushrooms wants a pot more for each. A potter (pottery 10) who knows hides (hidework 6), at work by the

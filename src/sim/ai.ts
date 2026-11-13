@@ -3,11 +3,11 @@
 import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
-import { Person, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR,
+import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND,
   PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
-import { addPig, gateOf, feedPigs, pigToKill, killPig, pigsHungry, pigsOf } from './pigs';
+import { addPig, gateOf, feedPigs, pigToKill, killPig, pigsHungry, pigsOf, grown } from './pigs';
 import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, daylight, yearOf, TICKS_PER_DAY, TICKS_PER_HOUR } from './time';
 import { WATER, DIRS4, treeId } from './types';
 
@@ -405,7 +405,8 @@ export function decide(s: Sim, p: Person) {
 }
 
 // ---------------------------------------------------------------- task setup
-function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | null {
+/** Set someone up for a task of this kind (null: nothing of the kind to do now). */
+export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | null {
   const c = s.camp;
   const N = s.N;
   const ti = (x: number, z: number) => Math.floor(z) * N + Math.floor(x);
@@ -747,19 +748,27 @@ function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Task | nu
       const shop = s.workshopFor(key);
       const st = shop ? s.kilnSeat(shop, p) : seat(s, p, 1.45);
       const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, RECIPE_KEYS.indexOf(key));
-      // set aside now so others don't count it twice
-      for (const [m, n] of Object.entries(rc.uses) as [keyof typeof rc.uses, number][]) c.stock[m] -= n;
+      // set aside now so others don't count it twice (hide is sewn with sinew where there is some, for cordage)
+      for (const [m, n] of Object.entries(rc.uses) as [keyof typeof rc.uses, number][]) {
+        const sinew = m === 'cordage' && SINEW_SEWN.includes(key) ? Math.min(n, c.stock.sinew) : 0;
+        if (sinew > 0) { c.stock.sinew -= sinew; t.sinew = sinew; }
+        c.stock[m] -= n - sinew;
+      }
       t.amount = 1;
       p.thought = rc.thought;
       return t;
     }
     case 'mend': {
       const it = s.toMend(c)[0];
-      if (!it || c.stock.cordage < MEND_CORD) return null;
-      c.stock.cordage -= MEND_CORD; // set aside now
+      if (!it || Math.max(c.stock.cordage, c.stock.sinew) < MEND_CORD) return null;
+      // set aside now (sinew, where there is some: a mend sewn with it holds better)
+      const sinew = c.stock.sinew >= MEND_CORD;
+      if (sinew) c.stock.sinew -= MEND_CORD;
+      else c.stock.cordage -= MEND_CORD;
       const st = seat(s, p, 1.45);
       const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, it.id);
       t.amount = 1;
+      if (sinew) t.sinew = MEND_CORD;
       const w = it.wearer !== undefined ? s.byId.get(it.wearer) : undefined;
       p.thought = `Mending ${w ? (w === p ? 'their own' : `${w.name}'s`) : 'a'} ${s.itemLabel(it)} by the fire.`;
       return t;
@@ -992,6 +1001,8 @@ export function sendHome(s: Sim, p: Person, c = s.campOf(p)) {
 export function abandon(s: Sim, p: Person, keepCarry = false) {
   const t = p.task;
   const st = s.camp.stock;
+  // a carcass half butchered is picked up again as the meat it is (never left lying in front of them as they go)
+  if (p.carry === CARRY.Carcass || p.carry === CARRY.BoarCarcass) p.carry = CARRY.Meat;
   // a piglet carried home for the pen is put in it (or let go, with no pen to put it in)
   if (p.carry === CARRY.Piglet) {
     const pen = s.penOf();
@@ -1011,7 +1022,8 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
       delete t.good;
     }
     if (t.kind === 'mend' && t.amount > 0) {
-      st.cordage += MEND_CORD;
+      if (t.sinew) st.sinew += MEND_CORD;
+      else st.cordage += MEND_CORD;
       t.amount = 0;
     }
     if (t.kind === 'nurse' && t.amount > 0) {
@@ -1026,6 +1038,8 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
     if (t.kind === 'craft' && t.amount > 0) {
       const uses = RECIPES[RECIPE_KEYS[t.ref]].uses;
       for (const [m, n] of Object.entries(uses) as [keyof typeof uses, number][]) st[m] += n;
+      // (the sinew among the cordage goes back as sinew)
+      if (t.sinew) { st.cordage -= t.sinew; st.sinew += t.sinew; t.sinew = 0; }
       t.amount = 0;
     }
     if (t.kind === 'trap') {
@@ -1033,6 +1047,7 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
       // a round cut short by hunger or nightfall: they bring what the traps held home with them
       // (pelts are light, and kept; the catch goes in with them when they come in to eat or sleep)
       if (t.amount > 0) { st.meat += t.amount; s.book('trapped', t.amount); s.book('gathered.meat', t.amount); t.amount = 0; }
+      if ((t.fat ?? 0) > 0) { keepFat(s, st, t.fat!); t.fat = 0; }
       if ((t.fish ?? 0) > 0) { st.fish += t.fish!; s.book('trapped', t.fish!); s.book('gathered.fish', t.fish!); t.fish = 0; }
       if ((t.furs ?? 0) > 0) {
         const n = Math.min(t.furs!, Math.max(0, FURS_KEPT - st.furs));
@@ -1215,7 +1230,7 @@ function face(p: Person, x: number, z: number) {
 export function deposit(s: Sim, p: Person) {
   const st = s.camp.stock;
   const a = p.carryAmt;
-  const kind = p.carry === CARRY.Berries ? 'berries' : p.carry === CARRY.Meat ? 'meat' : p.carry === CARRY.Fish ? 'fish' : p.carry === CARRY.Log ? 'wood'
+  const kind = p.carry === CARRY.Berries ? 'berries' : p.carry === CARRY.Meat || p.carry === CARRY.Carcass || p.carry === CARRY.BoarCarcass ? 'meat' : p.carry === CARRY.Fish ? 'fish' : p.carry === CARRY.Log ? 'wood'
     : p.carry === CARRY.Fiber ? 'fiber' : p.carry === CARRY.Mud ? 'mud' : p.carry === CARRY.Stone ? 'stone' : p.carry === CARRY.Roots ? 'roots' : p.carry === CARRY.Nuts ? 'nuts' : p.carry === CARRY.Herbs ? 'herbs'
     : p.carry === CARRY.Eggs ? 'eggs' : p.carry === CARRY.Honey ? 'honey' : p.carry === CARRY.Mushrooms ? 'mushrooms'
     : p.carry === CARRY.Grain ? 'grain' : p.carry === CARRY.Greens ? 'greens' : '';
@@ -1305,6 +1320,65 @@ export function foodInHand(p: Person) {
 /** On the way back to the stores with goods: they see the delivery through unless it's an emergency. */
 export function delivering(p: Person) {
   return p.task?.homeAt !== undefined && p.carry !== CARRY.None;
+}
+
+/** What a deer brought down is, to butcher: a fawn, a stag with antlers, or a doe. */
+const deerKind = (d: Deer): CarcassKind => (d.fawn ? 'fawn' : isStag(d) ? 'stag' : 'deer');
+
+/** Fat put by in the stores, as much as there is room for. */
+function keepFat(s: Sim, st: { fat: number }, n: number) {
+  const put = Math.max(0, Math.min(n, FAT_KEPT - st.fat));
+  st.fat += put;
+  if (put > 0) s.book('gathered.fat', put);
+}
+
+/**
+ * A carcass brought to the stores, butchered there by whoever brought it once the band knows how: laid out on
+ * the ground and knelt over for an hour or so, then the meat (more of it: the marrow and the trimmings), the
+ * fat and the sinew go into the stores. Without butchering nothing happens here (false) and the meat goes in as
+ * it came. True while still at it.
+ */
+function cutUp(s: Sim, p: Person, t: Task): boolean {
+  if (!t.carcass || !s.knows('butchering') || p.carry === CARRY.None) return false;
+  const kind = t.carcass;
+  if (!t.cutting) {
+    t.cutting = true;
+    t.timer = Math.max(BUTCHER_LEAST, Math.round(BUTCHER_TICKS - Math.min(20, p.skills[SK.hide]) * 0.4));
+    p.carry = kind === 'boar' || kind === 'pig' || kind === 'piglet' ? CARRY.BoarCarcass : CARRY.Carcass;
+    p.path = null;
+    p.thought = `Butchering the ${CARCASS[kind].label}: the hide off, the fat cut away, the sinew drawn.`;
+  }
+  p.act = ACT.Gather;
+  if (--t.timer > 0) return true;
+  p.carryAmt = butcher(s, p, kind, p.carryAmt);
+  p.carry = CARRY.Meat;
+  delete t.carcass;
+  t.cutting = false;
+  return false;
+}
+
+/**
+ * What butchering a carcass gives besides its meat (into the stores: fat, sinew, a stag's antlers with the
+ * bones), and how much meat there is from it now, marrow and trimmings and all.
+ */
+export function butcher(s: Sim, p: Person, kind: CarcassKind, meat: number) {
+  const st = s.camp.stock, k = CARCASS[kind];
+  keepFat(s, st, k.fat * FAT_SEASON[seasonOf(s.tick)]);
+  if (k.sinew > 0) {
+    const n = Math.max(0, Math.min(k.sinew, SINEW_KEPT - st.sinew));
+    st.sinew += n;
+    if (n > 0) s.book('gathered.sinew', n);
+  }
+  // (a stag's antlers are kept with the bones, for the needles and awls)
+  if (k.antler > 0 && s.knows('needles') && st.bones < BONES_KEPT) {
+    const n = Math.min(k.antler, BONES_KEPT - st.bones);
+    st.bones += n;
+    s.book('gathered.bones', n);
+  }
+  train(p, 'butcher');
+  s.practise(p, 'carcass', 0.5);
+  s.book('butchered', 1);
+  return meat * (1 + BUTCHER_MARROW + Math.min(20, p.skills[SK.hide]) * BUTCHER_SKILL);
 }
 
 function goStore(s: Sim, p: Person, t: Task, next: number) {
@@ -1997,7 +2071,7 @@ export function runTask(s: Sim, p: Person) {
       if (isDark(s.tick)) s.practise(p, 'night_work');
       s.putOutLamp(p);
       // patched and restitched: not new, but good for a while yet
-      it.wear = Math.max(0, it.wear - MEND_BY * (0.8 + Math.min(20, p.skills[SK.hide]) * 0.02));
+      it.wear = Math.max(0, it.wear - MEND_BY * (0.8 + Math.min(20, p.skills[SK.hide]) * 0.02) * (t.sinew ? SINEW_MEND : 1));
       it.mended = (it.mended ?? 0) + 1;
       it.mender = p.id;
       t.amount = 0;
@@ -2461,6 +2535,7 @@ export function runTask(s: Sim, p: Person) {
       const pen = s.building(t.ref);
       if (t.stage === 2) {
         if (moving(go(s, p, t))) return;
+        if (cutUp(s, p, t)) return;
         deposit(s, p);
         return finish(s, p);
       }
@@ -2488,6 +2563,7 @@ export function runTask(s: Sim, p: Person) {
       // a pig for the stores (a grown-up's work): stuck at the gate, bled, scalded and butchered there
       const g = s.age(p) >= 16 ? pigToKill(s, c) : undefined;
       if (g) {
+        const kind: CarcassKind = grown(s, g) ? 'pig' : 'piglet';
         const meat = killPig(s, c, g);
         // with nothing to feed them on, the rest the band can't keep are killed too, and fetched home through the day
         if (pigsHungry(s, c)) {
@@ -2503,6 +2579,7 @@ export function runTask(s: Sim, p: Person) {
         if (s.knows('needles') && c.stock.bones < BONES_KEPT) { c.stock.bones = Math.min(BONES_KEPT, c.stock.bones + BONES_PER_DEER); s.book('gathered.bones', BONES_PER_DEER); }
         p.carry = CARRY.Meat;
         p.carryAmt = meat;
+        t.carcass = kind;
         goStore(s, p, t, 2);
         p.thought = 'Carrying a pig home for the stores.';
         return;
@@ -2550,7 +2627,11 @@ export function runTask(s: Sim, p: Person) {
             if (got > 0) {
               if (it.kind === 'deadfall') {
                 t.furs = (t.furs ?? 0) + 1;
-                if (it.pelt === BEAST.Beaver) t.amount += BEAVER_MEAT;
+                if (it.pelt === BEAST.Beaver) {
+                  t.amount += BEAVER_MEAT;
+                  // (and the fat of its tail, cut off there, by a band that butchers its kills)
+                  if (s.knows('butchering')) t.fat = (t.fat ?? 0) + BEAVER_FAT * FAT_SEASON[seasonOf(s.tick)];
+                }
               } else if (it.kind === 'snare') t.amount += got;
               else t.fish = (t.fish ?? 0) + got;
               train(p, 'trap.catch');
@@ -2595,6 +2676,7 @@ export function runTask(s: Sim, p: Person) {
         s.book('gathered.fish', t.fish!);
         t.fish = 0;
       }
+      if ((t.fat ?? 0) > 0) { keepFat(s, c.stock, t.fat!); t.fat = 0; }
       // and the pelts, skinned and pegged out to scrape
       if ((t.furs ?? 0) > 0) {
         const n = Math.min(t.furs!, Math.max(0, FURS_KEPT - c.stock.furs));
@@ -2852,6 +2934,7 @@ export function runTask(s: Sim, p: Person) {
               if (!h) continue;
               h.carry = CARRY.Meat;
               h.carryAmt = q.fawn ? 4 : 8;
+              h.task!.carcass = deerKind(q);
               goStore(s, h, h.task!, 1);
               h.thought = 'Carrying the kill home.';
             }
@@ -2868,6 +2951,7 @@ export function runTask(s: Sim, p: Person) {
           if (firstKill(s.camp, 'deer')) s.event('hunt', `${p.name} brought down the band's first deer at ${s.camp.name}.`, [p.id], p.x, p.z, 3);
           p.carry = CARRY.Meat;
           p.carryAmt = d.fawn ? 4 : 8;
+          t.carcass = deerKind(d);
           goStore(s, p, t, 1);
           p.thought = 'Carrying the kill home.';
         } else {
@@ -2881,6 +2965,8 @@ export function runTask(s: Sim, p: Person) {
         return;
       }
       if (moving(go(s, p, t))) return;
+      // (once the band knows how, the kill is laid out at the stores and butchered there)
+      if (cutUp(s, p, t)) return;
       deposit(s, p);
       finish(s, p);
       return;
@@ -3049,6 +3135,15 @@ export function runTask(s: Sim, p: Person) {
       if (--t.timer > 0) return;
       c.stock.preserved += t.amount * 0.9;
       s.book('dried', t.amount);
+      // fat pounded into the dried meat (not the fish) makes cakes that keep, and go further (a little kept back
+      // for the lamps, in a band that has them)
+      const spare = c.stock.fat - (s.knows('lamps') ? PEMMICAN_FAT : 0);
+      const fat = t.amount - (t.fish ?? 0) >= 2 ? Math.max(0, Math.min(PEMMICAN_FAT, spare)) : 0;
+      if (fat > 0) {
+        c.stock.fat -= fat;
+        c.stock.preserved += fat * PEMMICAN_GAIN;
+        s.book('pemmican', fat);
+      }
       t.amount = 0;
       train(p, 'preserve');
       s.practise(p, 'rack');
@@ -3385,6 +3480,7 @@ function huntBoar(s: Sim, p: Person, t: Task) {
     if (firstKill(c, 'boar')) s.event('hunt', `${p.name} brought down the band's first wild boar at ${c.name}.`, [p.id], p.x, p.z, 3);
     p.carry = CARRY.Meat;
     p.carryAmt = b.young ? 3 : 10;
+    t.carcass = b.young ? 'piglet' : 'boar';
     goStore(s, p, t, 1);
     p.thought = 'Carrying the boar home.';
   } else {
