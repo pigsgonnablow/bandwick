@@ -88,7 +88,7 @@ function netReach(s: Sim, w: number): number[] {
 /** Whether this person is at the water with a net, waiting for hands to haul it. */
 function netWaitingFor(s: Sim, id: number) {
   const q = s.byId.get(id);
-  return !!q && q.alive && q.task?.kind === 'fish' && q.task.stage <= 1 && q.task.crew === undefined && s.heldBy(q)?.kind === 'net';
+  return !!q && q.alive && q.task?.kind === 'fish' && q.task.stage >= 0 && q.task.stage <= 1 && q.task.crew === undefined && s.heldBy(q)?.kind === 'net';
 }
 /** Someone of the band near enough laying out a net, with room for another pair of hands on it. */
 function netWaiting(s: Sim, p: Person): Person | undefined {
@@ -944,6 +944,9 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       return t;
     }
     case 'fish': {
+      // (a spear-fisher doesn't carry off the band's axe: only fishing gear stays in hand)
+      const holding = s.heldBy(p);
+      if (holding && holding.kind !== 'net' && holding.kind !== 'line' && holding.kind !== 'harpoon') s.returnTool(p);
       // a net waiting at the water for hands to haul it: go and help
       const netter = s.age(p) >= 13 ? netWaiting(s, p) : undefined;
       if (netter) {
@@ -2170,7 +2173,7 @@ export function runTask(s: Sim, p: Person) {
       }
       p.act = ACT.Sit;
       face(p, c.x, c.z);
-      if (t.timer % 10 === 0 && isDark(s.tick)) s.lightLamp(p);
+      if (isDark(s.tick) && (t.timer % 10 === 0 || s.heldBy(p)?.kind !== 'lamp')) s.lightLamp(p);
       if (--t.timer > 0) return;
       if (isDark(s.tick)) s.practise(p, 'night_work');
       s.putOutLamp(p);
@@ -2808,7 +2811,7 @@ export function runTask(s: Sim, p: Person) {
       }
       p.act = ACT.Sit;
       // after dark, a lamp lit beside them to see the work by
-      if (t.timer % 10 === 0 && isDark(s.tick) && s.lightLamp(p)) p.thought = rc.thought.replace(/\.$/, ' by lamplight.');
+      if (isDark(s.tick) && (t.timer % 10 === 0 || s.heldBy(p)?.kind !== 'lamp') && s.lightLamp(p)) p.thought = rc.thought.replace(/\.$/, ' by lamplight.');
       const at = s.workshopFor(key);
       if (at) face(p, at.x + 0.5, at.z + 0.5);
       else face(p, c.x, c.z);
@@ -3190,9 +3193,10 @@ export function runTask(s: Sim, p: Person) {
         const chill = winter ? 0.12 * (kind === 'harpoon' ? HARPOON_COLD : kind === 'line' ? 0 : 1) : 0;
         const chance = 0.42 + p.skills[SK.fish] * 0.028 + stocked * 0.18 - chill + (kind === 'harpoon' ? HARPOON_HIT : kind === 'line' ? LINE_HIT : 0);
         if (kind !== 'line') flash(p, FLASH.Stab);
-        if (r.next() < chance) {
+        // (whole fish only: water fished down below one is a miss)
+        if (r.next() < chance && s.fish[w] >= 1) {
           // (water fished down, or in a lean year, gives smaller catches: fewer fish, and smaller)
-          const got = Math.min(s.fish[w], Math.max(1, Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (0.35 + 0.65 * stocked) * cold * (kind === 'line' ? LINE_CATCH : kind === 'harpoon' ? HARPOON_CATCH : 1))));
+          const got = Math.min(Math.floor(s.fish[w]), Math.max(1, Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (0.35 + 0.65 * stocked) * cold * (kind === 'line' ? LINE_CATCH : kind === 'harpoon' ? HARPOON_CATCH : 1))));
           s.fish[w] -= got;
           s.fishVersion++;
           train(p, 'fish.catch');

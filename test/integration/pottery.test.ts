@@ -97,6 +97,38 @@ describe('pots for the stores', () => {
 });
 
 describe('clay lamps', () => {
+  it('stay lit in the hands of someone crafting through the night, and go back on the pile after', () => {
+    const s = potters(2, ['pottery', 'lamps']);
+    clear(s, 'lamp');
+    give(s, 'lamp', 2);
+    const p = adult(s);
+    toNight(s);
+    p.task = { ...task(s, 'craft', p, RECIPE_KEYS.indexOf('cordage'), 1), amount: 1, timer: 400 };
+    p.nextThink = s.tick + 1000;
+    // (sat by the fire, a stone's throw from the pile)
+    const st = s.storeSpot(true);
+    p.x = st.x + 1; p.z = st.z; p.path = null;
+    p.task.gx = p.x; p.task.gz = p.z; p.task.goal = s.tileOf(p);
+    s.camp.stock.fiber += 30;
+    let lit = 0, dark = 0, swaps = 0, last: number | undefined;
+    for (let i = 0; i < 200 && p.task?.kind === 'craft' && isDark(s.tick); i++) {
+      s.step();
+      if (!p.task || p.task.kind !== 'craft') break;
+      const h = s.heldBy(p)?.id;
+      dark++;
+      if (h !== undefined) lit++;
+      if (i > 0 && h !== last) swaps++;
+      last = h;
+    }
+    expect(dark).toBeGreaterThan(50);
+    expect(lit / dark).toBeGreaterThanOrEqual(0.95);
+    expect(swaps).toBeLessThanOrEqual(2);
+    // the work over, the lamp is set back on the pile
+    p.task = null;
+    for (let i = 0; i < 30; i++) s.step();
+    expect(s.items.filter((i) => i.kind === 'lamp').every((i) => i.holder < 0)).toBe(true);
+  });
+
   it('are thought of by a potter who knows hides, at work by the fire after dark', () => {
     const d = DISCOVERY.get('lamps')!;
     expect(d.needs).toEqual(['pottery']);

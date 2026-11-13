@@ -1290,8 +1290,10 @@ export class Sim {
       // a tool nobody is working with goes back on the pile when they pass by it
       if ((t + p.id) % 10 === 0 && p.alive && !TOOL_TASKS.includes(p.task?.kind as TaskKind) && this.heldBy(p)) {
         const st = this.storeSpot(true);
-        // (a lamp is put out and set down as soon as the work by it is left)
-        if (hyp(p.x - st.x, p.z - st.z) < 3.5 || (this.heldBy(p)!.kind === 'lamp' && p.task?.kind !== 'craft' && p.task?.kind !== 'mend')) this.returnTool(p);
+        const held = this.heldBy(p)!;
+        // (a lamp is put out and set down as soon as the work by it is left, but not while they work by it)
+        const lampAtWork = held.kind === 'lamp' && (p.task?.kind === 'craft' || p.task?.kind === 'mend') && isDark(t);
+        if (!lampAtWork && (hyp(p.x - st.x, p.z - st.z) < 3.5 || held.kind === 'lamp')) this.returnTool(p);
       }
     }
     this.updateDeer();

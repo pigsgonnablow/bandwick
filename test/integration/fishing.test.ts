@@ -187,6 +187,61 @@ describe('fishing with gear', () => {
     expect(line.fish / (40 - line.empty)).toBeLessThan(spear.fish / (40 - spear.empty));
   });
 
+  it('sends a spear-fisher out without the band\'s axe', () => {
+    const s = sim(2);
+    while (freshFrozen(s.tick)) s.tick += TICKS_PER_DAY;
+    for (const it of [...s.items]) if (['net', 'line', 'harpoon'].includes(it.kind) && it.band === s.camp.id) s.items.splice(s.items.indexOf(it), 1);
+    s.giveTools(s.camp, { chopper: 1 });
+    const p = adults(s)[0];
+    const chopper = s.toolsOf(s.camp, 'chopper')[0];
+    s.takeTool(p, chopper);
+    const t = setup(s, p, 'fish');
+    expect(t).not.toBeNull();
+    expect(s.heldBy(p)).toBeUndefined();
+    expect(chopper.holder).toBe(-1);
+  });
+
+  it('never brings home a fraction of a fish, or none', () => {
+    const s = sim(2);
+    while (freshFrozen(s.tick)) s.tick += TICKS_PER_DAY;
+    const at = bank(s)!;
+    const p = adults(s)[0];
+    p.skills[SK.fish] = 12;
+    let trips = 0;
+    for (let k = 0; k < 60; k++) {
+      atWater(s, p, at.spot, at.w);
+      for (let i = 0; i < 80 && p.task && p.task.stage < 2; i++) {
+        s.fish[at.w] = 0.6 + (k % 3) * 0.7;
+        runTask(s, p);
+        s.tick++;
+      }
+      if (p.carry === CARRY.Fish) {
+        trips++;
+        expect(p.carryAmt).toBeGreaterThanOrEqual(1);
+        expect(Number.isInteger(p.carryAmt)).toBe(true);
+      }
+      p.carry = CARRY.None;
+      p.carryAmt = 0;
+    }
+    expect(trips).toBeGreaterThan(0);
+  });
+
+  it('keeps net helpers at the pile until the keeper has the net on its way', () => {
+    const s = sim(2);
+    while (freshFrozen(s.tick)) s.tick += TICKS_PER_DAY;
+    const at = bank(s)!;
+    const [keeper, helper] = adults(s);
+    hand(s, keeper, 'net');
+    atWater(s, keeper, at.spot, at.w, { stage: -1 });
+    helper.x = keeper.x + 1;
+    helper.z = keeper.z;
+    const t = setup(s, helper, 'fish');
+    expect(t?.crew).toBeUndefined();
+    keeper.task!.stage = 0;
+    const t2 = setup(s, helper, 'fish');
+    expect(t2?.crew).toBe(keeper.id);
+  });
+
   it('hauls a net with others: a helper comes, and the catch is bigger and shared', () => {
     const s = sim(2);
     while (freshFrozen(s.tick)) s.tick += TICKS_PER_DAY;
