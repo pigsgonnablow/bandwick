@@ -1,10 +1,12 @@
 // Woodcutting past the axe: the band's best woodcutter is known for it, a master gets more from each tree and is
-// seldom hurt, firewood seasoned under the woodpile roof burns longer, and charcoal burned in a clamp for the kiln.
+// seldom hurt, firewood seasoned under the woodpile roof burns longer, and charcoal burned in a clamp for the kiln;
+// a log sledge, clearing by fire, oak split into planks with wedges, and the dugout canoe.
 import { describe, it, expect } from 'vitest';
-import { SK, CARRY, RECIPE_KEYS, Task, TaskKind, Building, SLEDGE_LOAD, SLEDGE_SNOW, SWIDDEN_SOIL, SWIDDEN_GRASS, SEASONED_HEAT, SEASONING, CLAMP_BURN, CHARCOAL_YIELD, CRAFT_TITLES } from '../../src/sim/band';
+import { SK, CARRY, CANOE_OPEN, specOf, labelOf, RECIPE_KEYS, Task, TaskKind, Building, SLEDGE_LOAD, SLEDGE_SNOW, SWIDDEN_SOIL, SWIDDEN_GRASS, SEASONED_HEAT, SEASONING, CLAMP_BURN, CHARCOAL_YIELD, CRAFT_TITLES } from '../../src/sim/band';
 import { DISCOVERY, ELITE, knowHowFor } from '../../src/sim/know';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, seasonOf, snowLies } from '../../src/sim/time';
-import { runTask, setup } from '../../src/sim/ai';
+import { runTask, setup, abandon, completeBuilding } from '../../src/sim/ai';
+import { canoeSite, openReach, openWater } from '../../src/sim/canoe';
 import { Sim, treeStage, isTreeType, LOGS, FIRE_HOLDS } from '../../src/sim/sim';
 import { sim, runTo, runYears } from '../helpers';
 
@@ -311,5 +313,136 @@ describe('clearing by fire', () => {
     c.knows.push('swidden');
     const fire = s.plotSite(c);
     expect(s.treesOnTile[fire]).toBeGreaterThanOrEqual(s.treesOnTile[open]);
+  });
+});
+
+describe('wedges and split timber', () => {
+  it('is thought of by a master woodcutter raising a hut of round poles', () => {
+    const d = DISCOVERY.get('split_timber')!;
+    expect(d.needs).toEqual(['huts', 'axe']);
+    expect(d.practice.build_poles).toBeGreaterThan(0);
+    expect(knowHowFor({ kind: 'hut', walls: 'plank' })).toEqual(['huts', 'split_timber']);
+    expect(knowHowFor({ kind: 'storehouse', walls: 'plank' })).toEqual(['storehouse', 'split_timber']);
+  });
+
+  it('raises huts and stores from fewer trees, quicker, and tighter', () => {
+    for (const kind of ['hut', 'storehouse'] as const) {
+      const pole = specOf({ kind }), plank = specOf({ kind, walls: 'plank' });
+      expect(plank.wood).toBeLessThan(pole.wood);
+      expect(plank.work).toBeLessThan(pole.work);
+      if (kind === 'hut') expect(plank.shelter).toBeGreaterThan(pole.shelter);
+      else expect(plank.keep).toBeLessThan(pole.keep);
+    }
+    expect(labelOf({ kind: 'hut', walls: 'plank' })).toBe('Split-plank hut');
+  });
+
+  it('wants wedges and a maul made once the band knows how', () => {
+    const s = band(2, ['axe']);
+    const c = s.camp;
+    for (const k of ['axe', 'chopper', 'stick', 'basket', 'pot', 'needle', 'harpoon', 'line', 'net', 'sledge'] as const) s.giveTools(c, { [k]: 10 });
+    expect(s.toolToMake(c)).not.toBe('wedges');
+    c.knows.push('split_timber');
+    expect(s.toolToMake(c)).toBe('wedges');
+    s.giveTools(c, { wedges: 1 });
+    expect(s.toolToMake(c)).not.toBe('wedges');
+  });
+
+  it('splits planks for the walls only with wedges on the pile, and wears them', () => {
+    const pick = (wedges: boolean) => {
+      const s = band(2, ['huts', 'axe', 'split_timber']);
+      const c = s.camp;
+      for (const it of s.toolsOf(c, 'wedges')) s.items.splice(s.items.indexOf(it), 1);
+      if (wedges) s.giveTools(c, { wedges: 1 });
+      const b = s.newBuilding('hut', c.tile + 3, -1);
+      s.chooseWalls(b, false);
+      return { s, b };
+    };
+    expect(pick(false).b.walls).not.toBe('plank');
+    const { s, b } = pick(true);
+    expect(b.walls).toBe('plank');
+    const wedges = s.toolsOf(s.camp, 'wedges')[0];
+    const p = adult(s);
+    b.work = specOf(b).work - 0.5;
+    completeBuilding(s, b, p);
+    expect(wedges.wear).toBeGreaterThan(0);
+  });
+});
+
+describe('the dugout canoe', () => {
+  it('is thought of by a woodcutter fishing a bank fished thin, with open water beyond', () => {
+    const d = DISCOVERY.get('canoe')!;
+    expect(d.needs).toEqual(['axe']);
+    expect(d.practice.far_water).toBeGreaterThan(0);
+    expect(knowHowFor({ kind: 'canoe' })).toEqual(['canoe']);
+  });
+
+  /** A band whose canoe is drawn up on the bank, built. */
+  function withCanoe() {
+    const s = band(2, ['axe', 'canoe']);
+    const c = s.camp;
+    while (seasonOf(s.tick) === 3) s.tick += TICKS_PER_DAY;
+    const tile = canoeSite(s, c);
+    expect(tile).toBeGreaterThanOrEqual(0);
+    expect(openReach(s, tile).length).toBeGreaterThanOrEqual(CANOE_OPEN);
+    const b = s.newBuilding('canoe', tile, -1);
+    b.built = true;
+    b.wood = 10;
+    b.work = specOf(b).work;
+    return { s, c, b };
+  }
+
+  it('is hollowed out on a bank with open water beyond it, once the band knows how', () => {
+    const s = band(2, ['axe']);
+    while (seasonOf(s.tick) === 3) s.tick += TICKS_PER_DAY;
+    s.plan();
+    expect(s.buildings.some((b) => b.kind === 'canoe')).toBe(false);
+    s.camp.knows.push('canoe');
+    s.plan();
+    const b = s.buildings.find((q) => q.kind === 'canoe' && q.band === s.camp.id)!;
+    expect(b).toBeDefined();
+    expect(s.world.water[b.tile]).toBe(0);
+    expect(s.camp.plan).toContain('Hollow out a dugout canoe from a great pine');
+  });
+
+  it('takes a fisher out onto the open water, out of reach of the bank, and back with more fish', () => {
+    const { s, c, b } = withCanoe();
+    for (const it of s.toolsOf(c, 'line')) s.items.splice(s.items.indexOf(it), 1);
+    const p = adult(s);
+    p.x = b.x + 0.5;
+    p.z = b.z + 1.5;
+    p.skills[SK.fish] = 10;
+    const fish0 = c.stock.fish;
+    p.task = setup(s, p, 'canoe');
+    expect(p.task?.kind).toBe('canoe');
+    const w = p.task!.bank!;
+    expect(openWater(s, w)).toBe(true);
+    let afloat = false, out = false, caught = 0;
+    for (let i = 0; i < 1500 && p.task?.kind === 'canoe'; i++) {
+      runTask(s, p);
+      s.tick++;
+      if (s.world.water[s.tileOf(p)] !== 0) afloat = true;
+      if (b.out === p.id) out = true;
+      if (p.carry === CARRY.Fish) caught = p.carryAmt;
+    }
+    expect(afloat).toBe(true);
+    expect(out).toBe(true);
+    expect(b.out).toBeUndefined();
+    expect(caught).toBeGreaterThan(0);
+    expect(c.stock.fish).toBeGreaterThan(fish0);
+    expect(s.world.water[s.tileOf(p)]).toBe(0);
+  });
+
+  it('is never left out on the water: a fisher called away brings it back to the bank', () => {
+    const { s, b } = withCanoe();
+    const p = adult(s);
+    p.x = b.x + 0.5;
+    p.z = b.z + 1.5;
+    p.task = setup(s, p, 'canoe');
+    for (let i = 0; i < 300 && !(p.task?.kind === 'canoe' && p.task.stage === 2); i++) { runTask(s, p); s.tick++; }
+    expect(p.task?.stage).toBe(2);
+    expect(s.world.water[s.tileOf(p)]).not.toBe(0);
+    abandon(s, p);
+    expect(b.out).toBeUndefined();
+    expect(s.world.water[s.tileOf(p)]).toBe(0);
   });
 });

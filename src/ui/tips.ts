@@ -16,7 +16,7 @@ export const NEED_TIPS: Record<string, string> = {
 /** Skills on the Skills tab: what each one makes better. */
 export const SKILL_TIPS: Record<string, string> = {
   foraging: 'Foraging: picking berries, digging roots, gathering acorns, eggs, honey, mushrooms, herbs and grass. More skill picks faster and carries more home.',
-  woodcutting: 'Woodcutting: felling trees, and burning charcoal in a clamp for the kiln. More skill brings a tree down in fewer strokes. A master (15 and up) is seldom caught by a falling tree, gets more wood out of each one, and loses less of a clamp to ash. Woodcutters also think of the log sledge and of clearing garden ground by fire.',
+  woodcutting: 'Woodcutting: felling trees, and burning charcoal in a clamp for the kiln. More skill brings a tree down in fewer strokes. A master (15 and up) is seldom caught by a falling tree, gets more wood out of each one, and loses less of a clamp to ash. Woodcutters also think of the log sledge, of clearing garden ground by fire, of splitting oak into planks with wedges, and of the dugout canoe.',
   building: 'Building: raising shelters, racks and stores, and digging mud. More skill gets the work done faster.',
   hunting: 'Hunting: bringing down deer. More skill means more spears that find their mark.',
   fishing: 'Fishing: more skill catches fish more often, and more of them at a time.',

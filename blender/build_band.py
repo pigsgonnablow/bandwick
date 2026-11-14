@@ -36,11 +36,15 @@ Conventions (read by src/render/band.ts):
       downstream to -y; ...Full with fish in the basket.
   bld__{clamp,clampLit}                                           a charcoal clamp by the kiln: its bed cold, with the last charcoal raked out, and
       lit, the stack covered over with turf and smouldering.
-      huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
+      huts and the storehouse also come as ...d (wattle-and-daub), ...s (drystone) and ...p (split oak planks), e.g. bld__hut0d, bld__storehouses.
   bld__{plot,plotSown,plotRoots,plotGrain,plotRipe,plotStubble}  a garden plot through its year (bare or fallow, sown, roots in
       leaf, young grain, ripe grain, stubble with stooks); the fence goes round the same tile.
   bld__plotBurnt                                                  a plot cleared by fire, before its first sowing: ash, charred stumps.
   carry__{sledge,sledgeFull}                                      a log sledge dragged behind on a rope from the right hand, empty or loaded.
+  carry__canoe                                                    a one-man dugout under someone sat in it on the water (floor at their seat, bow to -Y).
+  bld__{canoe,canoeOut}                                           the band's dugout drawn up on its rollers on the bank, bow to the water (-Y), and
+      the rollers alone while it is out.
+  item__wedges                                                    wedges and a maul for splitting oak into planks.
 Models face -Y in Blender (= +Z in the game). 1 unit = one 6 m tile; an adult is 0.4 tall.
 """
 import math
@@ -1827,6 +1831,19 @@ for name, full in (("carry__sledge", False), ("carry__sledgeFull", True)):
 q = Part()
 sledge(q, random.Random(70), False, rope=False, y0=-0.16)
 q.finish("item__sledge")
+# wedges and a maul: three wedges of fire-hardened oak, tips dark, and a maul cut from the butt of a young trunk
+WEDGE, WEDGE_TIP, MAUL = (164, 124, 80), (92, 70, 50), (128, 96, 64)
+q = Part()
+rw = random.Random(71)
+for k, (x, y, a) in enumerate(((-0.05, 0.03, 0.3), (-0.01, 0.06, -0.5), (0.03, 0.02, 1.2))):
+    r = Matrix.Rotation(a, 3, "Z")
+    q.box(Vector((x, y, 0.009)), (0.022, 0.06, 0.018), WEDGE, rw, 0.06, rot=r, taper=0.35)
+    tip = r @ Vector((0, -0.032, 0))
+    q.box(Vector((x, y, 0.004)) + tip, (0.02, 0.008, 0.006), WEDGE_TIP, rw, 0.04, rot=r)
+q.cyl(8, 0.03, 0.03, (-0.02, -0.07, 0.03), (0.06, -0.06, 0.03), MAUL, rw, 0.05)  # the maul's head
+q.cyl(8, 0.029, 0.029, (-0.021, -0.07, 0.03), (-0.023, -0.07, 0.03), (196, 164, 116), rw, 0.03)  # end grain
+q.cyl(5, 0.008, 0.007, (0.02, -0.065, 0.03), (0.03, 0.09, 0.01), (120, 92, 60), rw, 0.04)  # its handle
+q.finish("item__wedges")
 q = Part()  # a stone axe: a stout haft, the head lashed on near the top, blade facing forward
 q.cyl(5, 0.0075, 0.0065, (0, 0, -0.04), (0, 0, 0.175), (120, 92, 60), rnd, 0.03)
 q.box((0, -0.02, 0.152), (0.016, 0.05, 0.034), (132, 126, 118), rnd, 0.08, taper=0.7)
@@ -2435,6 +2452,103 @@ q = Part()
 dugout(q, random.Random(60))
 q.finish("boat__dugout")
 
+
+def canoe(q, rr, dz=0.0, dy=0.0, tilt=0.0, paddle=True, chips=False):
+    """A one-man dugout: a pine trunk hollowed with fire and the axe, blunt solid ends, the inside pale and smudged
+    with char. With dz = 0 the floor of the hollow is at the origin (the waterline the game floats it a little below);
+    the bow points -Y. A paddle lies across it in front of whoever sits in it."""
+    L2, B, WALL = 0.46, 0.1, 0.012
+    NS, N = 18, 8
+    bm = q.bm
+    rot = Matrix.Rotation(tilt, 4, "X")
+
+    def P(x, y, z):
+        v = rot @ Vector((x, y, z))
+        return (v.x, v.y + dy, v.z + dz)
+
+    def shape(u):
+        a = abs(u)
+        half = B * max(0.0, 1 - a ** 2.4) ** 0.55 + 0.006
+        bot = -0.032 + 0.05 * a ** 3.2
+        top = 0.05 + 0.028 * a ** 4
+        return half, bot, top
+
+    def ring(y, half, bot, top):
+        pts = []
+        for k in range(N + 1):
+            ph = math.pi * k / N
+            pts.append(bm.verts.new(P(-half * math.cos(ph), y, top - (top - bot) * math.sin(ph) ** 0.55)))
+        return pts
+
+    us = [-1 + 2 * i / NS for i in range(NS + 1)]
+    O = [ring(u * L2, *shape(u)) for u in us]
+    for i in range(NS):
+        for k in range(N):
+            f = bm.faces.new((O[i][k], O[i][k + 1], O[i + 1][k + 1], O[i + 1][k]))
+            zc = f.calc_center_median().z - dz
+            q.paint([f], HULL_WET if zc < 0.004 else HULL, rr, 0.05)
+    for e in (0, NS):
+        q.paint([bm.faces.new(O[e] if e else list(reversed(O[e])))], HULL_WET, rr, 0.04)
+    i0, i1 = 3, NS - 3
+    I = {}
+    for i in range(i0, i1 + 1):
+        half, bot, top = shape(us[i])
+        I[i] = ring(us[i] * L2, half - WALL, max(bot + 0.026, 0.0), top)
+    c0 = rr.randrange(i0, i1 - 4)
+    for i in range(i0, i1):
+        for k in range(N):
+            f = bm.faces.new((I[i][k], I[i + 1][k], I[i + 1][k + 1], I[i][k + 1]))
+            # (the floor still dark along a stretch where the fire burned longest; the sides scraped clean)
+            burnt = 2 <= k <= N - 3 and c0 <= i < c0 + 5
+            q.paint([f], HULL_CHAR if burnt else HULL_IN, rr, 0.07)
+        for k in (0, N):
+            q.paint([bm.faces.new((O[i][k], O[i + 1][k], I[i + 1][k], I[i][k]))], GUNWALE, rr, 0.04)
+    for e, n in ((i0, -1), (i1, 1)):
+        q.paint([bm.faces.new(I[e])], HULL_IN, rr, 0.05)
+        for i in (range(0, i0 - 1) if n < 0 else range(i1 + 1, NS)):
+            q.paint([bm.faces.new((O[i][0], O[i][N], O[i + 1][N], O[i + 1][0]))], GUNWALE, rr, 0.04)
+        j = e + n
+        q.paint([bm.faces.new((O[j][0], O[j][N], I[e][N], I[e][0]))], GUNWALE, rr, 0.04)
+        q.paint([bm.faces.new((O[j][0], O[e][0], I[e][0]))], GUNWALE, rr, 0.04)
+        q.paint([bm.faces.new((O[j][N], I[e][N], O[e][N]))], GUNWALE, rr, 0.04)
+    if paddle:
+        # the paddle laid across the gunwales in front of the paddler, its blade out over the water to the right
+        q.cyl(5, 0.005, 0.005, P(-0.13, -0.17, 0.058), P(0.1, -0.15, 0.06), WOOD, rr, 0.03)
+        q.box(P(0.155, -0.145, 0.058), (0.1, 0.035, 0.006), WOOD, rr, 0.04, rot=Matrix.Rotation(0.08, 3, "Z"))
+    if chips:
+        # char and chips scraped out of it lie about where it was hollowed
+        for k in range(7):
+            q.box((rr.uniform(-0.25, 0.25), rr.uniform(-0.3, 0.3), 0.002), (0.022, 0.01, 0.004), rr.choice((HULL_IN, HULL_CHAR)), rr, 0.1,
+                  rot=Matrix.Rotation(rr.uniform(0, 3), 3, "Z"))
+
+
+# carry__canoe: the canoe under someone sat in it out on the water (their seat at the origin, a little aft of midships)
+q = Part()
+canoe(q, random.Random(61), dy=-0.05)
+q.finish("carry__canoe")
+
+ROLLER = (100, 76, 52)
+SCRAPE = (86, 68, 50)
+
+
+def canoe_rollers(q, rr):
+    """Two log rollers on the bank, bedded in the trampled mud, and the scrape where the canoe is run down to the water."""
+    for y in (-0.16, 0.18):
+        q.cyl(6, 0.018, 0.018, (-0.13, y, 0.016), (0.13, y + rr.uniform(-0.02, 0.02), 0.016), ROLLER, rr, 0.06)
+    q.box((0, -0.12, 0.002), (0.12, 0.62, 0.003), SCRAPE, rr, 0.06)
+    # a stake to tie it to
+    q.cyl(5, 0.01, 0.008, (0.16, 0.05, 0), (0.17, 0.06, 0.12), (104, 78, 52), rr, 0.06)
+
+
+# bld__canoe: the canoe drawn up on the bank on its rollers, bow to the water (-Y); bld__canoeOut: only the rollers
+q = Part()
+canoe_rollers(q, random.Random(62))
+canoe(q, random.Random(63), dz=0.066, dy=-0.02, tilt=-0.05, paddle=True, chips=True)
+q.finish("bld__canoe")
+q = Part()
+canoe_rollers(q, random.Random(62))
+q.finish("bld__canoeOut")
+
 # ---------------------------------------------------------------- buildings
 STONE = (128, 122, 114)
 WATTLE = (132, 100, 64)
@@ -2829,11 +2943,42 @@ def thatch_roof(q, tiers, n, rnd, under=None):
         q.paint([q.bm.faces.new((vs[0][(k + 1) % n], vs[0][k], inner[k], inner[(k + 1) % n])) for k in range(n)], THATCH_UNDER, rnd, 0.05)
 
 
+PLANK = (166, 126, 82)      # oak split along the grain, fresh and pale
+PLANK_DK = (128, 94, 60)    # weathered, and the edges in shadow
+
+
+def plank_wall(q, R, h, rnd, half):
+    """Split oak planks set on end in a trench round the hut, edge to edge, their tops trimmed to an uneven line,
+    with a split rail pegged round the top to hold them; a gap for the doorway."""
+    n = 30
+    arc = math.tau * R / n
+    for k in range(n):
+        a = FRONT + (k + 0.5) / n * math.tau
+        if in_door(a, half):
+            continue
+        ph = h + rnd.uniform(-0.008, 0.006)
+        w = arc * rnd.uniform(0.92, 1.04)
+        col = jit(PLANK if k % 3 else PLANK_DK, rnd, 0.08)
+        q.box(at(R + 0.008, a, ph / 2), (w, 0.016 * rnd.uniform(0.85, 1.15), ph), col, rnd, 0.05,
+              rot=Matrix.Rotation(a + math.pi / 2 + rnd.uniform(-0.03, 0.03), 3, "Z"), taper=0.97)
+    # the rail round the top, outside the planks, broken at the door
+    m = 24
+    for k in range(m):
+        a0, a1 = FRONT + half + k * (math.tau - 2 * half) / m, FRONT + half + (k + 1) * (math.tau - 2 * half) / m
+        q.cyl(4, 0.006, 0.006, at(R + 0.02, a0, h - 0.025), at(R + 0.02, a1, h - 0.025), PLANK_DK, rnd, 0.04, cap=False)
+    # the inner faces, seen through the doorway
+    q.cyl(n, R - 0.004, R - 0.004, (0, 0, 0), (0, 0, h), (110, 82, 54), rnd, 0.04, cap=False)
+    # chips from the splitting, swept against the wall
+    for k in range(5):
+        a = FRONT + 1.2 + k * 0.25
+        q.box(at(R + 0.05 + rnd.uniform(0, 0.03), a, 0.002), (0.02, 0.008, 0.003), PLANK, rnd, 0.1, rot=Matrix.Rotation(rnd.uniform(0, 3), 3, "Z"))
+
+
 def hut0(walls, rnd):
     """Round hut: wall to shoulder height, a doorway, three tiers of thatch rising to a smoke hole."""
     q = Part()
     R, h, half = 0.32, 0.2, 0.2
-    {"wood": wattle_wall, "daub": daub_wall, "stone": stone_wall}[walls](q, R, h, rnd, half)
+    {"wood": wattle_wall, "daub": daub_wall, "stone": stone_wall, "plank": plank_wall}[walls](q, R, h, rnd, half)
     doorway(q, R, half, 0.165 if walls != "stone" else 0.17, walls, rnd)
     thatch_roof(q, [(R + 0.075, 0.232, R - 0.005, 0.32), (R + 0.01, 0.308, R - 0.105, 0.41), (R - 0.09, 0.398, 0.06, 0.5)], 20, rnd,
                 under=(R - 0.01, 0.222))
@@ -2858,8 +3003,8 @@ def hut1(walls, rnd):
     """Beehive hut: a low wall under a dome of thatch in courses, held down by ropes weighted with stones."""
     q = Part()
     R, half = 0.34, 0.19
-    h = {"wood": 0.12, "daub": 0.13, "stone": 0.14}[walls]
-    {"wood": wattle_wall, "daub": daub_wall, "stone": stone_wall}[walls](q, R, h, rnd, half)
+    h = {"wood": 0.12, "daub": 0.13, "stone": 0.14, "plank": 0.13}[walls]
+    {"wood": wattle_wall, "daub": daub_wall, "stone": stone_wall, "plank": plank_wall}[walls](q, R, h, rnd, half)
     if walls != "stone":  # the old footing of stones the wall stands on
         for k in range(16):
             a = FRONT + (k + 0.5) / 16 * math.tau
@@ -2889,7 +3034,7 @@ def hut1(walls, rnd):
     return q
 
 
-for walls, suffix in (("wood", ""), ("daub", "d"), ("stone", "s")):
+for walls, suffix in (("wood", ""), ("daub", "d"), ("stone", "s"), ("plank", "p")):
     hut0(walls, random.Random(30)).finish(f"bld__hut0{suffix}")
     hut1(walls, random.Random(31)).finish(f"bld__hut1{suffix}")
 
@@ -2973,6 +3118,21 @@ def store_walls(q, walls, W, D, z0, h, rnd):
                     p = (x0 + (x1 - x0) * k / m + nx * 0.003, y0 + (y1 - y0) * k / m + ny * 0.003)
                     q.cyl(4, 0.007, 0.006, (p[0], p[1], z0 - 0.01), (p[0], p[1], z0 + h + 0.015), POLE, rnd, 0.06)
         q.box((0, 0, z0 + h / 2), (W - 0.012, D - 0.012, h), (96, 72, 46), rnd, 0.04)  # the far side of the weave
+    elif walls == "plank":
+        # split oak boards laid edge over edge along each side, pegged to corner posts
+        courses = 4
+        for (x0, y0), (x1, y1), (nx, ny) in sides:
+            L = math.hypot(x1 - x0, y1 - y0)
+            ang = math.atan2(y1 - y0, x1 - x0)
+            for j in range(courses):
+                bh = h / courses
+                zc = z0 + j * bh + bh / 2 + 0.003
+                col = jit(PLANK if (j + abs(nx)) % 2 else PLANK_DK, rnd, 0.07)
+                cx, cy = (x0 + x1) / 2 + nx * (0.006 + 0.003 * (j % 2)), (y0 + y1) / 2 + ny * (0.006 + 0.003 * (j % 2))
+                q.box((cx, cy, zc), (L + 0.02, 0.012, bh * 1.12), col, rnd, 0.05, rot=Matrix.Rotation(ang + rnd.uniform(-0.01, 0.01), 3, "Z"))
+        for (x0, y0), _, _ in sides:  # corner posts
+            q.cyl(4, 0.011, 0.01, (x0 * 1.05, y0 * 1.05, z0 - 0.01), (x0 * 1.05, y0 * 1.05, z0 + h + 0.015), PLANK_DK, rnd, 0.06)
+        q.box((0, 0, z0 + h / 2), (W - 0.01, D - 0.01, h), (104, 78, 50), rnd, 0.04)
     elif walls == "daub":
         prof = [(0.004, z0), (0.006, z0 + 0.022), (0.005, z0 + 0.03), (0.008, z0 + h * 0.5), (0.005, z0 + h - 0.012), (0.0, z0 + h)]
         rows = [[(x * (1 + rnd.uniform(-0.01, 0.01)), y * (1 + rnd.uniform(-0.01, 0.01)), z) for x, y, z in rect_ring(W, D, z, out)] for out, z in prof]
@@ -3030,7 +3190,7 @@ def storehouse(walls, rnd):
         bm = q.bm
         x = sx * (W / 2 - 0.004)
         vs = [bm.verts.new((x, -D / 2, top)), bm.verts.new((x, D / 2, top)), bm.verts.new((x, 0, top + 0.14))]
-        q.paint([bm.faces.new(vs if sx > 0 else list(reversed(vs)))], DAUB if walls == "daub" else WATTLE, rnd, 0.06)
+        q.paint([bm.faces.new(vs if sx > 0 else list(reversed(vs)))], DAUB if walls == "daub" else PLANK if walls == "plank" else WATTLE, rnd, 0.06)
     if walls == "stone":  # a low door, a hide hung over it, a flat stone before it
         q.box((0, -D / 2 - 0.01, 0.08), (0.1, 0.03, 0.16), HATCH)
         q.box((0.045, -D / 2 - 0.036, 0.085), (0.045, 0.008, 0.14), HIDE, rnd, 0.05, rot=Matrix.Rotation(0.5, 3, "Z"))  # pulled aside
@@ -3046,7 +3206,7 @@ def storehouse(walls, rnd):
     return q
 
 
-for walls, suffix in (("wood", ""), ("daub", "d"), ("stone", "s")):
+for walls, suffix in (("wood", ""), ("daub", "d"), ("stone", "s"), ("plank", "p")):
     storehouse(walls, random.Random(40)).finish(f"bld__storehouse{suffix}")
 
 

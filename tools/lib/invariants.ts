@@ -108,7 +108,7 @@ export class InvariantChecker {
       if (homeB && homeB.band !== p.band) flag("home in another band's camp", `${at} ${p.name}`);
       const tile = sim.tileOf(p);
       if (!sim.grid.walkable(tile) && sim.world.water[tile] === WATER.None && !p.indoors) flag('standing on unwalkable ground', `${at} ${p.name}`);
-      if (sim.world.water[tile] !== WATER.None && sim.grid.cost[tile] === 0 && !p.indoors) flag('standing in deep water', `${at} ${p.name} tile ${tile}`);
+      if (sim.world.water[tile] !== WATER.None && sim.grid.cost[tile] === 0 && !p.indoors && p.task?.kind !== 'canoe') flag('standing in deep water', `${at} ${p.name} tile ${tile}`);
       for (const k of ['food', 'rest', 'warmth', 'belonging', 'safety', 'health', 'mood'] as const) {
         const v = p[k];
         if (!(v >= 0 && v <= 100)) flag(`${k} out of range`, `${at} ${p.name} ${v}`);

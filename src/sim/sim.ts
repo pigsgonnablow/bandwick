@@ -11,7 +11,7 @@ import {
   Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, isMonument, MONUMENT_MOVE, MONUMENT_SPLIT, Deer, Herd, Wolf, Pack, WOLF, Beast, Den, Pig, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, FURS_PER_CLOAK, FURS_KEPT, BEAST, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
   BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HARPOON_HIT, HARPOON_CATCH, LINE_CATCH, LINE_AGE, NET_CREW, NET_HAND, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, REMAINS, ROT_FROM, BONES_FROM, remainsStage,
-  QUALITY_WEAR, GOODS, GOODS_EACH, GOODS_OVER, WOOD_PLENTY, KILN_CRACK, HEARTH_CRACK, SEASONING, SEASONED_HEAT, CHARCOAL_KEPT, CHARCOAL_CRACK, CHARCOAL_FINE, SWIDDEN_SOIL, SWIDDEN_GRASS,
+  QUALITY_WEAR, GOODS, GOODS_EACH, GOODS_OVER, WOOD_PLENTY, KILN_CRACK, HEARTH_CRACK, SEASONING, SEASONED_HEAT, CHARCOAL_KEPT, CHARCOAL_CRACK, CHARCOAL_FINE, SWIDDEN_SOIL, SWIDDEN_GRASS, CANOE_CATCH,
   LOOMED, KILNED, POTTED, JAR_HOLDS, JAR_KEEP, JARRED, JARS_MAX, LAMP_FAT, FAT_KEPT, SINEW_KEPT, SINEW_SEWN, THREAD_TRY, THREAD_KEPT, FIBER_PER_THREAD, BLANKET_REST,
   RUN_FISH, WEIR_PASS, WEIR_HOLDS, CROP, CROP_NAMES, newPlot, GROW_DAYS, PLOT_YIELD, SEED_PER_PLOT, GREENS_PER_DAY, GREENS_LOAD, LEAN_GARDEN, PLENTY_GARDEN, SOIL_REST, SOIL_FALLOW,
 } from './band';
@@ -24,6 +24,7 @@ import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard
 import { updatePigs, pigsDaily, packPigs, pigCard, penOf, pigsOf, pigsWanted, pigToKill, pigFeed, pigMeat, grown, PIG_ID } from './pigs';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets, ELITE } from './know';
 import { RunMap, mapRuns, runsTick, runOn, runExtra, runNear, weirSite, weirRot } from './runs';
+import { canoeSite, canoeRot, freeCanoe, openStock } from './canoe';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 const TREE_TYPES = SPECIES.length * STAGES * TREE_VARIANTS;
@@ -129,7 +130,7 @@ const ITEM_USE: Record<ItemKind, string> = {
   basket: 'trips with it', pot: 'days of holding food', cloak: 'cold days', needle: 'things sewn', hat: 'cold days',
   mittens: 'cold days', shoes: 'stretches of walking', cape: 'cold days', bag: 'loads carried', necklace: 'years worn', deadfall: 'days set', furcloak: 'cold days',
   bowl: 'days in use', beads: 'years worn', tunic: 'cold days', blanket: 'cold nights', sash: 'years kept',
-  lamp: 'evenings lit', jar: 'days of holding food', harpoon: 'trips to the water', line: 'trips to the water', net: 'hauls', sledge: 'loads dragged',
+  lamp: 'evenings lit', jar: 'days of holding food', harpoon: 'trips to the water', line: 'trips to the water', net: 'hauls', sledge: 'loads dragged', wedges: 'buildings split out',
 };
 /** What kind of thing it is, in a few words. */
 const ITEM_ABOUT: Record<ItemKind, string> = {
@@ -137,7 +138,7 @@ const ITEM_ABOUT: Record<ItemKind, string> = {
   pot: 'for the stores', cloak: 'clothing', needle: 'a tool', hat: 'clothing', mittens: 'clothing', shoes: 'clothing',
   cape: 'clothing', bag: 'for gathering', necklace: 'an ornament', deadfall: 'a trap', furcloak: 'clothing',
   bowl: 'one of the band\'s goods', beads: 'one of the band\'s goods', tunic: 'clothing', blanket: 'bedding', sash: 'one of the band\'s goods',
-  lamp: 'for working after dark', jar: 'for the stores', harpoon: 'for fishing', line: 'for fishing', net: 'for fishing', sledge: 'a tool',
+  lamp: 'for working after dark', jar: 'for the stores', harpoon: 'for fishing', line: 'for fishing', net: 'for fishing', sledge: 'a tool', wedges: 'a tool',
 };
 /** How it is made and how long it lasts. */
 const ITEM_NOTE: Record<ItemKind, string> = {
@@ -169,6 +170,7 @@ const ITEM_NOTE: Record<ItemKind, string> = {
   line: 'A hook whittled from a blackthorn thorn and its twig, tied to a line of sinew or cord and wound on a stick. Baited and let down from the bank, or through a hole cut in the ice, it brings the fish up one at a time. It lasts a season or so.',
   net: 'Cordage knotted mesh by mesh into a long net, with stones tied along its foot to sink it. Two or three haul it through the shallows together, and bring up more than they could spear between them. It lasts a year or so of hauls.',
   sledge: 'Two runners split from a straight ash and bent up at the front, crossbars lashed across them and a hide rope to drag it by. A woodcutter drags home a whole felled tree on it, more again over the snow, where a shoulder takes a log or two. It lasts a few years.',
+  wedges: 'Wedges of split oak hardened in the fire, and a maul cut from the butt of a young trunk to drive them. Driven into the end of an oak log one after another, they split it along the grain into planks and posts: walls of split planks take fewer trees than a frame of round poles, go up quicker and stand tighter against the wind.',
 };
 /** How well a thing was made, for its card. */
 const QUALITY_WORDS = ['Plain: the work of someone still learning the craft', 'Good: the work of someone who knows the craft', 'Fine: the work of a master of the craft'];
@@ -1351,6 +1353,8 @@ export class Sim {
   }
   private urgent(p: Person) {
     const k = p.task?.kind;
+    // (out on the water in the canoe, nothing is done until it is back on the bank)
+    if (k === 'canoe' && p.task!.stage >= 1 && p.task!.stage <= 3) return false;
     // starving: go and eat. Only when the store is bare is it worth staying out to hunt, fish or forage
     // (far from camp, turn back sooner: the walk home costs food too)
     const gathering = k === 'hunt' || k === 'fish' || k === 'forage';
@@ -1752,6 +1756,8 @@ export class Sim {
     if (fishing && this.knows('nets', c) && c.stock.cordage >= 4 && c.stock.stone >= 1 && have('net') < (ms.length >= 16 ? 2 : 1)) return 'net';
     // a log sledge for the woodcutters (two in a big band)
     if (this.knows('sledge', c) && c.stock.wood >= 4 && c.stock.cordage >= 2 && have('sledge') < (ms.length >= 20 ? 2 : 1)) return 'sledge';
+    // wedges and a maul, to split oak into planks for the walls
+    if (this.knows('split_timber', c) && c.stock.wood >= 3 && have('wedges') < 1) return 'wedges';
     // a cloak for everyone past their first year, while there are hides to make them from; but once three in four of
     // the band has a cloak or a cape, a first share of the smaller things sewn from a hide comes in between (shoes for
     // the walkers, hats and mittens, a bag for the gatherers), so the hides don't all go to cloaks
@@ -3570,6 +3576,9 @@ export class Sim {
     // a run passing up (or down) the river near camp, and the band's weir with fish in its basket
     const run = runNear(this, c);
     const weir = mine.find((b) => b.kind === 'weir' && b.built && (b.catch ?? 0) >= 3);
+    // the band's canoe drawn up on the bank, with fish out on the open water
+    const canoe = freeCanoe(this, c);
+    const canoeFish = canoe ? openStock(this, canoe) : 0;
     // the gardens: plots to sow this spring, plots to weed, pick or guard, and ripe ones to bring in
     const plots = this.knows('garden') ? this.plots(c) : [];
     let claimed = 0;
@@ -3591,6 +3600,9 @@ export class Sim {
       preserve: this.knows('preserving') && mine.some((b) => b.kind === 'rack' && b.built) && c.stock.meat + c.stock.fish > 6 ? (run && c.stock.fish > 6 ? 0.85 : 0.7) : 0,
       // the weir's basket emptied, once a day or so (before it fills and the fish swim on past it)
       weir: weir ? 0.55 + ((weir.catch ?? 0) >= WEIR_HOLDS * 0.6 ? 0.25 : 0) : 0,
+      // a fisher out in the canoe, while the open water holds fish worth the paddle (and less the fuller the stores:
+      // it is a day's fishing, not a spare hour's)
+      canoe: canoe && canoeFish > 0.3 ? (0.35 + canoeFish * 0.35) * clamp01(foodP / 0.45, 0.4, 1.5) : 0,
       fiber: fiberHave < fiberWant ? clamp01((fiberWant - fiberHave) / (fiberWant + 2) * 1.1 + (siteFiber > fiberHave ? 0.25 : 0), 0.1, 0.9) : 0,
       // crafting by the fire, in a fixed order: cordage a building site is waiting on (or an axe needs),
       // then the tools today's work is missing, then a few lengths of cordage put by
@@ -3617,6 +3629,7 @@ export class Sim {
       'craft.line': make === 'line' ? 0.4 : 0,
       'craft.net': make === 'net' ? 0.4 : 0,
       'craft.sledge': make === 'sledge' ? 0.4 : 0,
+      'craft.wedges': make === 'wedges' ? 0.4 : 0,
       // worn things mended by the fire before they wear through
       mend: this.toMend(c).length && Math.max(c.stock.cordage, c.stock.sinew) >= MEND_CORD ? 0.35 : 0,
       // fresh grass for the homes whose bedding has gone flat, from grass not wanted for a roof
@@ -3671,7 +3684,7 @@ export class Sim {
     if (foodP > 0.8) c.plan.push(winterNow ? 'Find food to last the winter' : 'Store food before winter');
     if (woodP > 0.5) c.plan.push(s > 2.0 && !winterNow ? 'Lay in firewood for the winter' : 'Gather wood');
     if (siteFiber > fiberHave) c.plan.push('Cut grass and reeds for thatch and cordage');
-    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : make === 'stick' ? 'Make a digging stick' : make === 'basket' ? 'Weave a basket for gathering' : make === 'pot' ? 'Make a clay pot for the stores' : make === 'lamp' ? 'Make a clay lamp to work by after dark' : make === 'jar' ? 'Fire storage jars for the dry stores' : make === 'cloak' ? 'Sew hide cloaks against the cold' : make === 'needle' ? 'Grind a bone needle and awl' : make === 'harpoon' ? 'Make a barbed harpoon for the fishers' : make === 'line' ? 'Make a hook and line' : make === 'net' ? 'Knot a fishing net' : make === 'sledge' ? 'Make a log sledge for the woodcutters' : 'Knap a hand chopper');
+    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : make === 'stick' ? 'Make a digging stick' : make === 'basket' ? 'Weave a basket for gathering' : make === 'pot' ? 'Make a clay pot for the stores' : make === 'lamp' ? 'Make a clay lamp to work by after dark' : make === 'jar' ? 'Fire storage jars for the dry stores' : make === 'cloak' ? 'Sew hide cloaks against the cold' : make === 'needle' ? 'Grind a bone needle and awl' : make === 'harpoon' ? 'Make a barbed harpoon for the fishers' : make === 'line' ? 'Make a hook and line' : make === 'net' ? 'Knot a fishing net' : make === 'sledge' ? 'Make a log sledge for the woodcutters' : make === 'wedges' ? 'Make wedges and a maul to split oak into planks' : 'Knap a hand chopper');
     if (this.knows('roots') && seasonOf(this.tick) === 2) c.plan.push('Dig roots for the winter stores');
     if (this.knows('nuts') && seasonOf(this.tick) === 2) c.plan.push('Gather acorns under the oaks');
     if (this.knows('mushrooms') && seasonOf(this.tick) === 2) c.plan.push('Pick mushrooms in the woods');
@@ -3681,6 +3694,7 @@ export class Sim {
     if (run === 1) c.plan.push(this.knows('preserving') ? 'The salmon are running: fish the river, and dry the catch for the winter' : 'The salmon are running: fish the river');
     else if (run === 2) c.plan.push('The eels are running: fish the river by night and day');
     if (weir) c.plan.push('Empty the basket at the weir');
+    if (canoe && canoeFish > 0.3) c.plan.push('Take the canoe out to fish the open water');
     if (c.feastDay === dayOf(this.tick)) c.plan.push('Feast by the fire tonight, on the longest night');
     if (c.jobs.bed) c.plan.push('Lay fresh grass in the homes to sleep on');
     if (toSow) c.plan.push(this.knows('grain') && (c.seed ?? 0) >= SEED_PER_PLOT ? 'Sow grain and set roots in the gardens' : 'Set roots in the gardens');
@@ -3818,6 +3832,16 @@ export class Sim {
         const b = this.newBuilding('weir', tile, -1);
         b.rot = weirRot(this.world.flow[tile]);
         c.plan.push('Build a fish weir across the river');
+      }
+    }
+    // a dugout canoe drawn up on a bank with open water beyond its reach (a lake, a wide river, the shallows off the coast),
+    // once the band knows how (one to a band), hollowed out outside the winter
+    if (this.knows('canoe', c) && !winterNow && !this.bandBuildings(c).some((b) => b.kind === 'canoe')) {
+      const tile = canoeSite(this, c);
+      if (tile >= 0) {
+        const b = this.newBuilding('canoe', tile, -1);
+        b.rot = canoeRot(this, tile);
+        c.plan.push('Hollow out a dugout canoe from a great pine');
       }
     }
     // and a pig pen by the gardens, once the band knows how to keep pigs
@@ -3964,7 +3988,11 @@ export class Sim {
       const sp = specOf({ kind: b.kind, walls: wall });
       let supply: number;
       if (wall === 'wood') supply = clamp01(trees / 40, 0.15, 1.2) + (c.stock.wood >= sp.wood + 10 ? 0.15 : 0);
-      else if (wall === 'daub') {
+      else if (wall === 'plank') {
+        // planks split from oak with the band's wedges: the same woods as a pole frame, but fewer trees from them
+        if (!this.knows('split_timber', c) || !this.toolsOf(c, 'wedges').length) continue;
+        supply = clamp01(trees / 30, 0.2, 1.25) + (c.stock.wood >= sp.wood + 10 ? 0.15 : 0);
+      } else if (wall === 'daub') {
         // digging needs thawed ground: not with winter at the door
         if (!mud || s >= 2.5 || !this.knows('daub')) continue;
         supply = clamp01(0.55 + mud / 30, 0, 1.15) + (c.stock.mud >= sp.mud ? 0.15 : 0);
@@ -3972,7 +4000,7 @@ export class Sim {
         if (!this.knows('stonework') || !stone) continue;
         supply = clamp01(0.5 + stone / 40, 0, 1.2) + (c.stock.stone >= sp.stone ? 0.15 : 0);
       }
-      const durable = wall === 'stone' ? 2 : wall === 'daub' ? 1 : 0;
+      const durable = wall === 'stone' ? 2 : wall === 'daub' || wall === 'plank' ? 1 : 0;
       let sc = Math.log(supply + 1e-3);
       sc += Math.log(sp.shelter > 0 ? sp.shelter / base.shelter : base.keep / sp.keep) * (1 + cold * 5);
       sc -= Math.log(sp.work / base.work) * (0.4 + rush * 2.2) * (workers < 5 ? 1.5 : 1);
@@ -3989,6 +4017,7 @@ export class Sim {
     if (trees < 16) return 'the woods are thin here';
     if (cold > 0.5) return 'the winters are hard here';
     if (best === 'stone' && settled > 0.5) return 'they mean to stay';
+    if (best === 'plank') return 'they have wedges to split oak into planks';
     return best === 'stone' ? 'there is good stone close by' : 'there is good mud by the water';
   }
 
@@ -4743,6 +4772,8 @@ export class Sim {
       ...(b.kind === 'plot' ? { look: this.plotLook(b) } : {}),
       // a weir's basket with fish in it
       ...(b.kind === 'weir' && b.built && (b.catch ?? 0) >= 4 ? { look: 'weirFull' } : {}),
+      // a canoe out on the water leaves only its rollers and the scrape in the mud
+      ...(b.kind === 'canoe' && b.built && b.out !== undefined ? { look: 'canoeOut' } : {}),
       // a charcoal clamp stacked and covered, smouldering
       ...(b.kind === 'clamp' && b.built && b.burnUntil !== undefined ? { look: 'clampLit' } : {}),
       // a monument goes up in stages: each its own model, drawn whole (not risen from the ground like a roof)
@@ -5068,7 +5099,7 @@ export class Sim {
       if (b.kind === 'storehouse') {
         const st = this.camp.stock;
         lines.push(L('Holding', `${Math.round(foodTotal(st))} meals: ${Math.round(st.berries)} berries, ${Math.round(st.meat)} meat, ${Math.round(st.fish)} fish, ${Math.round(st.roots)} roots, ${Math.round(st.nuts)} acorns, ${Math.round(st.eggs + st.honey + st.mushrooms)} eggs, honey and mushrooms, ${Math.round(st.preserved)} dried${st.grain >= 0.5 ? `, ${Math.round(st.grain)} grain` : ''}${st.greens >= 0.5 ? `, ${Math.round(st.greens)} greens` : ''}`));
-        const walls = b.walls === 'stone' ? 'Its stone walls keep out damp and vermin' : b.walls === 'daub' ? 'Its daubed walls keep it dry' : 'Raised off the ground, it keeps food dry';
+        const walls = b.walls === 'stone' ? 'Its stone walls keep out damp and vermin' : b.walls === 'daub' ? 'Its daubed walls keep it dry' : b.walls === 'plank' ? 'Its walls of split oak planks fit tight and keep it dry' : 'Raised off the ground, it keeps food dry';
         notes.push(`${walls}: food inside spoils ${Math.round((1 - spec.keep) * 100)}% slower. Firewood stays stacked at the stockpile.`);
       }
       if (b.kind === 'stockpile') {
@@ -5204,6 +5235,11 @@ export class Sim {
       if (b.kind === 'weir') {
         if (b.built) lines.push(L('In the basket', (b.catch ?? 0) >= 1 ? `${Math.floor(b.catch!)} fish` : 'Nothing yet'));
         notes.push(`Stakes driven into the river bed in a V pointing downstream, with withies and reeds woven between them. The fish nosing along the fence for a way through are led to the gap at the point, and into the basket trap lashed there. It fishes day and night, most of all while a run is passing, when the river above it gets only ${Math.round(WEIR_PASS * 100)} fish in 100 of the run.`);
+      }
+      if (b.kind === 'canoe') {
+        const out = b.out !== undefined ? this.byId.get(b.out) : undefined;
+        if (b.built) lines.push(L('On the water', out ? `${out.name}, fishing` : freshFrozen(this.tick) ? 'Drawn up: the lakes are frozen' : 'Drawn up on the bank', out ? pref(out.id) : undefined));
+        notes.push(`A whole trunk of old pine, its heart burned out a little at a time and the char scraped away with the axe. A fisher paddles it out past the reach of the bank, onto the open water of the lake, the river or the shallows off the coast, where nobody fishing from the shore can get at the fish, and comes home with ${Math.round((CANOE_CATCH - 1) * 100)}% more than from the bank.`);
       }
       if (b.kind === 'rack') {
         lines.push(L('Dried food', `${Math.round(this.camp.stock.preserved)} meals`));

@@ -43,6 +43,10 @@ const HARPOON = 90, LINE = 89, LINE_CAST = 88, NET = 87, NET_OUT = 86;
 /** A log sledge dragged along behind a woodcutter on its rope: empty on the way out, loaded with logs on the way home. */
 const SLEDGE = 85, SLEDGE_FULL = 84;
 const SLEDGE_TOOL = ITEM_KINDS.indexOf('sledge') + 1;
+/** A dugout canoe under someone paddling it or fishing from it out on the water (its floor rides this high over the water). */
+const CANOE = 83;
+const CANOE_TASK = TASK_KINDS.indexOf('canoe') + 1;
+const CANOE_RIDE = 0.045;
 const HARPOON_TOOL = ITEM_KINDS.indexOf('harpoon') + 1, LINE_TOOL = ITEM_KINDS.indexOf('line') + 1, NET_TOOL = ITEM_KINDS.indexOf('net') + 1;
 /** The tip of the lamp's wick, where its flame burns, in the lamp model's own space (see LAMP_WICK in blender/build_band.py). */
 const LAMP_WICK = new THREE.Vector3(0.0155, 0.0085, 0);
@@ -342,7 +346,7 @@ export class BandLayer {
       // a deer, or a boar or pig, laid out on its hide on the ground in front of whoever is butchering it
       [CARRY.Carcass, 'carcass'], [CARRY.BoarCarcass, 'boarCarcass'],
       [HARPOON, 'harpoon'], [LINE, 'line'], [LINE_CAST, 'lineCast'], [NET, 'net'], [NET_OUT, 'netOut'],
-      [SLEDGE, 'sledge'], [SLEDGE_FULL, 'sledgeFull'],
+      [SLEDGE, 'sledge'], [SLEDGE_FULL, 'sledgeFull'], [CANOE, 'canoe'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
@@ -358,8 +362,8 @@ export class BandLayer {
       this.group.add(m);
     }
     // buildings
-    for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit']) {
+    for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'hut0p', 'hut1p', 'storehouse', 'storehoused', 'storehouses', 'storehousep', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
+      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit', 'canoe', 'canoeOut']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -1140,14 +1144,18 @@ export class BandLayer {
       s.still = walking && speed < 0.15 ? s.still + dt : 0;
       // in water too deep to stand in (for their height): swim if going somewhere, else tread water
       const wt = this.waterAt(x, z);
-      const swimming = wt !== null && wt.depth > SWIM_DEPTH * 0.4 * scale && s.act !== ACT.Dead && !ov?.afloat;
+      // out on the water in the band's canoe: sat in it, riding on the water
+      const canoeing = wt !== null && s.task === CANOE_TASK && s.act === ACT.Sit && !s.indoors;
+      const swimming = wt !== null && wt.depth > SWIM_DEPTH * 0.4 * scale && s.act !== ACT.Dead && !ov?.afloat && !canoeing;
       const stroke = swimming && walking && s.still < 0.25 && s.carry === CARRY.None;
-      const gy = swimming ? wt!.surface - (stroke ? 0.168 : 0.3) * scale : this.groundAt(x, z);
+      const gy = canoeing ? wt!.surface + CANOE_RIDE : swimming ? wt!.surface - (stroke ? 0.168 : 0.3) * scale : this.groundAt(x, z);
       s.y += (gy - s.y) * Math.min(1, dt * (swimming ? 6 : 14));
       if (ov?.y !== undefined) s.y = ov.y;
       // the pose to show: someone 'walking' who has stopped (between path steps) stands instead
       const act = this.debugAct.get(id) ?? (swimming ? (stroke ? SWIM : TREAD) : walking && s.still > 0.25 ? ACT.Idle : s.act);
       if (swimming) this.swimmers.push({ x, z, y: wt!.surface, r: scale, moving: stroke, seed: id });
+      // (a canoe under way spreads a wake of rings behind it)
+      if (canoeing && speed > 0.2) this.swimmers.push({ x, z, y: wt!.surface, r: 1.6, moving: true, seed: id });
       if (act !== s.shownAct) {
         // start a blend from wherever the last one had got to
         // (if a blend is still under way, carry on from whichever pose dominates it)
@@ -1313,7 +1321,7 @@ export class BandLayer {
       }
       // a hook and line held out over the water by someone sat at it; a net out in the water in front of its keeper,
       // its float line on the surface (the others hauling it stand at its ends)
-      const fishing = s.task === FISH_TASK && s.act !== ACT.Dead && carry === CARRY.None;
+      const fishing = (s.task === FISH_TASK || s.task === CANOE_TASK) && s.act !== ACT.Dead && carry === CARRY.None;
       const gearOut = fishing && s.tool === LINE_TOOL && s.shownAct === ACT.Sit ? LINE_CAST : fishing && s.tool === NET_TOOL && s.shownAct === ACT.Fish ? NET_OUT : 0;
       if (gearOut) {
         const gm = this.carryMeshes.get(gearOut);
@@ -1327,6 +1335,16 @@ export class BandLayer {
           }
           gm.setMatrixAt(gk, at);
           carryCount.set(gearOut, gk + 1);
+        }
+      }
+      if (canoeing) {
+        const cm = this.carryMeshes.get(CANOE);
+        const ck = carryCount.get(CANOE) ?? 0;
+        if (cm && ck < cm.instanceMatrix.count) {
+          // (modelled round the paddler sat in it, its floor at their seat; never scaled with them)
+          const un = 1 / Math.max(0.5, scale);
+          cm.setMatrixAt(ck, m4.clone().multiply(new THREE.Matrix4().makeScale(un, un, un)));
+          carryCount.set(CANOE, ck + 1);
         }
       }
       if (dragged) {
@@ -1628,13 +1646,13 @@ export class BandLayer {
     return this.buildings;
   }
 
-  /** Which model draws a building: huts come in two shapes, each with wattle, daub and stone walls. */
+  /** Which model draws a building: huts come in two shapes, each with wattle, daub, stone and split-plank walls. */
   private modelOf(b: { kind: string; id: number; walls?: string; look?: string }) {
     // (a garden plot as it grows, a monument as it goes up, a weir with fish in its basket, a charcoal clamp smouldering)
-    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir' || b.kind === 'clamp') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
+    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir' || b.kind === 'clamp' || b.kind === 'canoe') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
     if (b.kind !== 'hut' && b.kind !== 'storehouse') return b.kind;
     const shape = b.kind === 'storehouse' ? b.kind : b.id % 2 ? 'hut1' : 'hut0';
-    const own = shape + (b.walls === 'daub' ? 'd' : b.walls === 'stone' ? 's' : '');
+    const own = shape + (b.walls === 'daub' ? 'd' : b.walls === 'stone' ? 's' : b.walls === 'plank' ? 'p' : '');
     return this.buildingMeshes.has(own) ? own : shape;
   }
 

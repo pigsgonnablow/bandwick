@@ -114,18 +114,18 @@ export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
   | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast' | 'eggs' | 'honey' | 'mushrooms' | 'mend'
-  | 'sow' | 'tend' | 'harvest' | 'pigs' | 'raise' | 'weir';
+  | 'sow' | 'tend' | 'harvest' | 'pigs' | 'raise' | 'weir' | 'canoe';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
   'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen', 'bed', 'roots', 'nuts', 'herbs', 'nurse', 'gift', 'feast', 'eggs', 'honey', 'mushrooms', 'mend',
-  'sow', 'tend', 'harvest', 'pigs', 'raise', 'weir',
+  'sow', 'tend', 'harvest', 'pigs', 'raise', 'weir', 'canoe',
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'sledge'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'sledge', 'wedges'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap', 'deadfall'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -199,6 +199,9 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   net: { label: 'Fishing net', uses: 50 },
   // two runners of split ash curved up at the front, crossbars lashed on, and a hide rope to drag it by
   sledge: { label: 'Log sledge', uses: 40 },
+  // wedges of hard oak and a heavy wooden maul to drive them, for splitting trunks into planks and posts
+  // (each building raised in split timber a use)
+  wedges: { label: 'Wedges and maul', uses: 12 },
 };
 /**
  * Things made for their own sake in the hours a fed band has free: they are the band's goods, its wealth.
@@ -260,6 +263,16 @@ export const SLEDGE_SNOW = 20;
  */
 export const SWIDDEN_SOIL = 1.3;
 export const SWIDDEN_GRASS = 1.15;
+/**
+ * A dugout canoe takes a fisher out past the reach of the bank, onto the open water of a lake, a wide river or the shallows along the coast, as far
+ * as this many tiles from its landing. It is paddled this fast (tiles a tick), and its fisher comes home with this many
+ * times what one fishing from the bank would, from water nobody else can reach.
+ */
+export const CANOE_REACH = 9;
+export const CANOE_SPEED = 0.3;
+export const CANOE_CATCH = 1.4;
+/** A landing for the canoe wants at least this much open water within its reach. */
+export const CANOE_OPEN = 6;
 /** A master of a craft (the band's potter or toolmaker) is this much keener to sit down to it, and this much less to other work, when the band is fed. */
 export const MASTER_CRAFT = 1.6;
 export const MASTER_OTHER = 0.6;
@@ -507,7 +520,7 @@ export const FIBER_PER_THREAD = 2;
 /** Hanks of thread a band spins to try the spindle before it has a loom, and keeps by at most once it has. */
 export const THREAD_TRY = 4;
 export const THREAD_KEPT = 16;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'charcoal', 'sledge'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'charcoal', 'sledge', 'wedges'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage or a hank of thread into the stores, a charcoal clamp lit (its charcoal
@@ -664,6 +677,11 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
     // two runners split from a straight ash, steamed and bent up at the front, crossbars lashed across, a rope to drag it by
     makes: 'sledge', uses: { wood: 4, cordage: 2 }, work: 70, skill: SK.tool, grow: 0.07, knows: 'sledge', doing: 'Making a log sledge',
     thought: 'Bending runners for a sledge and lashing crossbars across them.', done: 'Made a log sledge and laid it on the pile.',
+  },
+  wedges: {
+    // wedges whittled from oak and hardened in the fire, and a maul from the butt of a young trunk to drive them
+    makes: 'wedges', uses: { wood: 3 }, work: 45, skill: SK.wood, grow: 0.06, knows: 'split_timber', doing: 'Making wedges and a maul',
+    thought: 'Whittling oak wedges and hardening them in the fire.', done: 'Made a set of wedges and a maul and laid them on the pile.',
   },
 };
 /** The recipes fired only in the kiln: too big for the embers of the hearth. */
@@ -869,7 +887,7 @@ export interface Person {
   gave?: number;
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'canoe'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -925,6 +943,8 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   weir: spec({ wood: 8, fiber: 6, cordage: 3, work: 90, label: 'Fish weir' }),
   // a charcoal clamp by the kiln: a round bed dug and banked with earth, a centre stake, turf cut to cover the stack
   clamp: spec({ wood: 2, mud: 4, work: 35, label: 'Charcoal clamp' }),
+  // a whole trunk of old pine, hollowed with fire and the axe, drawn up on the bank of a lake, a wide river or the sea
+  canoe: spec({ wood: 10, work: 160, label: 'Dugout canoe' }),
 };
 /** The buildings a band raises for its own sake, in its spare hours over years, and never as a job of work. */
 export const MONUMENTS: readonly BuildKind[] = ['barrow', 'stones'];
@@ -936,9 +956,9 @@ export const MONUMENT_SPLIT = 0.7;
 export const MONUMENT_AHEAD = 1.5;
 
 /** What a building's walls are made of. Huts and storehouses can be raised in any of these. */
-export const WALLS = ['wood', 'daub', 'stone'] as const;
+export const WALLS = ['wood', 'daub', 'stone', 'plank'] as const;
 export type Walls = (typeof WALLS)[number];
-export const WALL_NAMES: Record<Walls, string> = { wood: 'wood', daub: 'wattle-and-daub', stone: 'stone' };
+export const WALL_NAMES: Record<Walls, string> = { wood: 'wood', daub: 'wattle-and-daub', stone: 'stone', plank: 'split-plank' };
 /**
  * The same buildings in other walls: wattle-and-daub (a few poles, woven reeds, mud) and drystone
  * (stone, with wood only for the roof). Warmer and slower to raise; stone needs the knowledge of stonework.
@@ -947,10 +967,14 @@ const WALL_SPECS: Partial<Record<BuildKind, Partial<Record<Walls, BuildSpec>>>> 
   hut: {
     daub: spec({ wood: 5, fiber: 10, cordage: 3, mud: 10, work: 200, cap: 6, shelter: 0.85, label: 'Hut' }),
     stone: spec({ wood: 5, fiber: 6, cordage: 3, stone: 18, work: 330, cap: 6, shelter: 0.92, label: 'Hut' }),
+    // oak split with wedges into planks and posts: fewer trees than a frame of round poles, quicker to raise, and
+    // tighter (see 'split_timber')
+    plank: spec({ wood: 9, fiber: 6, cordage: 2, work: 120, cap: 6, shelter: 0.84, label: 'Hut' }),
   },
   storehouse: {
     daub: spec({ wood: 4, fiber: 7, cordage: 2, mud: 8, work: 145, keep: 0.5, label: 'Storehouse' }),
     stone: spec({ wood: 4, fiber: 4, cordage: 2, stone: 14, work: 250, keep: 0.4, label: 'Storehouse' }),
+    plank: spec({ wood: 6, fiber: 4, cordage: 1, work: 85, keep: 0.5, label: 'Storehouse' }),
   },
 };
 /** Which walls a kind of building can have. */
@@ -996,6 +1020,8 @@ export interface Building {
   /** a charcoal clamp: the tick it will have burned through, and the charcoal it will give then (absent: cold) */
   burnUntil?: number;
   charge?: number;
+  /** a dugout canoe: who has it out on the water (absent: drawn up on the bank) */
+  out?: number;
   work: number; // done
   built: boolean;
   owner: number; // person id of the household head
