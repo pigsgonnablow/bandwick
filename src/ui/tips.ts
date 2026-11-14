@@ -25,6 +25,7 @@ export const SKILL_TIPS: Record<string, string> = {
   pottery: 'Pottery: shaping and firing clay into pots, bowls, lamps and storage jars. More skill works faster, cracks fewer in the firing and makes finer things.',
   hidework: 'Hidework: scraping hides and sewing cloaks, hats, shoes and bags, and mending them when they wear. Once the band knows butchering, a skilled hand gets more meat from every carcass.',
   gardening: 'Gardening: sowing, weeding and harvesting the garden plots. A skilled gardener works faster and brings in a bigger harvest: about 60% from a beginner, 140% from a master.',
+  cooking: 'Cooking: the band\'s evening stew, cooked in the pot at the fire, and the herb brews steeped in it. A better cook\'s stew fills more from the same food, and people remember the best of it. The band\'s cook also thinks of bone broth and herbal brews.',
 };
 export const SKILLS_NOTE = 'Skills grow with practice, slowest near the top. The band sends its most skilled to each job, and new ideas come only to those who have mastered the crafts around them.';
 
@@ -73,6 +74,7 @@ export const PERSON_ROW_TIPS: Record<string, string> = {
   'Close to': 'Close to: those they like best. Friends visit, share and stand by each other.',
   Dislikes: 'Dislikes: those they cannot stand. Bad blood can end in a fight, or in the band splitting apart.',
   Knows: 'Knows: how many of the living they have met and have some feeling about.',
+  'Best meal': 'Best meal: the stew they remember as the best they ever ate, and who cooked it.',
 };
 
 /** Rows on the band panel on the left. */

@@ -21,14 +21,15 @@ Conventions (read by src/render/band.ts):
   beaver__{body,head,tail,legFL,legFR,legBL,legBR}                  a beaver, posed in the shader (waddling, swimming, gnawing).
   lodge__beaver, dam__beaver                                        a beaver lodge, and a dam across a river (along x), origin at the water.
   hare__{body,head,ears,fore,hind}                                 a brown hare in parts, posed in the shader (hopping, sitting up, nibbling).
-  carry__{log,berries,meat,fish,spear,harpoon,line,lineCast,net,netOut,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,grain,greens,piglet,basket,basketFull,hare} attached to a person's hands or shoulder.
+  carry__{log,berries,meat,fish,spear,harpoon,line,lineCast,net,netOut,axe,chopper,body,baby,stick,snare,fiber,mud,stone,roots,nuts,herbs,eggs,honey,mushrooms,grain,greens,piglet,basket,basketFull,hare,bowl} attached to a person's hands or shoulder
+      (bowl: a bowl of stew held at the chest).
   trap__{snare,snareFull,fishtrap,fishtrapFull}                  traps set in the world (origin at the foot / the basket's middle).
   pile__pot                                                       a lidded clay pot on the stockpile (origin at its foot).
   pile__jar                                                       a tall storage jar sealed with a clay stopper (origin at its foot).
   pile__lamp                                                      a clay lamp set down beside someone working after dark (origin at its foot, the wick's lip to +X).
   pile__{bowl,beads,sash}                                         the band's goods on the stockpile: a patterned clay bowl, a string of beads lying coiled, a woven sash.
   boat__dugout                                                    the dugout the first band lands in (origin at the waterline, bow to -Y).
-  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace,bowl,beads,tunic,blanket,sash,lamp,jar,harpoon,line,net}  each made thing in real colours,
+  item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace,bowl,beads,tunic,blanket,sash,lamp,jar,harpoon,line,net,cookpot}  each made thing in real colours,
       for the picture in its window (the game fits it to the picture).
   bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit,kiln,loom,pen}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
@@ -36,6 +37,8 @@ Conventions (read by src/render/band.ts):
       downstream to -y; ...Full with fish in the basket.
   bld__{clamp,clampLit}                                           a charcoal clamp by the kiln: its bed cold, with the last charcoal raked out, and
       lit, the stack covered over with turf and smouldering.
+  bld__{hearthPot,hearthPotEmpty}                                 the hearth with the band's cooking pot down in the embers, the stew in it and a
+      paddle standing in it, the bowls set out by the fire; and with the pot set by the ring empty till the evening.
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
   bld__{plot,plotSown,plotRoots,plotGrain,plotRipe,plotStubble}  a garden plot through its year (bare or fallow, sown, roots in
       leaf, young grain, ripe grain, stubble with stooks); the fence goes round the same tile.
@@ -3348,36 +3351,57 @@ ASH = (150, 146, 140)
 CHARRED = (44, 38, 34)
 EMBER = (232, 112, 40)
 SOOT = (70, 64, 60)
-q = Part()  # hearth: a ring of fire-cracked stones bedded in the ground, blackened on the inside; a bed of
-for k in range(11):  # ash with a charred heart; logs laid in a star, burnt at the inner ends with embers in
-    a = k / 11 * math.tau + rnd.uniform(-0.08, 0.08)  # the cracks; a spit on forked sticks; firewood to hand
-    r = 0.205 + rnd.uniform(-0.01, 0.01)
-    c = Vector((math.cos(a) * r, math.sin(a) * r, 0.018))
-    size = (0.038 + rnd.uniform(0, 0.014), 0.03 + rnd.uniform(0, 0.012), 0.026 + rnd.uniform(0, 0.012))
-    m = Matrix.Rotation(a, 3, "Z")
-    for v in q.blob((0, 0, 0), size, jit(STONE, rnd, 0.12), rnd, 0.06, noise=0.2):
-        v.co = c + m @ Vector((v.co.y, v.co.x, v.co.z))
-for f in q.bm.faces:  # soot on the faces turned to the fire
-    cen = f.calc_center_median()
-    if cen.length > 0.05 and f.normal.dot(Vector((-cen.x, -cen.y, 0)).normalized()) > 0.3 and cen.z > 0.012:
-        q.paint([f], SOOT, rnd, 0.06)
-ash = [[at(r * (1 + rnd.uniform(-0.04, 0.04)), k / 12 * math.tau, z) for k in range(12)] for r, z in ((0.185, 0.002), (0.12, 0.009), (0.05, 0.012))]
-vs = ring_loft(q, ash, lambda i, k: ASH if i == 0 else (120, 116, 110), rnd, 0.06)
-fan(q, vs[-1], (0, 0, 0.012), CHARRED, raw=False)
-for k in range(5):  # logs in a star, burnt down at the middle
-    a = k / 5 * math.tau + 0.4 + rnd.uniform(-0.1, 0.1)
-    outer, inner = Vector(at(0.2, a, 0.022)), Vector(at(0.04, a, 0.05))
-    mid = outer.lerp(inner, 0.55)
-    q.cyl(6, 0.02, 0.019, outer, mid, BARK, rnd, 0.05)
-    q.cyl(6, 0.019, 0.014, mid, inner, CHARRED, rnd, 0.05)
-    q.box(mid.lerp(inner, 0.5) + Vector((0, 0, 0.012)), (0.012, 0.008, 0.004), EMBER, rnd, 0.1, rot=Matrix.Rotation(a, 3, "Z"))
-for s_ in (-1, 1):  # forked sticks and a spit across
-    forked_post(q, (s_ * 0.27, 0.04, 0), (s_ * 0.27, 0.04, 0.21), rnd, r=0.008)
-q.cyl(5, 0.006, 0.006, (-0.31, 0.04, 0.232), (0.31, 0.04, 0.232), POLE, rnd)
-for k in range(4):  # firewood stacked ready, behind the ring
-    y = 0.31 + (k % 2) * 0.045
-    z = 0.02 + (k // 2) * 0.036
-    q.cyl(6, 0.02, 0.018, (-0.13, y + (k // 2) * 0.022, z), (0.13, y + (k // 2) * 0.022, z), BARK, rnd, 0.05)
+# the cooking pot's spot in the embers, game axes (x, z) as POT_AT in src/sim/band.ts; it stands in for one ring stone
+# and one log of the star, those nearest it
+POT_AT = (-0.12, 0.13)
+POT_DIR = math.atan2(-POT_AT[1], POT_AT[0])  # Blender angle round the hearth
+
+
+def hearth(q, rnd, pot=False, at=at):  # (`at` bound now: the name is reused further down)
+    """A hearth: a ring of fire-cracked stones bedded in the ground, blackened on the inside; a bed of
+    ash with a charred heart; logs laid in a star, burnt at the inner ends with embers in the cracks; a spit
+    on forked sticks; firewood to hand. With `pot`, the ring stone and the log where the cooking pot sits in the
+    embers are left out."""
+    near = lambda a, w: abs((a - POT_DIR + math.pi) % math.tau - math.pi) < w
+    for k in range(11):  # the ring of stones
+        a = k / 11 * math.tau + rnd.uniform(-0.08, 0.08)
+        r = 0.205 + rnd.uniform(-0.01, 0.01)
+        c = Vector((math.cos(a) * r, math.sin(a) * r, 0.018))
+        size = (0.038 + rnd.uniform(0, 0.014), 0.03 + rnd.uniform(0, 0.012), 0.026 + rnd.uniform(0, 0.012))
+        m = Matrix.Rotation(a, 3, "Z")
+        col = jit(STONE, rnd, 0.12)
+        if pot and near(a, 0.3):
+            continue
+        for v in q.blob((0, 0, 0), size, col, rnd, 0.06, noise=0.2):
+            v.co = c + m @ Vector((v.co.y, v.co.x, v.co.z))
+    for f in q.bm.faces:  # soot on the faces turned to the fire
+        cen = f.calc_center_median()
+        if cen.length > 0.05 and f.normal.dot(Vector((-cen.x, -cen.y, 0)).normalized()) > 0.3 and cen.z > 0.012:
+            q.paint([f], SOOT, rnd, 0.06)
+    ash = [[at(r * (1 + rnd.uniform(-0.04, 0.04)), k / 12 * math.tau, z) for k in range(12)] for r, z in ((0.185, 0.002), (0.12, 0.009), (0.05, 0.012))]
+    vs = ring_loft(q, ash, lambda i, k: ASH if i == 0 else (120, 116, 110), rnd, 0.06)
+    fan(q, vs[-1], (0, 0, 0.012), CHARRED, raw=False)
+    for k in range(5):  # logs in a star, burnt down at the middle
+        a = k / 5 * math.tau + 0.4 + rnd.uniform(-0.1, 0.1)
+        outer, inner = Vector(at(0.2, a, 0.022)), Vector(at(0.04, a, 0.05))
+        mid = outer.lerp(inner, 0.55)
+        if pot and near(a, 0.5):
+            continue
+        q.cyl(6, 0.02, 0.019, outer, mid, BARK, rnd, 0.05)
+        q.cyl(6, 0.019, 0.014, mid, inner, CHARRED, rnd, 0.05)
+        q.box(mid.lerp(inner, 0.5) + Vector((0, 0, 0.012)), (0.012, 0.008, 0.004), EMBER, rnd, 0.1, rot=Matrix.Rotation(a, 3, "Z"))
+    for s_ in (-1, 1):  # forked sticks and a spit across
+        forked_post(q, (s_ * 0.27, 0.04, 0), (s_ * 0.27, 0.04, 0.21), rnd, r=0.008)
+    q.cyl(5, 0.006, 0.006, (-0.31, 0.04, 0.232), (0.31, 0.04, 0.232), POLE, rnd)
+    for k in range(4):  # firewood stacked ready, behind the ring
+        y = 0.31 + (k % 2) * 0.045
+        z = 0.02 + (k // 2) * 0.036
+        q.cyl(6, 0.02, 0.018, (-0.13, y + (k // 2) * 0.022, z), (0.13, y + (k // 2) * 0.022, z), BARK, rnd, 0.05)
+
+
+state = rnd.getstate()
+q = Part()
+hearth(q, rnd)
 q.finish("bld__hearth")
 
 rnd = random.Random(41)
@@ -3806,6 +3830,143 @@ q.finish("pile__bowl")
 q = Part()
 bowl(q, random.Random(82))
 q.finish("item__bowl")
+
+# ---------------------------------------------------------------- the cooking pot, and the stew
+COOKPOT = (132, 96, 70)      # coarse clay gritted with crushed stone, fired in the embers
+COOKPOT_DK = (100, 72, 54)
+COOKPOT_GRIT = (152, 120, 94)  # flecks of grit in the clay
+COOKPOT_SOOT = (48, 42, 38)  # the belly and base, blackened from sitting in the fire evening after evening
+STEW = (118, 76, 44)         # the stew's surface: a thick brown broth
+STEW_HI = (156, 106, 62)
+STEW_BITS = [(150, 72, 58), (204, 172, 112), (92, 122, 62), (226, 206, 170)]  # meat, roots, greens, a bit of fat
+PADDLE = (166, 134, 96)      # a stirring paddle whittled from a split of ash
+
+
+def placed(q, build, offset, angle=0.0):
+    """Build something at the origin with `build(q)`, then turn it about z and move it to `offset`."""
+    before = set(q.bm.verts)
+    build(q)
+    R = Matrix.Rotation(angle, 3, "Z")
+    for v in q.bm.verts:
+        if v not in before:
+            v.co = R @ v.co + Vector(offset)
+
+
+def stew_top(q, rr, r, z, segs=14):
+    """The stew in a pot or a bowl: a broth surface of radius `r` at height `z`, with lumps of meat and roots and
+    greens showing in it."""
+    bm = q.bm
+    ring = [bm.verts.new((math.cos(k / segs * math.tau) * r, math.sin(k / segs * math.tau) * r, z)) for k in range(segs)]
+    mid = [bm.verts.new((math.cos(k / segs * math.tau) * r * 0.55, math.sin(k / segs * math.tau) * r * 0.55, z + r * 0.04)) for k in range(segs)]
+    for k in range(segs):
+        q.paint([bm.faces.new((ring[k], ring[(k + 1) % segs], mid[(k + 1) % segs], mid[k]))], STEW, rr, 0.05)
+    c = bm.verts.new((0, 0, z + r * 0.06))
+    q.paint([bm.faces.new((mid[k], mid[(k + 1) % segs], c)) for k in range(segs)], STEW_HI, rr, 0.05)
+    for k in range(9):  # lumps breaking the surface
+        a, d = rr.uniform(0, math.tau), rr.uniform(0.1, 0.75) * r
+        sz = r * rr.uniform(0.12, 0.2)
+        q.blob((math.cos(a) * d, math.sin(a) * d, z + sz * 0.2), (sz, sz * 0.8, sz * 0.5), STEW_BITS[k % len(STEW_BITS)], rr, 0.08, noise=0.2)
+
+
+def cookpot(q, rr, full):
+    """A cooking pot: coiled wide and thick from clay gritted with crushed stone, on a rounded base that sits down
+    into the embers, with a short flared neck and a thick rolled rim; flecks of grit show in the clay, and the belly
+    is black with soot from the fire. Full, the stew is in it nearly to the neck; else it is empty, dark inside.
+    Origin at the foot, centred."""
+    # rings, foot to rim: (z, radius); then down the inside to the stew or the bottom
+    prof = [(0.0, 0.012), (0.004, 0.026), (0.012, 0.039), (0.024, 0.048), (0.038, 0.051), (0.052, 0.048),
+            (0.062, 0.042), (0.068, 0.040), (0.073, 0.043), (0.077, 0.046), (0.080, 0.045)]
+    inner = [(0.078, 0.041), (0.072, 0.037), (0.064, 0.039)] + ([] if full else [(0.045, 0.043), (0.025, 0.036), (0.012, 0.022)])
+    segs = 16
+    bm = q.bm
+    loops = [[bm.verts.new((math.cos(k / segs * math.tau) * r, math.sin(k / segs * math.tau) * r, z)) for k in range(segs)] for z, r in prof + inner]
+    n_out = len(prof)
+    for i in range(len(loops) - 1):
+        a, b = loops[i], loops[i + 1]
+        for k in range(segs):
+            f = bm.faces.new((a[k], a[(k + 1) % segs], b[(k + 1) % segs], b[k]))
+            if i >= n_out - 1:
+                col = COOKPOT_DK if i == n_out - 1 else (62, 50, 42)  # the rim's top, and the inside dark with use
+            else:
+                # sooted from the fire up, thick at the base and fading up the belly, ragged at its edge
+                soot = max(0.0, min(1.0, 1.15 - i * 0.2 + 0.25 * math.sin(k * 1.7 + i)))
+                base = COOKPOT_GRIT if (k * 7 + i * 3) % 11 == 0 and i >= 4 else COOKPOT
+                col = tuple(b * (1 - soot) + d * soot for b, d in zip(base, COOKPOT_SOOT))
+            q.paint([f], col, rr, 0.05)
+    q.paint([bm.faces.new(list(reversed(loops[0])))], COOKPOT_SOOT, rr, 0.03)
+    last = loops[-1]
+    if full:
+        c = bm.verts.new((0, 0, inner[-1][0] - 0.002))
+        q.paint([bm.faces.new((last[k], last[(k + 1) % segs], c)) for k in range(segs)], STEW, rr, 0.04)
+        stew_top(q, rr, 0.037, inner[-1][0] + 0.001)
+    else:
+        c = bm.verts.new((0, 0, 0.006))
+        q.paint([bm.faces.new((last[k], last[(k + 1) % segs], c)) for k in range(segs)], (54, 44, 38), rr, 0.04)
+
+
+def paddle(q, rr, foot, top):
+    """A stirring paddle: a whittled shaft, its blade flat and broad at the foot."""
+    foot, top = Vector(foot), Vector(top)
+    d = (top - foot).normalized()
+    q.cyl(5, 0.0035, 0.0045, foot + d * 0.03, top, PADDLE, rr, 0.05)
+    side = d.cross(Vector((0, 0, 1)))
+    side = side.normalized() if side.length > 1e-6 else Vector((1, 0, 0))
+    q.box(foot + d * 0.015, (0.016, 0.003, 0.016), PADDLE, rr, 0.05, rot=Matrix((side, side.cross(d) * -1, d)).transposed())
+
+
+POT_POS = Vector((POT_AT[0], -POT_AT[1], -0.008))  # Blender space: sunk a little into the ash
+POT_OUT = Vector((POT_AT[0], -POT_AT[1], 0)).normalized()
+BOWLS_AT = Vector((0.12, -0.31, 0.0))  # the band's bowls, stacked on a flat stone ready for the meal
+
+
+def bowls_by(q, rr):
+    """The bowls set out on a flat stone by the hearth for the meal: two stacked, one beside them."""
+    q.box(BOWLS_AT + Vector((0, 0, 0.008)), (0.09, 0.07, 0.016), jit(STONE, rr, 0.1), rr, 0.05, rot=Matrix.Rotation(0.4, 3, "Z"), taper=0.85)
+    placed(q, lambda q: bowl(q, rr), BOWLS_AT + Vector((-0.018, 0.0, 0.016)))
+    placed(q, lambda q: bowl(q, rr), BOWLS_AT + Vector((-0.018, 0.0, 0.026)), 0.6)
+    placed(q, lambda q: bowl(q, rr), BOWLS_AT + Vector((0.036, 0.012, 0.016)), 1.3)
+
+
+# bld__hearthPot: the hearth with the cooking pot down in the embers at the edge of the fire, the stew in it and
+# the paddle standing in it, and the bowls set out; bld__hearthPotEmpty: the pot set by the ring, empty, the
+# paddle left in it, till the evening
+q = Part()
+r2 = random.Random()
+r2.setstate(state)
+hearth(q, r2, pot=True)
+rr = random.Random(140)
+placed(q, lambda q: cookpot(q, rr, True), POT_POS)
+paddle(q, rr, POT_POS + Vector((0.006, 0.004, 0.05)), POT_POS + POT_OUT * 0.075 + Vector((0.0, 0.0, 0.2)))
+bowls_by(q, rr)
+q.finish("bld__hearthPot")
+
+q = Part()
+r2 = random.Random()
+r2.setstate(state)
+hearth(q, r2)
+rr = random.Random(141)
+by = POT_OUT * 0.3 + Vector((0, 0, 0))
+placed(q, lambda q: cookpot(q, rr, False), by)
+paddle(q, rr, by + Vector((0.006, 0.0, 0.012)), by + POT_OUT * 0.04 + Vector((0.02, 0.0, 0.16)))
+bowls_by(q, rr)
+q.finish("bld__hearthPotEmpty")
+
+q = Part()  # the cooking pot, for the picture in its window: empty, the paddle standing in it
+rr = random.Random(142)
+cookpot(q, rr, False)
+paddle(q, rr, (0.008, 0.0, 0.012), (0.04, 0.02, 0.15))
+q.finish("item__cookpot")
+
+
+def bowl_of_stew(q, rr):
+    """A bowl of stew held in the hands: one of the band's plain bowls, the stew in it to the brim."""
+    bowl(q, rr, pattern=False)
+    stew_top(q, rr, 0.027, 0.017, segs=12)
+
+
+q = Part()  # a bowl of stew (or of a hot brew), held at the chest in the left hand; origin at the bowl's foot
+bowl_of_stew(q, random.Random(143))
+q.finish("carry__bowl")
 
 BEAD = [(196, 184, 168), (150, 140, 128), (118, 108, 102), (212, 196, 160), (166, 112, 78)]  # pale, grey and dark stone, a shell, a red one
 BEAD_CORD = (112, 88, 60)

@@ -9,9 +9,9 @@ export const OPPOSED: [Trait, Trait][] = [['industrious', 'lazy'], ['brave', 'ca
 
 // Crafting is four skills, so people grow into the band's toolmaker, weaver, potter or hideworker. Gardening
 // comes last: nobody knows it until the band works out how to sow.
-export const SKILLS = ['foraging', 'woodcutting', 'building', 'hunting', 'fishing', 'toolmaking', 'weaving', 'pottery', 'hidework', 'gardening'] as const;
+export const SKILLS = ['foraging', 'woodcutting', 'building', 'hunting', 'fishing', 'toolmaking', 'weaving', 'pottery', 'hidework', 'gardening', 'cooking'] as const;
 export type Skill = (typeof SKILLS)[number];
-export const SK = { forage: 0, wood: 1, build: 2, hunt: 3, fish: 4, tool: 5, weave: 6, pot: 7, hide: 8, garden: 9 } as const;
+export const SK = { forage: 0, wood: 1, build: 2, hunt: 3, fish: 4, tool: 5, weave: 6, pot: 7, hide: 8, garden: 9, cook: 10 } as const;
 /** The top of every skill. */
 export const SKILL_MAX = 20;
 /**
@@ -58,6 +58,9 @@ export const TRAINING = {
   pigs: [{ skill: SK.garden, gain: 0.04 }, { skill: SK.hunt, gain: 0.01 }],
   // a spell of work on a monument: earth heaped, a stone levered upright (slow, heavy, and much the same each day)
   raise: [{ skill: SK.build, gain: 0.08 }],
+  // a stew cooked for the band in the pot at the fire (or a brew steeped in it for someone sick)
+  cook: [{ skill: SK.cook, gain: 0.14 }, { skill: SK.forage, gain: 0.01 }],
+  brew: [{ skill: SK.cook, gain: 0.05 }, { skill: SK.forage, gain: 0.03 }],
 } as const satisfies Record<string, Lesson>;
 export type Training = keyof typeof TRAINING;
 
@@ -77,7 +80,7 @@ export function train(p: Person, what: Training) {
 }
 
 /** What a person is known as when they are clearly the band's best at a craft. */
-export const CRAFT_TITLES: Partial<Record<number, string>> = { [SK.wood]: 'woodcutter', [SK.tool]: 'toolmaker', [SK.weave]: 'weaver', [SK.pot]: 'potter', [SK.hide]: 'hideworker', [SK.garden]: 'gardener' };
+export const CRAFT_TITLES: Partial<Record<number, string>> = { [SK.wood]: 'woodcutter', [SK.tool]: 'toolmaker', [SK.weave]: 'weaver', [SK.pot]: 'potter', [SK.hide]: 'hideworker', [SK.garden]: 'gardener', [SK.cook]: 'cook' };
 
 /** What a person's body is doing (drives animation). */
 export const ACT = {
@@ -108,24 +111,26 @@ export const ACT_NAMES = Object.keys(ACT);
 /** What a person is carrying. */
 export const CARRY = { None: 0, Log: 1, Berries: 2, Meat: 3, Fish: 4, Body: 5, Spear: 6, Baby: 7, Fiber: 8, Mud: 9, Stone: 10, Roots: 11, Nuts: 12, Herbs: 13, Eggs: 14, Honey: 15, Mushrooms: 16, Grain: 17, Greens: 18, Piglet: 19,
   /** a carcass laid on the ground at the stores, being butchered: a deer, or a boar or pig */
-  Carcass: 20, BoarCarcass: 21 } as const;
+  Carcass: 20, BoarCarcass: 21,
+  /** a bowl of stew (or of a herb brew) held in both hands */
+  Bowl: 22 } as const;
 
 export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
   | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast' | 'eggs' | 'honey' | 'mushrooms' | 'mend'
-  | 'sow' | 'tend' | 'harvest' | 'pigs' | 'raise' | 'weir';
+  | 'sow' | 'tend' | 'harvest' | 'pigs' | 'raise' | 'weir' | 'cook';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
   'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen', 'bed', 'roots', 'nuts', 'herbs', 'nurse', 'gift', 'feast', 'eggs', 'honey', 'mushrooms', 'mend',
-  'sow', 'tend', 'harvest', 'pigs', 'raise', 'weir',
+  'sow', 'tend', 'harvest', 'pigs', 'raise', 'weir', 'cook',
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'sledge'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'sledge', 'cookpot'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap', 'deadfall'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -199,6 +204,9 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   net: { label: 'Fishing net', uses: 50 },
   // two runners of split ash curved up at the front, crossbars lashed on, and a hide rope to drag it by
   sledge: { label: 'Log sledge', uses: 40 },
+  // a wide-mouthed pot, thick-walled and coarse with grit so it takes the fire, set in the embers each evening for
+  // the band's stew: the heat tells on it, and it cracks in a year or so (each stew cooked in it is a use)
+  cookpot: { label: 'Cooking pot', uses: 50 },
 };
 /**
  * Things made for their own sake in the hours a fed band has free: they are the band's goods, its wealth.
@@ -400,6 +408,73 @@ export const BAD_MUSHROOM_DAYS = 3;
 export const HERBS_WANT = 6;
 export const NURSE_DAYS = 2;
 /**
+ * Cooking in a pot. A band that knows the stew pot has someone cook the evening meal for everyone: from late
+ * afternoon the cook takes the makings from the stores to the pot at the fire and keeps it simmering this long.
+ * The band eats from it that evening and next morning (what is left by midday goes to waste). In a stew the
+ * same food fills this much more (more again from a master cook, up to STEW_MASTER more at the top of the
+ * skill), where roasting gets COOK_GAIN; berries go in for sweetness and fill no more for it, greens a little.
+ * The cook makes enough for this many meals a head (less while rationing), in the order the foods go off. When it
+ * is ready, the band comes to eat: the stew draws them to the fire as a mealtime does.
+ */
+export const STEW_TICKS = 18;
+/** Where the cooking pot sits in the hearth's embers, in the hearth model's own space (game x, z; see POT_AT in blender/build_band.py). */
+export const POT_AT = [-0.12, 0.13] as const;
+export const STEW_GAIN = 1.35;
+export const STEW_MASTER = 0.2;
+export const STEW_GREENS = 1.15;
+export const STEW_MEALS = 1.25;
+export const STEW_FROM = 14.5;
+export const STEW_TO = 17.5;
+/** At most this share of a stew is berries. */
+export const STEW_BERRIES = 0.3;
+/** The foods that go into the stew, those that go off fastest first. */
+export const STEWED = ['greens', 'mushrooms', 'eggs', 'fish', 'meat', 'berries', 'roots', 'grain', 'nuts', 'preserved'] as const;
+/** Eating together from the band's pot: belonging on top of the company of a meal, and with the cook; and how strongly a stew ready in the pot calls them to eat. */
+export const STEW_BELONG = 4;
+export const STEW_CALL = 0.6;
+/**
+ * Bone broth: the cracked bones from the kills simmered in the stew a day, each filling this much (food from
+ * nothing, where they were thrown out before). The cook leaves a few for the needles and harpoons, and puts in at
+ * most one for each this many people.
+ */
+export const BROTH_FILL = 0.5;
+export const BROTH_KEEP = 3;
+export const BROTH_EACH = 4;
+/**
+ * Herbal brews. A fever nursed with a brew steeped in the cooking pot breaks this much faster than with herbs
+ * alone, and harms and kills less; on a cold evening the cook also steeps a pot of herbs to drink hot with the
+ * meal, for this many bundles, if the band has that many to spare over what it keeps for fevers. Whoever drinks
+ * it is warmed this much, and feels the cold this much less for the hours after.
+ */
+export const BREW_HEAL = 1.5;
+export const BREW_HERBS = 0.5;
+export const BREW_COLD = 5;
+export const BREW_WARM = 12;
+export const BREW_HOURS = 8;
+export const BREW_KEEP = 0.75;
+/** Herbs the band keeps by once it brews (the hot drinks in winter want more than the fevers). */
+export const HERBS_BREW = 12;
+/** What is in the band's cooking pot at the fire. */
+export interface Stew {
+  /** the evening it is cooked for (Sim.evening) */
+  evening: number;
+  /** who cooks it (a person id) */
+  cook: number;
+  /** the tick the cook set it on the fire, and the tick it was ready (-1 while it still simmers) */
+  started: number;
+  ready: number;
+  /** what is still in the pot, raw, by the food it was made of */
+  raw: Partial<Record<(typeof STEWED)[number], number>>;
+  /** how much what is in the pot fills, in meals (raw food times the stew's gain, and the broth) */
+  fill: number;
+  /** what it is: "fish stew", "acorn porridge" */
+  dish: string;
+  /** bones simmered in it for broth */
+  bones?: number;
+  /** a pot of hot herbs steeped beside it, to drink with the meal on a cold evening */
+  brew?: boolean;
+}
+/**
  * Food kept in one pot, and how much of the usual going-off still happens to it there. Pots hold the foods that
  * go off fastest, those first: greens, eggs, berries and mushrooms.
  */
@@ -507,7 +582,7 @@ export const FIBER_PER_THREAD = 2;
 /** Hanks of thread a band spins to try the spindle before it has a loom, and keeps by at most once it has. */
 export const THREAD_TRY = 4;
 export const THREAD_KEPT = 16;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'charcoal', 'sledge'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'charcoal', 'sledge', 'cookpot'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage or a hank of thread into the stores, a charcoal clamp lit (its charcoal
@@ -665,6 +740,11 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
     makes: 'sledge', uses: { wood: 4, cordage: 2 }, work: 70, skill: SK.tool, grow: 0.07, knows: 'sledge', doing: 'Making a log sledge',
     thought: 'Bending runners for a sledge and lashing crossbars across them.', done: 'Made a log sledge and laid it on the pile.',
   },
+  cookpot: {
+    // coiled wide and thick from clay tempered with grit, so it takes the fire evening after evening
+    makes: 'cookpot', uses: { mud: 2, wood: 1 }, work: 50, skill: SK.pot, grow: 0.08, knows: 'stew', doing: 'Making a cooking pot',
+    thought: 'Coiling a wide cooking pot from clay gritted with sand.', done: 'Fired a cooking pot and set it by the fire.',
+  },
 };
 /** The recipes fired only in the kiln: too big for the embers of the hearth. */
 export const KILNED: RecipeKey[] = ['jar'];
@@ -781,6 +861,8 @@ export interface Task {
   bank?: number;
   /** fishing: helping haul this person's net (a person id) */
   crew?: number;
+  /** nursing: a brew of the herbs steeped in the cooking pot first, to give hot */
+  brew?: boolean;
 }
 
 export interface Memory {
@@ -865,6 +947,12 @@ export interface Person {
   worn?: Partial<Record<Slot, number>>;
   /** nursed with herbs through a fever: until when it helps (absent: never) */
   tended?: number;
+  /** given a herb brew for the fever, steeped in the cooking pot: until when it helps (absent: never) */
+  brewed?: number;
+  /** warmed through by a hot herb brew with the evening meal: until when the cold bites less (absent: never) */
+  warmed?: number;
+  /** the dish they remember as the best they ever ate ("Ada's fish stew"; absent: none yet) */
+  dish?: string;
   /** when they last gave someone an ornament (absent: never); the one they wear is an item worn at the neck */
   gave?: number;
 }

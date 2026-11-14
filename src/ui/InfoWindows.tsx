@@ -57,7 +57,7 @@ function moodTip(p: PersonDetail) {
 
 const SKILL_WORDS: Record<string, string> = {
   foraging: 'Foraging', woodcutting: 'Woodcutting', building: 'Building', hunting: 'Hunting', fishing: 'Fishing',
-  toolmaking: 'Toolmaking', weaving: 'Weaving', pottery: 'Pottery', hidework: 'Hidework',
+  toolmaking: 'Toolmaking', weaving: 'Weaving', pottery: 'Pottery', hidework: 'Hidework', gardening: 'Gardening', cooking: 'Cooking',
 };
 const KIND_WORD: Record<string, string> = { person: 'Person', deer: 'Animal', building: 'Building', prop: 'Thing', tile: 'Land', item: 'Item' };
 
@@ -379,6 +379,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
               <dt>Born</dt>
               <dd>{p.birth > 0 ? when(p.birth) : 'Before the band came here'}</dd>
               {!p.alive && (<><dt>Died</dt><dd>{when(p.death)}, {p.cause}</dd></>)}
+              {p.dish && (<><dt data-tip={PERSON_ROW_TIPS['Best meal']}>Best meal</dt><dd>{p.dish[0].toUpperCase()}{p.dish.slice(1)}</dd></>)}
             </dl>
             {p.memories.length > 0 ? (
               <ul class="memories">

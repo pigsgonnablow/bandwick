@@ -450,7 +450,7 @@ describe('gardens', () => {
   it('read saves from before gardening: no gardening skill yet, the other skills as they were, empty grain stores', () => {
     const s = runYears(sim(2), 1);
     const save = s.serialize();
-    for (const p of save.people) (p as any).skills = (p.skills as unknown as number[]).slice(0, SKILLS.length - 1);
+    for (const p of save.people) (p as any).skills = (p.skills as unknown as number[]).slice(0, SK.garden);
     for (const c of save.camps ?? []) { delete (c.stock as any).grain; delete (c.stock as any).greens; }
     const p0 = save.people.find((p) => p.alive)!;
     const weave = (p0.skills as unknown as number[])[SK.weave];

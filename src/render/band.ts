@@ -2,7 +2,7 @@
 // carried items, buildings rising as they're built, the hearth fire, its light and smoke.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { ACT, CARRY, FLASH, TASK_KINDS, ITEM_KINDS, POT_HOLDS } from '../sim/band';
+import { ACT, CARRY, FLASH, TASK_KINDS, ITEM_KINDS, POT_HOLDS, POT_AT } from '../sim/band';
 import { SHAKE } from './props';
 import type { Frame } from '../sim/runner';
 import { BASE_TPS } from '../sim/runner';
@@ -295,6 +295,9 @@ export class BandLayer {
   /** the smoke from a charcoal clamp smouldering (the nearest one) */
   private clampSmoke: THREE.Points;
   private clampSmokeMat: THREE.ShaderMaterial;
+  /** the steam off the stew pot in the embers at the nearest hearth with a stew on */
+  private steam: THREE.Points;
+  private steamMat: THREE.ShaderMaterial;
   private selRing: THREE.Mesh;
   private hoverRing: THREE.Mesh;
   private buildings: NonNullable<Frame['buildings']> = [];
@@ -343,6 +346,8 @@ export class BandLayer {
       [CARRY.Carcass, 'carcass'], [CARRY.BoarCarcass, 'boarCarcass'],
       [HARPOON, 'harpoon'], [LINE, 'line'], [LINE_CAST, 'lineCast'], [NET, 'net'], [NET_OUT, 'netOut'],
       [SLEDGE, 'sledge'], [SLEDGE_FULL, 'sledgeFull'],
+      // a bowl of stew (or of a hot brew) held at the chest
+      [CARRY.Bowl, 'bowl'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
@@ -359,7 +364,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit']) {
+      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit', 'hearthPot', 'hearthPotEmpty']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -446,6 +451,10 @@ export class BandLayer {
     this.clampSmoke = cs.points;
     this.clampSmokeMat = cs.mat;
     this.group.add(this.clampSmoke);
+    const st = makeSmoke({ rise: 0.45, spread: 0.08, size: 0.35, speed: 0.22, alpha: 0.38, drift: 0.12 });
+    this.steam = st.points;
+    this.steamMat = st.mat;
+    this.group.add(this.steam);
     // selection rings
     const ringMat = (c: number, o: number) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, depthWrite: false, side: THREE.DoubleSide });
     this.selRing = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.21, 24).rotateX(-Math.PI / 2), ringMat(0xe3ab4e, 0.95));
@@ -1631,7 +1640,8 @@ export class BandLayer {
   /** Which model draws a building: huts come in two shapes, each with wattle, daub and stone walls. */
   private modelOf(b: { kind: string; id: number; walls?: string; look?: string }) {
     // (a garden plot as it grows, a monument as it goes up, a weir with fish in its basket, a charcoal clamp smouldering)
-    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir' || b.kind === 'clamp') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
+    // (and a hearth with the band's cooking pot at it)
+    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir' || b.kind === 'clamp' || b.kind === 'hearth') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
     if (b.kind !== 'hut' && b.kind !== 'storehouse') return b.kind;
     const shape = b.kind === 'storehouse' ? b.kind : b.id % 2 ? 'hut1' : 'hut0';
     const own = shape + (b.walls === 'daub' ? 'd' : b.walls === 'stone' ? 's' : '');
@@ -1652,7 +1662,7 @@ export class BandLayer {
       const m = this.buildingMeshes.get(kind);
       if (m) this.buildingMeshes.set(kind, this.grow(m, n));
     }
-    this.flames = this.grow(this.flames, need.get('hearth') ?? 0);
+    this.flames = this.grow(this.flames, (need.get('hearth') ?? 0) + (need.get('hearthPot') ?? 0) + (need.get('hearthPotEmpty') ?? 0));
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), scl = new THREE.Vector3(1, 1, 1);
     const up = new THREE.Vector3(0, 1, 0);
     const tint = new THREE.Color();
@@ -1680,6 +1690,7 @@ export class BandLayer {
     };
     const fires: { x: number; y: number; z: number; fuel: number }[] = [];
     const clamps: { x: number; y: number; z: number }[] = [];
+    const pots: { x: number; y: number; z: number }[] = [];
     this.drawPiles();
     this.drawTraps();
     for (const b of this.buildings) {
@@ -1713,6 +1724,11 @@ export class BandLayer {
       // fresh grass laid under a lean-to (a hut's is out of sight inside)
       if (b.bedding && b.kind === 'leanto' && b.built) put('bedding', cx, cz, rot, 1, 1, b.band);
       if (b.kind === 'clamp' && b.look === 'clampLit') clamps.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz });
+      // (the stew pot sits in the embers at its own spot in the hearth, turned with it)
+      if (b.kind === 'hearth' && b.look === 'hearthPot' && b.fuel > 0) {
+        const cs = Math.round(Math.cos(rot)), sn = Math.round(Math.sin(rot));
+        pots.push({ x: cx + POT_AT[0] * cs + POT_AT[1] * sn, y: this.world.groundY[b.z * this.world.size + b.x], z: cz - POT_AT[0] * sn + POT_AT[1] * cs });
+      }
       if (b.kind === 'hearth' && b.fuel > 0 && (laid === undefined || laid >= 1)) fires.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, fuel: b.fuel });
     }
     for (const [kind, m] of this.buildingMeshes) {
@@ -1766,6 +1782,12 @@ export class BandLayer {
     this.clampSmoke.visible = !!c0;
     if (c0) this.clampSmokeMat.uniforms.uOrigin.value.set(c0.x, c0.y + 0.16, c0.z);
     this.clampSmokeMat.uniforms.uNight.value = night;
+    // and steam curling off the stew pot
+    let p0: { x: number; y: number; z: number } | undefined;
+    for (const c of pots) if (!p0 || Math.hypot(c.x - camTarget.x, c.z - camTarget.z) < Math.hypot(p0.x - camTarget.x, p0.z - camTarget.z)) p0 = c;
+    this.steam.visible = !!p0;
+    if (p0) this.steamMat.uniforms.uOrigin.value.set(p0.x, p0.y + 0.075, p0.z);
+    this.steamMat.uniforms.uNight.value = night;
   }
 
   /** The band-colour glows gathered this frame (people and buildings), drawn on the ground. */
@@ -1961,6 +1983,7 @@ function carryOffset(kind: number) {
     case CARRY.Body: p.set(0, 0.215, 0.085); e.set(0, 0, 0); break; // held across the arms
     case CARRY.Baby: p.set(0, 0.23, 0.055); break;
     case CARRY.Piglet: p.set(0, 0.225, 0.06); break; // held tight against the chest, wriggling
+    case CARRY.Bowl: p.set(-0.035, 0.205, 0.07); break; // a bowl of stew in the left hand, at the chest
     case SNARE: p.set(0.075, 0.16, 0.04); break; // the coil in the fist, its stake hanging
     case FISHTRAP: p.set(0.075, 0.075, 0.04); e.set(Math.PI / 2, 0, 0); break; // by the tail, mouth down
     case BASKET: case BASKET_FULL: p.set(0.08, 0.16, 0.035); break; // hung from the fist by its handle
@@ -2009,7 +2032,11 @@ function radialTexture() {
   return t;
 }
 
-function makeSmoke() {
+/** A plume of smoke (or, smaller and quicker, of steam): how high it rises, how wide it spreads, how big its puffs are,
+ * how fast they go up, how thick they are, and how far the wind carries them. */
+function makeSmoke(o: { rise?: number; spread?: number; size?: number; speed?: number; alpha?: number; drift?: number } = {}) {
+  const rise = o.rise ?? 2.4, spread = o.spread ?? 0.25, size = o.size ?? 1, speed = o.speed ?? 0.07, alpha = o.alpha ?? 0.32, drift = o.drift ?? 1.1;
+  const f = (v: number) => v.toFixed(4);
   const n = 28;
   const pos = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) pos.set([i / n, ((i * 37) % n) / n, ((i * 11) % n) / n], i * 3);
@@ -2025,21 +2052,21 @@ function makeSmoke() {
       uniform float uWind;
       varying float vLife;
       void main() {
-        float life = fract(position.x + uTime * 0.07);
+        float life = fract(position.x + uTime * ${f(speed)});
         vLife = life;
         vec3 p = uOrigin;
-        p.y += life * 2.4;
-        p.x += (position.y - 0.5) * 0.25 * life + life * life * (0.5 + uWind) * 1.1;
-        p.z += (position.z - 0.5) * 0.25 * life;
+        p.y += life * ${f(rise)};
+        p.x += (position.y - 0.5) * ${f(spread)} * life + life * life * (0.5 + uWind) * ${f(drift)};
+        p.z += (position.z - 0.5) * ${f(spread)} * life;
         gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
-        gl_PointSize = (6.0 + life * 26.0) * (projectionMatrix[1][1] * 9.0);
+        gl_PointSize = (6.0 + life * 26.0) * ${f(size)} * (projectionMatrix[1][1] * 9.0);
       }`,
     fragmentShader: /* glsl */ `
       uniform float uNight;
       varying float vLife;
       void main() {
         vec2 d = gl_PointCoord - 0.5;
-        float a = (1.0 - smoothstep(0.0, 0.5, length(d))) * (1.0 - vLife) * smoothstep(0.0, 0.08, vLife) * 0.32;
+        float a = (1.0 - smoothstep(0.0, 0.5, length(d))) * (1.0 - vLife) * smoothstep(0.0, 0.08, vLife) * ${f(alpha)};
         vec3 c = mix(vec3(0.82, 0.8, 0.78), vec3(0.32, 0.33, 0.38), uNight);
         gl_FragColor = vec4(c, a);
         #include <colorspace_fragment>
@@ -2176,6 +2203,7 @@ void holdCarry(inout Pose p, float act, float carry) {
   if (carry < 1.5 || (carry > 2.5 && carry < 3.5) || (carry > 9.5 && carry < 10.5)) { p.shR = -1.55; p.elR = -1.95; } // log, meat, stone: on the right shoulder
   else if (carry > 4.5 && carry < 5.5) { p.shL = p.shR = -1.25; p.elL = p.elR = -1.35; }         // a body, in both arms
   else if ((carry > 6.5 && carry < 7.5) || (carry > 18.5 && carry < 19.5)) { p.shL = p.shR = -0.75; p.elL = p.elR = -1.45; } // a baby, cradled (or a piglet held tight)
+  else if (carry > 21.5 && carry < 22.5) { p.shL = -0.7; p.elL = -1.5; }                         // a bowl, held at the chest in the left hand
   else if (carry > 5.5 && carry < 6.5) {
     // a spear, held low; hunting (raised to throw) and fishing (poised over the water) hold it in their own poses
     if (!(act > 7.5 && act < 8.5) && !(act > 12.5 && act < 13.5)) { p.shR = -0.45; p.elR = -0.75; }
