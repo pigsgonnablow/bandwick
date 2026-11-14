@@ -448,6 +448,9 @@ export const RUN_FILL = 0.35;
 export const WEIR_TAKE = 0.12;
 export const WEIR_TRICKLE = 0.006;
 export const WEIR_HOLDS = 20;
+/** Days fish may lie in a weir basket before they start slipping out of it and back into the river, and the share that goes each six hours after. */
+export const WEIR_STAY_DAYS = 4;
+export const WEIR_ESCAPE = 0.12;
 /** What the run is above a weir, against below it (the weir takes the rest). */
 export const WEIR_PASS = 0.6;
 /** Fish carried home from a weir in one trip. */
@@ -933,6 +936,8 @@ export interface Building {
   plot?: Plot;
   /** a fish weir: the fish in its basket, waiting to be carried home */
   catch?: number;
+  /** a fish weir: the tick the fish in its basket were last tended (taken out, or the first one in): left longer, they slip free */
+  kept?: number;
   work: number; // done
   built: boolean;
   owner: number; // person id of the household head

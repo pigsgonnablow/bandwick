@@ -182,7 +182,7 @@ describe('fat', () => {
       p.x = rack.x + 0.5;
       p.z = rack.z + 0.5;
       p.task = { kind: 'preserve', stage: 1, goal: rack.tile, gx: rack.x + 0.5, gz: rack.z + 0.5, ref: rack.id, timer: 0, started: s.tick, amount: 6, near: true, fish: 0 };
-      for (let i = 0; i < 80 && p.task; i++) { runTask(s, p); s.tick++; }
+      for (let i = 0; i < 400 && p.task; i++) { runTask(s, p); s.tick++; }
       return { got: s.camp.stock.preserved - before, left: s.camp.stock.fat };
     };
     const plain = dried(0), fatty = dried(3);

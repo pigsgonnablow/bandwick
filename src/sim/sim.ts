@@ -1290,8 +1290,10 @@ export class Sim {
       // a tool nobody is working with goes back on the pile when they pass by it
       if ((t + p.id) % 10 === 0 && p.alive && !TOOL_TASKS.includes(p.task?.kind as TaskKind) && this.heldBy(p)) {
         const st = this.storeSpot(true);
-        // (a lamp is put out and set down as soon as the work by it is left)
-        if (hyp(p.x - st.x, p.z - st.z) < 3.5 || (this.heldBy(p)!.kind === 'lamp' && p.task?.kind !== 'craft' && p.task?.kind !== 'mend')) this.returnTool(p);
+        const held = this.heldBy(p)!;
+        // (a lamp is put out and set down as soon as the work by it is left, but not while they work by it)
+        const lampAtWork = held.kind === 'lamp' && (p.task?.kind === 'craft' || p.task?.kind === 'mend') && isDark(t);
+        if (!lampAtWork && (hyp(p.x - st.x, p.z - st.z) < 3.5 || held.kind === 'lamp')) this.returnTool(p);
       }
     }
     this.updateDeer();
@@ -3006,6 +3008,15 @@ export class Sim {
     const bitter = tension > 0.05 || (stayers.length > 0 && regard / stayers.length < 12) || !!rival || hungry || blood || graves || cruel || grasping;
     const why = rival ? ` after falling out with ${rival.name}` : blood ? ' after the bloodshed' : hungry ? ' after the hungry year' : graves ? ' after a year of burials'
       : tension > 0.05 ? ' after a bitter quarrel' : cruel ? ', and few were sorry to see them go' : grasping ? ' to rule a band of their own' : ', glad to be gone';
+    // parting on good terms, they are given the gear a band can spare as well: jars, lamps, nets, lines and the like
+    // (one of each, where the band has two or more; a bitter parting takes only the plain tools above)
+    if (!bitter) {
+      for (const kind of ['jar', 'lamp', 'needle', 'net', 'line', 'harpoon'] as const) {
+        const pile = this.items.filter((i) => i.band === from.id && i.holder < 0 && i.kind === kind);
+        const n = Math.min(pile.length - 1, Math.max(1, Math.round(pile.length * share)));
+        for (const it of pile.slice(0, Math.max(0, n))) it.band = nc.id;
+      }
+    }
     const parentColor = from.color ?? this.distinctColor();
     nc.color = bitter ? this.contrastColor(parentColor) : this.lighterColor(parentColor);
     nc.origin = bitter ? 'turmoil' : 'amicable';
