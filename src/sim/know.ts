@@ -14,6 +14,7 @@ export type Practice =
   | 'evening_fire' // an evening by the camp fire (each adult)
   | 'damp_fire' // feeding the fire with damp wood
   | 'dry_fire' // feeding the fire with wood from under the woodpile's roof
+  | 'build_poles' // a spell of work on a hut or storehouse framed in round poles
   | 'haul_logs' // a trip hauling logs home on the shoulder from a tree felled out in the woods (twice over the snow)
   | 'tired_ground' // a harvest brought in from a garden plot whose ground is tiring (each harvester)
   | 'store_food' // food carried into the stores (per meal)
@@ -29,6 +30,7 @@ export type Practice =
   | 'fish_miss' // a stab at the water that missed (a quarter as much: a fish that wriggled off the point while the catch was landed)
   | 'ice' // an evening by the fire while the lakes and rivers are frozen over (each adult)
   | 'trap_fish' // a fish trap emptied on the round with fish in it (more the fuller it was)
+  | 'far_water' // a fishing trip to water by the bank fished thin, with open water beyond the reach of a spear
   | 'run' // a fishing trip to a river while the salmon or the eels are running in it
   | 'carcass' // a deer or boar carried home and skinned (half again when it is butchered)
   | 'rack' // a batch of meat or fish hung on the drying rack
@@ -426,6 +428,24 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'make log sledges and drag the logs home on them', memory: 'Dragged home the first load of logs on a sledge.',
   },
   {
+    // (a woodcutter who fishes, standing on a bank fished thin and watching the fish rise out on the open water past
+    // the reach of any spear, or the run going by in the middle of the river, thinks of the old pines that lie in the
+    // water for years and do not sink: a trunk to ride)
+    key: 'canoe', label: 'Dugout canoe', needs: ['axe'], requires: [skill(SK.wood, 14), skill(SK.fish, ABLE)],
+    practice: { far_water: 1, run: 0.3 }, odds: 10,
+    found: 'felled a great pine, burned out its heart a little at a time and scraped the char away with the axe, and paddled the hollow trunk out onto the open water',
+    taught: 'hollow out a dugout canoe and fish from it out on the open water', memory: 'Paddled the first dugout canoe out onto the water.',
+  },
+  {
+    // (a woodcutter raising yet another hut of round poles, every one a whole young tree, splits a log for a wedge to
+    // jam a joint, and watches the oak run open along its grain: planks and posts from a trunk, not one pole; or one
+    // hauling home a great oak a log at a time, or felling far out past the stumps of the young trees cut for poles)
+    key: 'split_timber', label: 'Wedges and split timber', needs: ['huts', 'axe'], requires: [skill(SK.wood, ELITE), skill(SK.build, 8)],
+    practice: { build_poles: 1, haul_logs: 0.25, far_tree: 0.25 }, odds: 15,
+    found: 'drove wedges of hardened oak one after another into the end of a log and split it from end to end along the grain: two planks from one trunk, and more again from a big one',
+    taught: 'split oak into planks with wedges, and raise walls of split timber', memory: 'Split the first oak log into planks.',
+  },
+  {
     // (a gardener who knows the woods, bringing in a thin harvest from ground grown tired, remembers how green and
     // thick things came up where the woods had burned, and thinks of burning a stand of trees for a new plot)
     key: 'swidden', label: 'Clearing by fire', needs: ['garden'], requires: [skill(SK.wood, 13), skill(SK.garden, 8)],
@@ -532,9 +552,10 @@ export const DISCOVERY = new Map(DISCOVERIES.map((d) => [d.key, d]));
 /** What a band has to know to build something. */
 export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   const out: string[] = [];
-  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir', clamp: 'charcoal' } as Partial<Record<BuildKind, string>>)[b.kind];
+  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir', clamp: 'charcoal', canoe: 'canoe' } as Partial<Record<BuildKind, string>>)[b.kind];
   if (k) out.push(k);
   if (b.walls === 'daub') out.push('daub');
   if (b.walls === 'stone') out.push('stonework');
+  if (b.walls === 'plank') out.push('split_timber');
   return out;
 }
