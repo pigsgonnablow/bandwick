@@ -32,7 +32,7 @@ export const PHRASE: Record<string, string> = {
   pigs: 'is feeding the pigs and mucking out the pen',
   raise: 'is at work on the band\'s monument',
   weir: 'is lifting the basket out of the fish weir',
-  cook: 'is stirring the stew pot at the fire',
+  cook: 'is cooking for the band at the fire',
 };
 /** How much a viewer would want to see each task. */
 export const INTEREST: Record<string, number> = {

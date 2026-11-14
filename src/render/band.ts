@@ -2,7 +2,7 @@
 // carried items, buildings rising as they're built, the hearth fire, its light and smoke.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { ACT, CARRY, FLASH, TASK_KINDS, ITEM_KINDS, POT_HOLDS, POT_AT } from '../sim/band';
+import { ACT, CARRY, FLASH, TASK_KINDS, ITEM_KINDS, POT_HOLDS, POT_AT, BOIL_AT } from '../sim/band';
 import { SHAKE } from './props';
 import type { Frame } from '../sim/runner';
 import { BASE_TPS } from '../sim/runner';
@@ -364,7 +364,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit', 'hearthPot', 'hearthPotEmpty']) {
+      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit', 'hearthPot', 'hearthPotEmpty', 'hearthBoil', 'hearthStone', 'hearthPotStone', 'hearthPotEmptyStone', 'hearthBoilStone', 'oven', 'ovenLit']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -1641,7 +1641,7 @@ export class BandLayer {
   private modelOf(b: { kind: string; id: number; walls?: string; look?: string }) {
     // (a garden plot as it grows, a monument as it goes up, a weir with fish in its basket, a charcoal clamp smouldering)
     // (and a hearth with the band's cooking pot at it)
-    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir' || b.kind === 'clamp' || b.kind === 'hearth') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
+    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir' || b.kind === 'clamp' || b.kind === 'hearth' || b.kind === 'oven') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
     if (b.kind !== 'hut' && b.kind !== 'storehouse') return b.kind;
     const shape = b.kind === 'storehouse' ? b.kind : b.id % 2 ? 'hut1' : 'hut0';
     const own = shape + (b.walls === 'daub' ? 'd' : b.walls === 'stone' ? 's' : '');
@@ -1662,7 +1662,7 @@ export class BandLayer {
       const m = this.buildingMeshes.get(kind);
       if (m) this.buildingMeshes.set(kind, this.grow(m, n));
     }
-    this.flames = this.grow(this.flames, (need.get('hearth') ?? 0) + (need.get('hearthPot') ?? 0) + (need.get('hearthPotEmpty') ?? 0));
+    this.flames = this.grow(this.flames, [...need].reduce((n, [k, v]) => n + (k.startsWith('hearth') ? v : 0), 0));
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), scl = new THREE.Vector3(1, 1, 1);
     const up = new THREE.Vector3(0, 1, 0);
     const tint = new THREE.Color();
@@ -1723,11 +1723,15 @@ export class BandLayer {
       }
       // fresh grass laid under a lean-to (a hut's is out of sight inside)
       if (b.bedding && b.kind === 'leanto' && b.built) put('bedding', cx, cz, rot, 1, 1, b.band);
-      if (b.kind === 'clamp' && b.look === 'clampLit') clamps.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz });
+      // (and the earth oven baking, a thin smoke through the earth over it)
+      if ((b.kind === 'clamp' && b.look === 'clampLit') || (b.kind === 'oven' && b.look === 'ovenLit')) clamps.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz });
       // (the stew pot sits in the embers at its own spot in the hearth, turned with it)
-      if (b.kind === 'hearth' && b.look === 'hearthPot' && b.fuel > 0) {
+      // (or the hide slung beside the fire for stone boiling)
+      const boil = b.look?.startsWith('hearthBoil');
+      if (b.kind === 'hearth' && (boil || b.look === 'hearthPot' || b.look === 'hearthPotStone') && b.fuel > 0) {
         const cs = Math.round(Math.cos(rot)), sn = Math.round(Math.sin(rot));
-        pots.push({ x: cx + POT_AT[0] * cs + POT_AT[1] * sn, y: this.world.groundY[b.z * this.world.size + b.x], z: cz - POT_AT[0] * sn + POT_AT[1] * cs });
+        const [ax, az] = boil ? BOIL_AT : POT_AT;
+        pots.push({ x: cx + ax * cs + az * sn, y: this.world.groundY[b.z * this.world.size + b.x] + (boil ? 0.06 : 0), z: cz - ax * sn + az * cs });
       }
       if (b.kind === 'hearth' && b.fuel > 0 && (laid === undefined || laid >= 1)) fires.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, fuel: b.fuel });
     }

@@ -294,6 +294,28 @@ herbs (cooking 9, foraging 12), at a sickbed or at the stew, may think of brewin
 herbs, a nurse steeps a hot brew in the pot for the sick, which brings a fever down faster and makes it less
 deadly, and on cold nights herbs go into the evening pot so those who eat it feel the cold less until morning.
 
+**Stone boiling.** Before it has pots, a band that knows hides (foraging 10, hidework 6) may think of stone
+boiling, on the evening of a kill: the evening stew is boiled in a hide slung on three stakes by the fire, the cook
+dropping in stones heated in the fire one after another. It takes longer than a pot and fills less (20% more than
+raw, a little more from a good cook), with no broth or brews, and once the band has a cooking pot it uses that.
+
+**Grilling stone.** A toolmaker who gardens (toolmaking 8, gardening 6), bringing in the grain, may think of baking
+it: the band grinds a flat river stone smooth (1 stone) and props it over the embers. Grain and acorns eaten at the
+lit fire are then baked on it into flatbread and acorn cakes, which fill 55% more than raw, where roasting gives
+25%. The stone lasts for years.
+
+**Earth oven.** A builder who hunts (building 9, hunting 9), back with a kill, may think of an earth oven, and the
+band digs one a little way from the fire (2 wood and 3 mud): a pit lined with stones and banked with earth. When the
+stores hold more fresh meat and fish than will keep (4 meals a head), the cook fills it in the early afternoon
+instead of putting a stew on: a fire is burned down in it (2 wood), the meat, fish and roots are laid in wrapped in
+leaves and covered with earth, and by evening they are baked through, filling 50% more than raw. The band eats it
+together at the fire like the stew, and feels closer still for it. On the day of the midwinter feast the feast is
+baked in the oven, and eaten first. While it bakes the oven is drawn as a low mound of earth with smoke seeping from it.
+
+**Bad food.** Meat, fish and eggs eaten raw can turn the stomach: about 1 meal in 100, two and a half times that in
+the warm months, and roasted or stewed hardly ever. A stew left in the pot overnight in the warm can turn too.
+Either way it is a couple of days' sickness, nursed with herbs like a fever.
+
 **Penned pigs.** A hunter with a garden at home who brings down a boar (a striped piglet most of all), or
 a gardener who finds a plot rooted up by the boar in the night, may think of keeping one: penned pigs, a
 discovery once the band knows its gardens and the boar (hunting 10, gardening 8). The band builds a pen by

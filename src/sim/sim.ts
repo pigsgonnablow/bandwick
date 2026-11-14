@@ -13,7 +13,7 @@ import {
   BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HARPOON_HIT, HARPOON_CATCH, LINE_CATCH, LINE_AGE, NET_CREW, NET_HAND, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, REMAINS, ROT_FROM, BONES_FROM, remainsStage,
   QUALITY_WEAR, GOODS, GOODS_EACH, GOODS_OVER, WOOD_PLENTY, KILN_CRACK, HEARTH_CRACK, SEASONING, SEASONED_HEAT, CHARCOAL_KEPT, CHARCOAL_CRACK, CHARCOAL_FINE, SWIDDEN_SOIL, SWIDDEN_GRASS,
   LOOMED, KILNED, POTTED, JAR_HOLDS, JAR_KEEP, JARRED, JARS_MAX, LAMP_FAT, FAT_KEPT, SINEW_KEPT, SINEW_SEWN, THREAD_TRY, THREAD_KEPT, FIBER_PER_THREAD, BLANKET_REST,
-  STEWED, POT_AT, STEW_BERRIES, STEW_GAIN, STEW_MASTER, STEW_GREENS, STEW_MEALS, STEW_TICKS, Stew, BROTH_FILL, BROTH_KEEP, BROTH_EACH, BREW_HERBS, BREW_COLD, BREW_KEEP, BREW_HEAL, HERBS_BREW,
+  STEWED, POT_AT, BOIL_AT, BOIL_GAIN, BOIL_TICKS, OVENED, OVEN_GAIN, OVEN_GLUT, OVEN_TO, OVEN_TICKS, OVEN_WOOD, GRIDDLE_GAIN, COOK_GAIN, STEW_BERRIES, STEW_GAIN, STEW_MASTER, STEW_GREENS, STEW_MEALS, STEW_TICKS, Stew, BROTH_FILL, BROTH_KEEP, BROTH_EACH, BREW_HERBS, BREW_COLD, BREW_KEEP, BREW_HEAL, HERBS_BREW,
   RUN_FISH, WEIR_PASS, WEIR_HOLDS, CROP, CROP_NAMES, newPlot, GROW_DAYS, PLOT_YIELD, SEED_PER_PLOT, GREENS_PER_DAY, GREENS_LOAD, LEAN_GARDEN, PLENTY_GARDEN, SOIL_REST, SOIL_FALLOW,
 } from './band';
 import {
@@ -47,7 +47,7 @@ export const WARM_RADIUS = 2.6;
 /** How far out hunters go after piglets for an empty pen (further than an everyday hunt). */
 export const PIGLET_RANGE = 55;
 /** the crafts beyond the everyday ones, and the discovery that gives the band a use for each (pottery has none yet) */
-const SKILL_SHOWN_BY: Partial<Record<number, string>> = { [SK.hide]: 'preserving', [SK.pot]: 'pottery', [SK.garden]: 'garden', [SK.cook]: 'stew' };
+const SKILL_SHOWN_BY: Partial<Record<number, string | string[]>> = { [SK.hide]: 'preserving', [SK.pot]: 'pottery', [SK.garden]: 'garden', [SK.cook]: ['stew', 'boiling'] };
 /** the most skill anyone starts with at anything */
 export const START_SKILL_MAX = 10;
 /** how fast fish come back in winter, against the rest of the year */
@@ -130,7 +130,7 @@ const ITEM_USE: Record<ItemKind, string> = {
   basket: 'trips with it', pot: 'days of holding food', cloak: 'cold days', needle: 'things sewn', hat: 'cold days',
   mittens: 'cold days', shoes: 'stretches of walking', cape: 'cold days', bag: 'loads carried', necklace: 'years worn', deadfall: 'days set', furcloak: 'cold days',
   bowl: 'days in use', beads: 'years worn', tunic: 'cold days', blanket: 'cold nights', sash: 'years kept',
-  lamp: 'evenings lit', jar: 'days of holding food', harpoon: 'trips to the water', line: 'trips to the water', net: 'hauls', sledge: 'loads dragged', cookpot: 'stews cooked',
+  lamp: 'evenings lit', jar: 'days of holding food', harpoon: 'trips to the water', line: 'trips to the water', net: 'hauls', sledge: 'loads dragged', cookpot: 'stews cooked', griddle: 'bakings',
 };
 /** What kind of thing it is, in a few words. */
 const ITEM_ABOUT: Record<ItemKind, string> = {
@@ -138,7 +138,7 @@ const ITEM_ABOUT: Record<ItemKind, string> = {
   pot: 'for the stores', cloak: 'clothing', needle: 'a tool', hat: 'clothing', mittens: 'clothing', shoes: 'clothing',
   cape: 'clothing', bag: 'for gathering', necklace: 'an ornament', deadfall: 'a trap', furcloak: 'clothing',
   bowl: 'one of the band\'s goods', beads: 'one of the band\'s goods', tunic: 'clothing', blanket: 'bedding', sash: 'one of the band\'s goods',
-  lamp: 'for working after dark', jar: 'for the stores', harpoon: 'for fishing', line: 'for fishing', net: 'for fishing', sledge: 'a tool', cookpot: 'for cooking',
+  lamp: 'for working after dark', jar: 'for the stores', harpoon: 'for fishing', line: 'for fishing', net: 'for fishing', sledge: 'a tool', cookpot: 'for cooking', griddle: 'for cooking',
 };
 /** How it is made and how long it lasts. */
 const ITEM_NOTE: Record<ItemKind, string> = {
@@ -171,6 +171,7 @@ const ITEM_NOTE: Record<ItemKind, string> = {
   net: 'Cordage knotted mesh by mesh into a long net, with stones tied along its foot to sink it. Two or three haul it through the shallows together, and bring up more than they could spear between them. It lasts a year or so of hauls.',
   sledge: 'Two runners split from a straight ash and bent up at the front, crossbars lashed across them and a hide rope to drag it by. A woodcutter drags home a whole felled tree on it, more again over the snow, where a shoulder takes a log or two. It lasts a few years.',
   cookpot: 'A wide pot coiled thick from clay gritted with sand, so it takes the fire. It sits in the embers at the edge of the hearth every evening with the band\'s stew in it, and on cold nights a brew of herbs. The heat tells on it: it cracks in a year or so.',
+  griddle: 'A flat slab of stone from the riverbank, ground smooth on top with sand and water and propped over the embers on two stones. Ground grain and acorn meal, wetted and patted flat, bake on it into flatbread and cakes. It lasts for years before the fire cracks it.',
 };
 /** How well a thing was made, for its card. */
 const QUALITY_WORDS = ['Plain: the work of someone still learning the craft', 'Good: the work of someone who knows the craft', 'Fine: the work of a master of the craft'];
@@ -193,6 +194,10 @@ export function dishOf(main: string | undefined, raw: Partial<Record<string, num
     : main === 'nuts' ? 'acorn porridge' : main === 'greens' ? 'stew of greens' : main === 'mushrooms' ? 'mushroom stew' : main === 'eggs' ? 'egg stew'
     : main === 'berries' ? 'berry mash' : 'broth';
   return broth && main ? `${base} in bone broth` : base;
+}
+/** What comes out of the earth oven, by what most of it is. */
+export function ovenDish(main: string | undefined) {
+  return main === 'fish' ? 'fish baked in leaves' : main === 'roots' ? 'roots baked in the ashes' : main === 'preserved' ? 'dried meat baked tender' : 'meat baked in the earth';
 }
 /** A dish with its article: "a fish stew", "an egg stew". */
 export function aDish(dish: string) {
@@ -1797,6 +1802,9 @@ export class Sim {
     { const k = small(1); if (k) return k; }
     // and a reed cape for whoever has no cloak and no hide to make one
     if (this.knows('capes', c) && c.stock.fiber >= 5 && c.stock.cordage >= 1 && cloaks + have('cape') < dressed && (!this.knows('cloaks', c) || c.stock.hides < HIDES_PER_CLOAK)) return 'cape';
+    // a grilling stone in the hearth, for the flatbread
+    // (where there is stone to be had for it)
+    if (this.knows('griddle', c) && have('griddle') < 1 && (c.stock.stone >= 1 || this.quarryTiles.length > 0)) return 'griddle';
     // a cooking pot for the band's stew (two in a big band, where one pot won't feed everyone)
     if (this.knows('stew', c) && have('cookpot') < this.cookpotsWanted(c)) return 'cookpot';
     // pots for the stores (more where there are greens, eggs and mushrooms to keep as well as berries)
@@ -1826,9 +1834,9 @@ export class Sim {
     return Math.min(JARS_MAX, Math.ceil(dry / JAR_HOLDS) + 1);
   }
   /** Where the cooking pot sits at a band's hearth, and where its cook squats to stir it (just outside the stones). */
-  potSpot(c = this.camp) {
+  potSpot(c = this.camp, at: readonly [number, number] = POT_AT) {
     const [cs, sn] = ([[1, 0], [0, 1], [-1, 0], [0, -1]] as const)[this.hearth(c).rot & 3];
-    const [px, pz] = POT_AT;
+    const [px, pz] = at;
     const x = px * cs + pz * sn, z = -px * sn + pz * cs;
     const d = Math.hypot(x, z);
     return { x: c.x + x, z: c.z + z, sx: c.x + x * (1 + 0.3 / d), sz: c.z + z * (1 + 0.3 / d) };
@@ -1842,30 +1850,72 @@ export class Sim {
    * stew on this evening yet, and has food in the stores to put in it.
    */
   stewWanted(c = this.camp) {
-    if (!this.knows('stew', c) || c.stew || c.stewed === this.evening()) return false;
-    if (this.hearth(c).fuel <= 0 || !this.cookpotOf(c)) return false;
+    return this.cookMode(c) !== null;
+  }
+  /**
+   * How the band's meal would be cooked if someone put it on now: in the earth oven (early in the afternoon, with
+   * more meat and fish in the stores than will keep, or for the midwinter feast), in the cooking pot, or boiled with
+   * hot stones in a hide where there is no pot; null where none is wanted (one on already, or had this evening, no
+   * fire, nothing to cook in, or nothing to cook).
+   */
+  cookMode(c = this.camp): 'oven' | 'pot' | 'boil' | null {
+    if (c.stew || c.stewed === this.evening()) return null;
+    const heads = this.members(c).length;
+    const oven = this.ovenOf(c);
+    if (oven && hourOf(this.tick) < OVEN_TO && c.stock.wood >= OVEN_WOOD) {
+      // (fresh meat and fish that won't keep; for the feast, anything that bakes)
+      let any = 0;
+      for (const k of OVENED) any += c.stock[k];
+      const fresh = c.stock.meat + c.stock.fish;
+      if (c.feastDay === dayOf(this.tick) ? any >= Math.max(2, heads * 0.5) : fresh >= Math.max(2, heads * OVEN_GLUT)) return 'oven';
+    }
+    if (this.hearth(c).fuel <= 0) return null;
+    const mode = this.knows('stew', c) && this.cookpotOf(c) ? 'pot' : this.knows('boiling', c) ? 'boil' : null;
+    if (!mode) return null;
     let food = 0;
     for (const k of STEWED) food += c.stock[k];
-    return food >= Math.max(1, this.members(c).length * 0.25);
+    return food >= Math.max(1, heads * 0.25) ? mode : null;
+  }
+  /** The band's earth oven, built (undefined: none). */
+  ovenOf(c = this.camp) {
+    return this.buildings.find((b) => b.band === c.id && b.kind === 'oven' && b.built);
+  }
+  /** Where the cook stands to see to the band's meal: squatting by the pot or the hide at the fire, or at the oven's edge. */
+  cookSpot(c: Camp, stew: Stew) {
+    const oven = stew.oven ? this.ovenOf(c) : undefined;
+    if (oven) return { x: oven.x + 0.5, z: oven.z + 0.5, sx: oven.x + 0.5 + 0.32, sz: oven.z + 0.5 + 0.12 };
+    return this.potSpot(c, stew.boiled ? BOIL_AT : POT_AT);
   }
   /** How much a stew fills for each of what goes into it, cooked by someone this good at it. */
-  stewGain(k: (typeof STEWED)[number], skill: number) {
-    return k === 'berries' ? 1 : k === 'greens' ? STEW_GREENS : STEW_GAIN + STEW_MASTER * Math.min(1, skill / 20);
+  stewGain(k: (typeof STEWED)[number], skill: number, mode: 'oven' | 'pot' | 'boil' = 'pot') {
+    if (mode === 'oven') return (OVENED as readonly string[]).includes(k) ? OVEN_GAIN : COOK_GAIN;
+    // (boiled in a hide, it fills less than from a pot, and a good cook can do less about it)
+    return k === 'berries' ? 1 : k === 'greens' ? STEW_GREENS : mode === 'boil' ? BOIL_GAIN + STEW_MASTER * 0.5 * Math.min(1, skill / 20) : STEW_GAIN + STEW_MASTER * Math.min(1, skill / 20);
   }
   /**
    * Put the band's stew on: the cook takes the makings from the stores, enough for the evening meal and a little
    * over for the morning (less while the band rations), the foods that go off fastest first; and once the band
    * knows broth, some of the cracked bones from the kills; and on a cold evening, a pot of herbs to drink hot.
    */
-  startStew(c: Camp, cook: Person): Stew {
+  startStew(c: Camp, cook: Person, mode: 'oven' | 'pot' | 'boil' = 'pot'): Stew {
     const ms = this.members(c);
     let want = 0;
     for (const q of ms) if (this.age(q) >= 2) want += this.age(q) < 12 ? 0.6 : 1;
-    want *= STEW_MEALS * (c.rationing ? 0.6 : 1);
+    // (for the feast, the oven is filled for the whole night's eating)
+    const feast = mode === 'oven' && c.feastDay === dayOf(this.tick);
+    want *= feast ? FEAST_MEAL : STEW_MEALS * (c.rationing ? 0.6 : 1);
     const skill = cook.skills[SK.cook];
     const stew: Stew = { evening: this.evening(), cook: cook.id, started: this.tick, ready: -1, raw: {}, fill: 0, dish: '' };
+    if (mode === 'boil') stew.boiled = true;
+    if (mode === 'oven') {
+      stew.oven = true;
+      if (feast) stew.feast = true;
+      // (the fire in the pit, burned down to heat the stones)
+      this.takeFirewood(c, OVEN_WOOD);
+      this.book('burned', OVEN_WOOD, c);
+    }
     // the bones first: what they give is food from nothing, and the rest of the pot is less
-    if (this.knows('broth', c)) {
+    if (mode === 'pot' && this.knows('broth', c)) {
       const keep = this.knows('needles', c) || this.knows('harpoon', c) ? BROTH_KEEP : 0;
       const n = Math.min(Math.floor(c.stock.bones - keep), Math.ceil(ms.length / BROTH_EACH));
       if (n > 0) {
@@ -1876,9 +1926,10 @@ export class Sim {
       }
     }
     let main: (typeof STEWED)[number] | undefined;
-    for (const k of STEWED) {
+    // (the oven takes the meat and fish that would otherwise turn, and roots to bake with them)
+    for (const k of mode === 'oven' ? OVENED : STEWED) {
       if (stew.fill >= want - 1e-6) break;
-      const g = this.stewGain(k, skill);
+      const g = this.stewGain(k, skill, mode);
       // (berries go in for sweetness, not to make up the pot)
       const take = Math.min(c.stock[k], (want - stew.fill) / g, k === 'berries' ? (want * STEW_BERRIES) / g : Infinity);
       if (take <= 0) continue;
@@ -1887,9 +1938,9 @@ export class Sim {
       stew.fill += take * g;
       if (!main || take > stew.raw[main]!) main = k;
     }
-    stew.dish = dishOf(main, stew.raw, !!stew.bones);
+    stew.dish = mode === 'oven' ? ovenDish(main) : dishOf(main, stew.raw, !!stew.bones);
     // and on a cold evening, herbs steeped hot to drink with it, while the band has them to spare over the fevers
-    if (this.knows('brews', c) && this.tempAt(cook) < BREW_COLD && c.stock.herbs >= HERBS_WANT * 0.5 + BREW_HERBS) {
+    if (mode === 'pot' && this.knows('brews', c) && this.tempAt(cook) < BREW_COLD && c.stock.herbs >= HERBS_WANT * 0.5 + BREW_HERBS) {
       c.stock.herbs -= BREW_HERBS;
       stew.brew = true;
       this.book('herbs.brewed', BREW_HERBS, c);
@@ -1903,7 +1954,7 @@ export class Sim {
     const stew = c.stew;
     if (!stew || stew.ready >= 0) return;
     stew.ready = this.tick;
-    const pot = this.cookpotOf(c);
+    const pot = stew.boiled || stew.oven ? undefined : this.cookpotOf(c);
     if (pot && this.wearTool(pot)) this.event('cookpot', `The cooking pot at ${c.name} cracked in the fire.`, [], c.x, c.z, 1);
   }
   /**
@@ -1930,8 +1981,9 @@ export class Sim {
     if (stew.ready < 0) {
       // (and one still not done by the next noon is done anyway, whoever is still at it: the band must not be left
       // with a pot it can neither eat from nor cook in again)
-      const cooking = this.people.some((q) => q.alive && q.band === c.id && q.task?.kind === 'cook');
-      if ((!cooking && this.tick - stew.started >= STEW_TICKS) || this.evening() !== stew.evening) this.stewDone(c);
+      // (the oven bakes on its own once it is covered over)
+      const cooking = !stew.oven && this.people.some((q) => q.alive && q.band === c.id && q.task?.kind === 'cook');
+      if ((!cooking && this.tick - stew.started >= (stew.oven ? OVEN_TICKS : stew.boiled ? BOIL_TICKS : STEW_TICKS)) || this.evening() !== stew.evening) this.stewDone(c);
       if (stew.ready < 0 || this.evening() === stew.evening) return;
     }
     if (stew.fill > 0.02 && this.evening() === stew.evening) return;
@@ -2309,7 +2361,8 @@ export class Sim {
   }
   /** The crafts a person's card shows: the everyday ones, and the rest once the band has a use for them. */
   shownSkills(c = this.camp) {
-    return SKILLS.map((_, k) => k).filter((k) => k <= SK.weave || (SKILL_SHOWN_BY[k] !== undefined && this.knows(SKILL_SHOWN_BY[k]!, c)));
+    // (shown once the band knows any of the discoveries that give it a use)
+    return SKILLS.map((_, k) => k).filter((k) => k <= SK.weave || [SKILL_SHOWN_BY[k] ?? []].flat().some((d) => this.knows(d, c)));
   }
   /**
    * Whoever is clearly the band's best at a craft gets known for it ("Ada, the toolmaker"); someone who
@@ -3753,6 +3806,7 @@ export class Sim {
       'craft.pot': make === 'pot' ? 0.4 : 0,
       'craft.lamp': make === 'lamp' ? 0.35 : 0,
       'craft.cookpot': make === 'cookpot' ? 0.5 : 0,
+      'craft.griddle': make === 'griddle' ? 0.45 : 0,
       'craft.jar': make === 'jar' ? 0.4 : 0,
       // cloaks matter most with the cold coming
       'craft.cloak': make === 'cloak' ? (s >= 1.5 ? 0.6 : 0.4) : 0,
@@ -3820,7 +3874,7 @@ export class Sim {
     if (foodP > 0.8) c.plan.push(winterNow ? 'Find food to last the winter' : 'Store food before winter');
     if (woodP > 0.5) c.plan.push(s > 2.0 && !winterNow ? 'Lay in firewood for the winter' : 'Gather wood');
     if (siteFiber > fiberHave) c.plan.push('Cut grass and reeds for thatch and cordage');
-    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : make === 'stick' ? 'Make a digging stick' : make === 'basket' ? 'Weave a basket for gathering' : make === 'pot' ? 'Make a clay pot for the stores' : make === 'lamp' ? 'Make a clay lamp to work by after dark' : make === 'jar' ? 'Fire storage jars for the dry stores' : make === 'cloak' ? 'Sew hide cloaks against the cold' : make === 'needle' ? 'Grind a bone needle and awl' : make === 'harpoon' ? 'Make a barbed harpoon for the fishers' : make === 'line' ? 'Make a hook and line' : make === 'net' ? 'Knot a fishing net' : make === 'sledge' ? 'Make a log sledge for the woodcutters' : make === 'cookpot' ? 'Fire a cooking pot for the stew' : 'Knap a hand chopper');
+    if (make) c.plan.push(make === 'axe' ? (this.toolsOf(c, 'axe').length ? 'Make another stone axe' : 'Make a stone axe for the big trees') : make === 'stick' ? 'Make a digging stick' : make === 'basket' ? 'Weave a basket for gathering' : make === 'pot' ? 'Make a clay pot for the stores' : make === 'lamp' ? 'Make a clay lamp to work by after dark' : make === 'jar' ? 'Fire storage jars for the dry stores' : make === 'cloak' ? 'Sew hide cloaks against the cold' : make === 'needle' ? 'Grind a bone needle and awl' : make === 'harpoon' ? 'Make a barbed harpoon for the fishers' : make === 'line' ? 'Make a hook and line' : make === 'net' ? 'Knot a fishing net' : make === 'sledge' ? 'Make a log sledge for the woodcutters' : make === 'cookpot' ? 'Fire a cooking pot for the stew' : make === 'griddle' ? 'Grind a grilling stone for the hearth' : 'Knap a hand chopper');
     if (this.knows('roots') && seasonOf(this.tick) === 2) c.plan.push('Dig roots for the winter stores');
     if (this.knows('nuts') && seasonOf(this.tick) === 2) c.plan.push('Gather acorns under the oaks');
     if (this.knows('mushrooms') && seasonOf(this.tick) === 2) c.plan.push('Pick mushrooms in the woods');
@@ -3831,7 +3885,9 @@ export class Sim {
     else if (run === 2) c.plan.push('The eels are running: fish the river by night and day');
     if (weir) c.plan.push('Empty the basket at the weir');
     if (c.feastDay === dayOf(this.tick)) c.plan.push('Feast by the fire tonight, on the longest night');
-    if (this.knows('stew', c) && this.cookpotOf(c)) c.plan.push(`Cook a stew for the band this evening${this.knows('broth', c) && c.stock.bones >= 1 ? ', with the bones for broth' : ''}${this.knows('brews', c) && seasonOf(this.tick) === 3 ? ', and hot herbs to drink' : ''}`);
+    if (c.stew?.oven && c.stew.ready < 0) c.plan.push(c.stew.feast ? 'Bake the feast in the earth oven' : 'Bake the meat in the earth oven before it turns');
+    else if (this.knows('boiling', c) && !(this.knows('stew', c) && this.cookpotOf(c))) c.plan.push('Boil a stew for the band with hot stones');
+    else if (this.knows('stew', c) && this.cookpotOf(c)) c.plan.push(`Cook a stew for the band this evening${this.knows('broth', c) && c.stock.bones >= 1 ? ', with the bones for broth' : ''}${this.knows('brews', c) && seasonOf(this.tick) === 3 ? ', and hot herbs to drink' : ''}`);
     if (c.jobs.bed) c.plan.push('Lay fresh grass in the homes to sleep on');
     if (toSow) c.plan.push(this.knows('grain') && (c.seed ?? 0) >= SEED_PER_PLOT ? 'Sow grain and set roots in the gardens' : 'Set roots in the gardens');
     if (toTend) c.plan.push('Weed and guard the gardens');
@@ -3949,6 +4005,15 @@ export class Sim {
         this.clearTile(tile);
         this.newBuilding('clamp', tile, -1);
         c.plan.push('Dig a charcoal clamp by the kiln');
+      }
+    }
+    // an earth oven dug a little way from the fire, once someone has baked in one
+    if (this.knows('oven', c) && !this.bandBuildings(c).some((b) => b.kind === 'oven')) {
+      const tile = this.siteFor('oven', null);
+      if (tile >= 0) {
+        this.clearTile(tile);
+        this.newBuilding('oven', tile, -1);
+        c.plan.push('Dig an earth oven by the fire');
       }
     }
     // a loom shed, once someone has thought of the loom
@@ -4313,7 +4378,7 @@ export class Sim {
         // (a charcoal clamp goes by the kiln it feeds, a little way off for the smoke)
         const kiln = kind === 'clamp' ? this.kilnOf() : undefined;
         const d = byGraves ? hyp(x - (this.camp.graveyard % N), z - Math.floor(this.camp.graveyard / N)) : kiln ? hyp(x - kiln.x, z - kiln.z) : hyp(dx, dz);
-        const want = byGraves ? 1.6 : kiln ? 2.2 : kind === 'clamp' ? 4.5 : kind === 'barrow' ? 7.5 : kind === 'stones' ? 8 : kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'loom' ? 3.6 : kind === 'pen' ? 4.8 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
+        const want = byGraves ? 1.6 : kiln ? 2.2 : kind === 'clamp' ? 4.5 : kind === 'oven' ? 2.4 : kind === 'barrow' ? 7.5 : kind === 'stones' ? 8 : kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'loom' ? 3.6 : kind === 'pen' ? 4.8 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
         let sc = -Math.abs(d - want) * 1.6;
         if (w.level[i] !== w.level[this.camp.tile]) sc -= 2.5;
         sc -= this.treesOnTile[i] * 1.2;
@@ -4897,6 +4962,7 @@ export class Sim {
       ...(b.kind === 'hearth' ? this.hearthLook(b) : {}),
       // a charcoal clamp stacked and covered, smouldering
       ...(b.kind === 'clamp' && b.built && b.burnUntil !== undefined ? { look: 'clampLit' } : {}),
+      ...(b.kind === 'oven' ? this.ovenLook(b) : {}),
       // a monument goes up in stages: each its own model, drawn whole (not risen from the ground like a roof)
       ...(isMonument(b.kind) ? { look: this.monumentLook(b), progress: 1 } : {}),
     }));
@@ -4905,8 +4971,16 @@ export class Sim {
   hearthLook(b: Building): { look?: string } {
     const c = this.campById(b.band);
     if (!c || c.gone || c.hearth !== b.id) return {};
-    if (c.stew && c.stew.fill > 0.02) return { look: 'hearthPot' };
-    return this.items.some((i) => i.kind === 'cookpot' && i.band === c.id) ? { look: 'hearthPotEmpty' } : {};
+    // (the pot in the embers or set by, or the hide slung for stone boiling while a stew is in it; and the grilling stone)
+    const stew = c.stew && !c.stew.oven && c.stew.fill > 0.02 ? c.stew : undefined;
+    const pot = stew ? (stew.boiled ? 'Boil' : 'Pot') : this.items.some((i) => i.kind === 'cookpot' && i.band === c.id) ? 'PotEmpty' : '';
+    const stone = this.items.some((i) => i.kind === 'griddle' && i.band === c.id) ? 'Stone' : '';
+    return pot || stone ? { look: `hearth${pot}${stone}` } : {};
+  }
+  /** How a band's earth oven looks: covered over and baking, or open. */
+  ovenLook(b: Building): { look?: string } {
+    const c = this.campById(b.band);
+    return b.built && c?.stew?.oven && c.stew.ready < 0 && this.ovenOf(c) === b ? { look: 'ovenLit' } : {};
   }
   /** Which model draws a monument as it stands: a mound or a ring a third, two thirds and all the way up. */
   monumentLook(b: Building) {
@@ -5169,6 +5243,7 @@ export class Sim {
       case 'deadfall': return 'Taking a fox or a beaver for its pelt, at an earth or a lodge with a pair still living there';
       case 'basket': return `Picking: ${BASKET_HOLDS} handfuls of berries in one trip, where bare hands carry one bush's worth`;
       case 'pot': return `Keeping ${POT_HOLDS} of the greens, eggs, berries or mushrooms in the stores, going off ${Math.round((1 - POT_KEEP) * 100)}% slower`;
+      case 'griddle': return `Flatbread and acorn cakes baked on it at the fire, which fill ${Math.round((GRIDDLE_GAIN - 1) * 100)}% more than the grain and acorns raw`;
       case 'cookpot': return `The band's evening stew, which fills ${Math.round((STEW_GAIN - 1) * 100)}% more than the same food raw (more from a good cook)${this.knows('brews') ? ', and the herb brews for fevers and cold nights' : ''}`;
       case 'lamp': return `Light to work by after dark: people sit down to make and mend things by the fire in the evening far more readily, for ${LAMP_FAT} of fat each evening (from the fat in the stores, or else from the meat or fish)`;
       case 'jar': return `Keeping ${JAR_HOLDS} of the herbs, grain or acorns in the stores, going off ${Math.round((1 - JAR_KEEP) * 100)}% slower`;
@@ -5222,12 +5297,14 @@ export class Sim {
         const cook = stew ? this.byId.get(stew.cook) : undefined;
         if (stew && stew.fill > 0.02) {
           const what = `${stew.dish[0].toUpperCase()}${stew.dish.slice(1)}`;
-          lines.push(L('In the pot', stew.ready < 0 ? `${what}, simmering` : `${what}, ${Math.max(1, Math.round(stew.fill))} ${Math.round(stew.fill) <= 1 ? 'helping' : 'helpings'} left`));
+          lines.push(L(stew.oven ? 'From the oven' : stew.boiled ? 'In the hide' : 'In the pot', stew.ready < 0 ? `${what}, ${stew.oven ? 'baking' : stew.boiled ? 'boiling with hot stones' : 'simmering'}` : `${what}, ${Math.max(1, Math.round(stew.fill))} ${Math.round(stew.fill) <= 1 ? 'helping' : 'helpings'} left`));
           if (cook) lines.push(L('Cooked by', cook.name, pref(cook.id)));
           if (stew.brew) lines.push(L('Brew', 'Hot herbs steeped beside it, against the cold'));
         } else if (this.cookpotOf()) lines.push(L('Cooking pot', this.knows('stew') ? 'Set by the fire, empty till the evening stew' : 'Set by the fire'));
+        if (this.toolsOf(this.camp, 'griddle').length) lines.push(L('Grilling stone', 'Propped over the embers, for flatbread and acorn cakes'));
         notes.push(`The heart of ${this.camp.name} since ${this.when(this.camp.founded)}. People eat and warm themselves here, and sleep beside it until they have a roof.`);
-        if (this.knows('stew')) notes.push(`Each evening someone cooks a stew for the whole band in the pot at the fire, and everyone eats from it together; what is left is eaten in the morning.${this.knows('broth') ? ' The cracked bones from the kills go in for broth.' : ''}`);
+        if (this.knows('boiling') && !(this.knows('stew') && this.cookpotOf())) notes.push('Each evening someone boils a stew for the whole band in a hide slung on stakes by the fire, dropping in stones heated in the fire till it boils, and everyone eats from it together.');
+        else if (this.knows('stew')) notes.push(`Each evening someone cooks a stew for the whole band in the pot at the fire, and everyone eats from it together; what is left is eaten in the morning.${this.knows('broth') ? ' The cracked bones from the kills go in for broth.' : ''}`);
       }
       if (b.kind === 'hut' || b.kind === 'leanto') {
         const res = this.people.filter((p) => p.alive && p.home === b.id);
@@ -5308,6 +5385,16 @@ export class Sim {
         lines.push(L('Clamp', b.burnUntil !== undefined ? `Smouldering, to be opened in about ${Math.max(1, Math.round((b.burnUntil - this.tick) / TICKS_PER_HOUR))} hours` : 'Cold, waiting for the next stack'));
         lines.push(L('Charcoal', `${Math.floor(owner.stock.charcoal)} kept for the kiln`));
         notes.push(`A round bed banked with earth. Split wood is stacked in it round a stake, covered with turf and lit, and smoulders a day and a night without flame. Charcoal burns in the kiln hotter and evener than wood: pots fired with it crack ${Math.round(CHARCOAL_CRACK * 100)} times in a hundred instead of ${Math.round(KILN_CRACK * 100)}, and come out finer.`);
+      }
+      if (b.kind === 'oven' && b.built) {
+        const owner = this.campById(b.band) ?? this.camp;
+        const stew = owner.stew?.oven ? owner.stew : undefined;
+        const cook = stew ? this.byId.get(stew.cook) : undefined;
+        if (stew && stew.ready < 0) {
+          lines.push(L('Oven', `Covered over and baking ${stew.dish.replace(/ (baked|in the earth).*$/, '')}, to be opened in about ${Math.max(1, Math.round((stew.started + OVEN_TICKS - this.tick) / TICKS_PER_HOUR))} hours${stew.feast ? ', for the feast' : ''}`));
+          if (cook) lines.push(L('Filled by', cook.name, pref(cook.id)));
+        } else lines.push(L('Oven', 'Open and cold, till the band has more meat than it can eat before it turns, or a feast'));
+        notes.push(`A pit lined with stones. A fire is burned down in it to heat them, the meat, fish and roots are laid in wrapped in leaves and the pit is covered over with earth; by the evening they are baked right through, and fill ${Math.round((OVEN_GAIN - 1) * 100)}% more than raw. The band bakes in it when it has more meat than will keep, and for the midwinter feast.`);
       }
       if (b.kind === 'plot' && b.built && b.plot) {
         const pl = b.plot;

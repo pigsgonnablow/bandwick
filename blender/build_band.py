@@ -3355,14 +3355,19 @@ SOOT = (70, 64, 60)
 # and one log of the star, those nearest it
 POT_AT = (-0.12, 0.13)
 POT_DIR = math.atan2(-POT_AT[1], POT_AT[0])  # Blender angle round the hearth
+# the grilling stone's spot, propped over the embers across the fire from the pot (game axes); it too stands in for
+# the ring stone and the log nearest it
+GRID_AT = (0.11, 0.06)
+GRID_DIR = math.atan2(-GRID_AT[1], GRID_AT[0])
 
 
-def hearth(q, rnd, pot=False, at=at):  # (`at` bound now: the name is reused further down)
+def hearth(q, rnd, pot=False, at=at, stone=False):  # (`at` bound now: the name is reused further down)
     """A hearth: a ring of fire-cracked stones bedded in the ground, blackened on the inside; a bed of
     ash with a charred heart; logs laid in a star, burnt at the inner ends with embers in the cracks; a spit
     on forked sticks; firewood to hand. With `pot`, the ring stone and the log where the cooking pot sits in the
     embers are left out."""
-    near = lambda a, w: abs((a - POT_DIR + math.pi) % math.tau - math.pi) < w
+    near_ = lambda a, w, d: abs((a - d + math.pi) % math.tau - math.pi) < w
+    near = lambda a, w: (pot and near_(a, w, POT_DIR)) or (stone and near_(a, w, GRID_DIR))
     for k in range(11):  # the ring of stones
         a = k / 11 * math.tau + rnd.uniform(-0.08, 0.08)
         r = 0.205 + rnd.uniform(-0.01, 0.01)
@@ -3370,7 +3375,7 @@ def hearth(q, rnd, pot=False, at=at):  # (`at` bound now: the name is reused fur
         size = (0.038 + rnd.uniform(0, 0.014), 0.03 + rnd.uniform(0, 0.012), 0.026 + rnd.uniform(0, 0.012))
         m = Matrix.Rotation(a, 3, "Z")
         col = jit(STONE, rnd, 0.12)
-        if pot and near(a, 0.3):
+        if near(a, 0.3):
             continue
         for v in q.blob((0, 0, 0), size, col, rnd, 0.06, noise=0.2):
             v.co = c + m @ Vector((v.co.y, v.co.x, v.co.z))
@@ -3385,7 +3390,7 @@ def hearth(q, rnd, pot=False, at=at):  # (`at` bound now: the name is reused fur
         a = k / 5 * math.tau + 0.4 + rnd.uniform(-0.1, 0.1)
         outer, inner = Vector(at(0.2, a, 0.022)), Vector(at(0.04, a, 0.05))
         mid = outer.lerp(inner, 0.55)
-        if pot and near(a, 0.5):
+        if near(a, 0.5):
             continue
         q.cyl(6, 0.02, 0.019, outer, mid, BARK, rnd, 0.05)
         q.cyl(6, 0.019, 0.014, mid, inner, CHARRED, rnd, 0.05)
@@ -3957,6 +3962,129 @@ cookpot(q, rr, False)
 paddle(q, rr, (0.008, 0.0, 0.012), (0.04, 0.02, 0.15))
 q.finish("item__cookpot")
 
+# ---------------------------------------------------------------- the grilling stone, stone boiling, the earth oven
+FLATBREAD = (206, 170, 112)
+FLATBREAD_BURNT = (132, 92, 56)
+ACORN_CAKE = (150, 108, 70)
+GRID_POS = Vector((GRID_AT[0], -GRID_AT[1], 0.0))
+
+
+def flatbread(q, rr, c, r, col):
+    """A round of flatbread (or an acorn cake) on the stone: a low disc, browned in spots."""
+    segs = 10
+    bm = q.bm
+    c = Vector(c)
+    ring = [bm.verts.new(c + Vector((math.cos(k / segs * math.tau) * r * rr.uniform(0.92, 1.05), math.sin(k / segs * math.tau) * r * rr.uniform(0.92, 1.05), 0.0))) for k in range(segs)]
+    top = bm.verts.new(c + Vector((0, 0, 0.006)))
+    q.paint([bm.faces.new((ring[k], ring[(k + 1) % segs], top)) for k in range(segs)], col, rr, 0.08)
+    for k in range(3):  # scorch marks
+        a, d = rr.uniform(0, math.tau), rr.uniform(0, r * 0.5)
+        q.blob(c + Vector((math.cos(a) * d, math.sin(a) * d, 0.0045)), (r * 0.18, r * 0.14, 0.0015), FLATBREAD_BURNT, rr, 0.08)
+
+
+def griddle(q, rr, food=True):
+    """The grilling stone: a flat slab of river stone, ground smooth on top, propped on two stones over the embers
+    (origin under its middle, on the ground); flatbread and an acorn cake baking on it."""
+    for sx in (-1, 1):  # the two stones it rests on
+        q.blob((sx * 0.055, 0.0, 0.02), (0.03, 0.04, 0.024), jit(STONE, rr, 0.1), rr, 0.06, noise=0.2)
+    slab = (0.15, 0.11, 0.012)
+    q.box((0, 0, 0.05), slab, (150, 144, 134), rr, 0.05, rot=Matrix.Rotation(0.05, 3, "X"))
+    q.box((0, 0, 0.0435), (slab[0] * 0.98, slab[1] * 0.98, 0.003), SOOT, rr, 0.05)  # its underside blackened
+    if food:
+        flatbread(q, rr, (-0.035, 0.016, 0.0565), 0.03, FLATBREAD)
+        flatbread(q, rr, (0.036, -0.01, 0.0565), 0.028, FLATBREAD)
+        flatbread(q, rr, (0.0, -0.036, 0.0562), 0.018, ACORN_CAKE)
+
+
+BOIL_AT = (-0.22, 0.24)  # BOIL_AT in src/sim/band.ts: where the boiling hide hangs, outside the ring
+BOIL_POS = Vector((BOIL_AT[0], -BOIL_AT[1], 0.0))
+STEAM_STONE = (96, 92, 86)
+
+
+def boil_hide(q, rr):
+    """Stone boiling: a hide slung from three stakes beside the fire, sagging full of stew, a pair of green sticks to
+    lift the hot stones with, stones cracked by the heat tipped out by it and more heating in the fire. Origin at the
+    middle of the stakes."""
+    top = Vector((0, 0, 0.16))
+    for k in range(3):  # three stakes leaned together and lashed
+        a = k / 3 * math.tau + 0.3
+        foot = Vector((math.cos(a) * 0.075, math.sin(a) * 0.075, 0.0))
+        q.cyl(5, 0.005, 0.004, foot, top + Vector((math.cos(a) * 0.01, math.sin(a) * 0.01, 0.02)), POLE, rr, 0.05)
+    q.cyl(5, 0.007, 0.007, top + Vector((0, 0, -0.008)), top + Vector((0, 0, 0.012)), HIDE_DK, rr, 0.05)
+    # the hide bag: tied up at the three corners to the stakes, sagging into a round belly full of stew
+    segs = 12
+    prof = [(0.105, 0.03), (0.09, 0.05), (0.075, 0.056), (0.055, 0.05), (0.035, 0.036), (0.022, 0.016), (0.016, 0.004)]
+    bm = q.bm
+    loops = []
+    for z, r in prof:
+        loops.append([bm.verts.new((math.cos(k / segs * math.tau) * r * (1 + 0.12 * math.cos(3 * k / segs * math.tau)), math.sin(k / segs * math.tau) * r * (1 + 0.12 * math.cos(3 * k / segs * math.tau)), z)) for k in range(segs)])
+    for i in range(len(loops) - 1):
+        a, b = loops[i], loops[i + 1]
+        q.paint([bm.faces.new((a[k], a[(k + 1) % segs], b[(k + 1) % segs], b[k])) for k in range(segs)], HIDE if i % 2 else HIDE_DK, rr, 0.06)
+    c = bm.verts.new((0, 0, 0.002))
+    q.paint([bm.faces.new((loops[-1][k], loops[-1][(k + 1) % segs], c)) for k in range(segs)], HIDE_DK, rr, 0.05)
+    for k in range(3):  # the corners drawn up to the stakes
+        a = k / 3 * math.tau + 0.3
+        q.cyl(4, 0.006, 0.003, (math.cos(a) * 0.028, math.sin(a) * 0.028, 0.105), (math.cos(a) * 0.05, math.sin(a) * 0.05, 0.13), HIDE, rr, 0.05)
+    # the stew in it, and a stone just dropped in, the broth round it bubbling
+    placed(q, lambda q: stew_top(q, rr, 0.026, 0.0), (0, 0, 0.094))
+    q.blob((0.006, -0.004, 0.097), (0.012, 0.01, 0.008), STEAM_STONE, rr, 0.06)
+    # the tongs: two green sticks, and spent stones cracked in the heat tipped out beside it
+    for d in (-0.006, 0.006):
+        q.cyl(4, 0.003, 0.0025, (0.08, 0.05 + d, 0.004), (0.16, 0.11 + d, 0.02), (118, 120, 70), rr, 0.06)
+    for k in range(5):
+        q.blob((-0.07 + rr.uniform(-0.03, 0.03), 0.07 + rr.uniform(-0.03, 0.03), 0.008), (0.012, 0.01, 0.008), jit(STEAM_STONE, rr, 0.15), rr, 0.08, noise=0.25)
+
+
+def hot_stones(q, rr):
+    """Round stones heating in the embers for the boiling, glowing at their edges."""
+    for k in range(4):
+        a = POT_DIR + rr.uniform(-0.4, 0.4)
+        d = rr.uniform(0.06, 0.13)
+        p = Vector((math.cos(a) * d, math.sin(a) * d, 0.022))
+        q.blob(p, (0.014, 0.012, 0.011), STEAM_STONE, rr, 0.06, noise=0.2)
+        q.blob(p + Vector((0, 0, -0.008)), (0.012, 0.01, 0.004), EMBER, rr, 0.1)
+
+
+# the hearth with the band's cooking things: the pot in the embers (Pot), set by (PotEmpty), or the stew boiling in
+# a hide with hot stones (Boil); with the grilling stone propped over the embers (…Stone), or on its own (hearthStone)
+def hearth_with(name, pot, stone):
+    q = Part()
+    r2 = random.Random()
+    r2.setstate(state)
+    hearth(q, r2, pot=pot == "full", stone=stone)
+    rr = random.Random(140)
+    if pot == "full":
+        placed(q, lambda q: cookpot(q, rr, True), POT_POS)
+        paddle(q, rr, POT_POS + Vector((0.006, 0.004, 0.05)), POT_POS + POT_OUT * 0.075 + Vector((0.0, 0.0, 0.2)))
+        bowls_by(q, rr)
+    elif pot == "empty":
+        by = POT_OUT * 0.3
+        placed(q, lambda q: cookpot(q, rr, False), by)
+        paddle(q, rr, by + Vector((0.006, 0.0, 0.012)), by + POT_OUT * 0.04 + Vector((0.02, 0.0, 0.16)))
+        bowls_by(q, rr)
+    elif pot == "boil":
+        placed(q, lambda q: boil_hide(q, rr), BOIL_POS, POT_DIR)
+        hot_stones(q, rr)
+        bowls_by(q, rr)
+    if stone:
+        placed(q, lambda q: griddle(q, rr), GRID_POS, GRID_DIR + math.pi / 2)
+    q.finish("bld__" + name)
+
+
+if True:
+    hearth_with("hearthBoil", "boil", False)
+    hearth_with("hearthStone", None, True)
+    hearth_with("hearthPotStone", "full", True)
+    hearth_with("hearthPotEmptyStone", "empty", True)
+    hearth_with("hearthBoilStone", "boil", True)
+
+q = Part()  # the grilling stone, for the picture in its window: flatbread baking on it
+rr = random.Random(143)
+griddle(q, rr)
+q.finish("item__griddle")
+
+
 
 def bowl_of_stew(q, rr):
     """A bowl of stew held in the hands: one of the band's plain bowls, the stew in it to the brim."""
@@ -4164,6 +4292,61 @@ def clamp(lit, seed):
 
 clamp(False, 91)
 clamp(True, 91)
+
+# the earth oven: a round pit lined with fire-cracked stones, the earth dug out of it banked round. bld__oven is it
+# open and cold, a heap of stones beside it ready to heat and a bundle of leaves to wrap the meat; in bld__ovenLit it
+# is covered over, a low mound of earth with the leaves showing at its edge and steam seeping through a crack.
+OR = 0.15
+OVEN_STONE = (118, 110, 100)
+OVEN_STONE_DK = (84, 76, 70)
+
+
+def oven(lit, seed):
+    q = Part()
+    rnd = random.Random(seed)
+    n = 20
+    earth = lambda: jit(rnd.choice((SOIL, SOIL, SOIL, SOIL_LT)), rnd, 0.04)
+    # the bank of dug earth round the pit
+    bank = []
+    for f, z in ((1.0, 0.006), (1.1, 0.05), (1.25, 0.056), (1.42, 0.02), (1.55, 0.0)):
+        bank.append([polar(OR * f * (1 + rnd.uniform(-0.04, 0.04)), k / n * math.tau, z * (1 + rnd.uniform(-0.15, 0.15))) for k in range(n)])
+    ring_loft(q, bank, lambda i, k: earth(), rnd, 0.05)
+    # the lining: stones set round the pit's sides and floor, blackened and cracked by the fires
+    pit = [[polar(OR * f, k / n * math.tau, z) for k in range(n)] for f, z in ((0.0, 0.004), (0.35, 0.004), (0.7, 0.005), (1.0, 0.006))]
+    ring_loft(q, pit, lambda i, k: CHARRED if i < 2 else SOOT, rnd, 0.05)
+    for k in range(14):
+        a = k / 14 * math.tau + rnd.uniform(-0.1, 0.1)
+        q.blob(polar(OR * 0.94, a, 0.012), (0.026, 0.022, 0.016), jit(OVEN_STONE_DK if k % 3 else OVEN_STONE, rnd, 0.1), rnd, 0.06, noise=0.25)
+    if lit:
+        # covered over: leaves laid over the food, then the earth heaped back on in a low mound
+        prof = [(1.02, 0.03), (0.98, 0.06), (0.85, 0.085), (0.6, 0.1), (0.3, 0.108), (0.0, 0.11)]
+        rings = [[polar(OR * rf * (1 + rnd.uniform(-0.03, 0.03)), k / n * math.tau, zf * (1 + rnd.uniform(-0.05, 0.05))) for k in range(n)] for rf, zf in prof[:-1]]
+        cap = ring_loft(q, rings, lambda i, k: earth(), rnd, 0.06)[-1]
+        mid = q.bm.verts.new((0, 0, prof[-1][1] * OR / OR))
+        q.paint([q.bm.faces.new((cap[k], cap[(k + 1) % n], mid)) for k in range(n)], SOIL_LT, rnd, 0.05)
+        for k in range(9):  # the leaf wrapping showing at the mound's edge
+            a = k / 9 * math.tau + rnd.uniform(-0.15, 0.15)
+            q.box(polar(OR * 1.04, a, 0.045), (0.03, 0.018, 0.003), LEAF_DK if k % 2 else GLEAF, rnd, 0.08,
+                  rot=Matrix.Rotation(a, 3, "Z") @ Matrix.Rotation(-0.5, 3, "Y"))
+        q.box((0.02, -0.01, 0.11), (0.05, 0.006, 0.004), SOIL_DK, rnd, 0.05, rot=Matrix.Rotation(0.6, 3, "Z"))  # the crack the steam seeps from
+        # a digging stick left leaning on the mound
+        q.cyl(5, 0.005, 0.004, (OR * 1.3, -0.06, 0.0), (OR * 0.6, -0.02, 0.09), POLE, rnd, 0.05)
+    else:
+        # open: ash in the bottom, a heap of round stones ready to heat beside it, a bundle of leaves and a stick
+        for k in range(5):
+            q.blob(polar(OR * rnd.uniform(0.1, 0.6), rnd.uniform(0, math.tau), 0.006), (0.03, 0.024, 0.004), ASH, rnd, 0.06, noise=0.2)
+        for k in range(9):
+            a, d = rnd.uniform(0, math.tau), rnd.uniform(0, 0.05)
+            q.blob((OR * 1.75 + math.cos(a) * d, -0.05 + math.sin(a) * d, 0.012 + (0.016 if k > 5 else 0)), (0.02, 0.018, 0.014), jit(OVEN_STONE, rnd, 0.12), rnd, 0.06, noise=0.25)
+        for k in range(4):  # leaves gathered to wrap the meat
+            q.box((-OR * 1.7 + rnd.uniform(-0.02, 0.02), 0.06 + rnd.uniform(-0.02, 0.02), 0.004 + k * 0.003), (0.045, 0.025, 0.002), LEAF if k % 2 else GLEAF_LT, rnd, 0.08,
+                  rot=Matrix.Rotation(rnd.uniform(0, math.pi), 3, "Z"))
+        q.cyl(5, 0.005, 0.004, (-OR * 1.5, -0.12, 0.004), (-OR * 0.6, -0.17, 0.006), POLE, rnd, 0.05)
+    q.finish("bld__ovenLit" if lit else "bld__oven")
+
+
+oven(False, 93)
+oven(True, 93)
 
 # ---------------------------------------------------------------- cloth: the loom shed, tunics, blankets and sashes
 # Thread is spun from nettle and grass fiber, a pale grey-buff; some is dyed with alder bark (brown) and

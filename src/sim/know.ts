@@ -269,6 +269,30 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'roast their food in the embers', memory: 'Roasted the first meal in the embers.',
   },
   {
+    // (someone who knows hides, filling a hide bag with water by the fire on the evening of a kill, sees a stone
+    // from the hearth roll into it and the water hiss and steam, and thinks of boiling the meat that way)
+    key: 'boiling', label: 'Stone boiling', needs: ['cooking', 'preserving'], requires: [skill(SK.forage, ABLE), skill(SK.hide, 6)],
+    practice: { carcass: 1, evening_fire: 0.02 }, odds: 14,
+    found: 'slung a hide on stakes by the fire, filled it with water and meat and dropped stones in from the fire one after another till it boiled: that evening the whole band ate a stew from it',
+    taught: 'boil a stew in a hide with hot stones from the fire', memory: 'Boiled the first stew with hot stones.',
+  },
+  {
+    // (someone bringing in the grain who knows how to shape a stone, roasting a handful of it on a flat stone
+    // by the fire, thinks of grinding it and baking it as a cake)
+    key: 'griddle', label: 'Grilling stone', needs: ['cooking', 'grain'], requires: [skill(SK.tool, 8), skill(SK.garden, 6)],
+    practice: { store_grain: 1 }, odds: 15,
+    found: 'ground a handful of grain, wetted it and baked it flat on a hot stone by the fire: the flatbread filled far more than the raw grain, and from then on a grilling stone stood in the hearth',
+    taught: 'bake flatbread and acorn cakes on a hot stone', memory: 'Baked the first flatbread on a hot stone.',
+  },
+  {
+    // (a builder who hunts, digging a pit by the fire on the evening of a big kill, with stones from the hearth
+    // still hot in it, thinks of burying the meat in with them)
+    key: 'oven', label: 'Earth oven', needs: ['cooking', 'digstick'], requires: [skill(SK.build, 9), skill(SK.hunt, 9)],
+    practice: { carcass: 1, dig_stick: 0.2 }, odds: 25,
+    found: 'dug a pit by the fire, heated stones in it, laid in a whole haunch wrapped in leaves and covered it with earth: by evening it was tender right through, and from then on the band baked its big kills and its feasts in the ground',
+    taught: 'bake their kills and their feasts in an earth oven', memory: 'Baked the first meal in an earth oven.',
+  },
+  {
     // (a potter firing a new pot in the embers of the hearth, with roots roasting beside it, sees the water left
     // in the bottom of it boil, and thinks of setting a pot of water in the fire with the meal in it)
     key: 'stew', label: 'Stew pot', needs: ['cooking', 'pottery'], requires: [skill(SK.pot, 7), skill(SK.forage, ABLE)],

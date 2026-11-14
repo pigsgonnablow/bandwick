@@ -25,7 +25,7 @@ export const SKILL_TIPS: Record<string, string> = {
   pottery: 'Pottery: shaping and firing clay into pots, bowls, lamps and storage jars. More skill works faster, cracks fewer in the firing and makes finer things.',
   hidework: 'Hidework: scraping hides and sewing cloaks, hats, shoes and bags, and mending them when they wear. Once the band knows butchering, a skilled hand gets more meat from every carcass.',
   gardening: 'Gardening: sowing, weeding and harvesting the garden plots. A skilled gardener works faster and brings in a bigger harvest: about 60% from a beginner, 140% from a master.',
-  cooking: 'Cooking: the band\'s evening stew, cooked in the pot at the fire, and the herb brews steeped in it. A better cook\'s stew fills more from the same food, and people remember the best of it. The band\'s cook also thinks of bone broth and herbal brews.',
+  cooking: 'Cooking: the band\'s evening stew, boiled with hot stones in a hide or cooked in the pot at the fire, the meat baked in the earth oven, and the herb brews steeped in the pot. A better cook\'s stew fills more from the same food, and people remember the best of it. The band\'s cook also thinks of bone broth and herbal brews.',
 };
 export const SKILLS_NOTE = 'Skills grow with practice, slowest near the top. The band sends its most skilled to each job, and new ideas come only to those who have mastered the crafts around them.';
 
@@ -134,6 +134,11 @@ export const CARD_TIPS: Record<string, string> = {
   Charcoal: 'Charcoal: wood burned slowly under turf in the charcoal clamp. Each firing in the kiln uses one: the kiln runs hotter and evener, so far fewer pots crack and they come out finer.',
   Clamp: 'Clamp: the charcoal clamp\'s state. Once stacked and lit it smoulders a day and a night, then its charcoal goes into the stores.',
   Stacking: 'Stacking: who is stacking split wood in the clamp and covering it with turf.',
+  'Grilling stone': 'Grilling stone: a flat stone propped over the embers. Grain and acorns eaten at the fire are baked on it into flatbread and cakes, which fill far more than raw.',
+  Oven: 'Oven: the earth oven\'s state. Filled in the early afternoon and covered over, it bakes till the evening, when the band eats from it together.',
+  'From the oven': 'From the oven: what was baked in the earth oven today, and how much of it is left to eat.',
+  'In the hide': 'In the hide: the stew boiling in a hide slung by the fire, heated with stones from the fire, and how much of it is left to eat.',
+  'Filled by': 'Filled by: who laid the food in the earth oven and covered it over.',
   Thread: 'Thread: hanks of nettle and grass fiber spun on a spindle by the fire, for weaving cloth at the loom.',
   Weaving: 'Weaving: who is at the loom now, and what they are weaving.',
   Cloth: 'Cloth: how many of the band have a woven tunic to wear and a blanket to sleep under.',

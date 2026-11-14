@@ -130,7 +130,7 @@ export const TASK_KINDS: TaskKind[] = [
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'sledge', 'cookpot'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'sledge', 'cookpot', 'griddle'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap', 'deadfall'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -207,6 +207,9 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   // a wide-mouthed pot, thick-walled and coarse with grit so it takes the fire, set in the embers each evening for
   // the band's stew: the heat tells on it, and it cracks in a year or so (each stew cooked in it is a use)
   cookpot: { label: 'Cooking pot', uses: 50 },
+  // a flat slab of river stone, ground smooth on top and propped over the embers on two stones, for flatbread and
+  // acorn cakes: the fire cracks it in the end (each baking is a use)
+  griddle: { label: 'Grilling stone', uses: 300 },
 };
 /**
  * Things made for their own sake in the hours a fed band has free: they are the band's goods, its wealth.
@@ -454,7 +457,51 @@ export const BREW_HOURS = 8;
 export const BREW_KEEP = 0.75;
 /** Herbs the band keeps by once it brews (the hot drinks in winter want more than the fevers). */
 export const HERBS_BREW = 12;
-/** What is in the band's cooking pot at the fire. */
+/**
+ * The grilling stone: a flat stone propped over the embers. Grain and acorns eaten at a lit fire with one are
+ * baked on it into flatbread and acorn cakes, which fill this much more than the same raw (roasting in the embers
+ * gives COOK_GAIN).
+ */
+export const GRIDDLE_GAIN = 1.55;
+export const GRIDDLED = ['grain', 'nuts'];
+/**
+ * Stone boiling: before the band has a cooking pot, its stew is boiled in a hide slung on stakes by the fire, with
+ * stones heated in the fire dropped in one after another. It takes longer than a pot and fills less (no broth or
+ * brews either), and once there is a pot, the pot is used. Where the hide hangs, in the hearth model's own space.
+ */
+export const BOIL_GAIN = 1.2;
+export const BOIL_TICKS = 24;
+export const BOIL_AT = [-0.22, 0.24] as const;
+/**
+ * The earth oven. When the band has more meat and fish in its stores than it can eat before they turn (this many
+ * meals a head), and on the day of the midwinter feast, the cook fills the oven in the early afternoon instead of
+ * putting a stew on: they lay the food in on the hot stones and cover it over, and it bakes till the evening. Baked
+ * there, meat, fish and roots fill this much more; the band eats it together like the stew, and feels closer still
+ * for it. The cook takes this long to lay it in, and it bakes this long.
+ */
+export const OVEN_GAIN = 1.5;
+export const OVENED = ['meat', 'fish', 'roots', 'preserved'] as const;
+export const OVEN_GLUT = 4;
+export const OVEN_FROM = 12.5;
+export const OVEN_TO = 14.5;
+export const OVEN_LOAD = 10;
+/** Wood burned in the pit to heat the oven's stones. */
+export const OVEN_WOOD = 2;
+export const OVEN_TICKS = 50;
+export const OVEN_BELONG = 6;
+/**
+ * Bad food. Meat, fish and eggs eaten raw can turn the stomach: this chance for a meal of them, more in the warm
+ * months when food goes off sooner, and far less once cooked. A stew left in the pot overnight in the warm can turn
+ * too. Either way it is a few days' sickness, nursed like a fever.
+ */
+export const RAW_SICK = 0.01;
+export const RAW_WARM = 2.5;
+export const RAW_WARM_AT = 14;
+export const COOKED_SICK = 0.15;
+export const STALE_SICK = 0.008;
+export const GUT_DAYS = 2;
+export const RAW_RISKY = ['meat', 'fish', 'eggs'];
+/** What is in the band's cooking pot at the fire (or its earth oven). */
 export interface Stew {
   /** the evening it is cooked for (Sim.evening) */
   evening: number;
@@ -473,6 +520,11 @@ export interface Stew {
   bones?: number;
   /** a pot of hot herbs steeped beside it, to drink with the meal on a cold evening */
   brew?: boolean;
+  /** boiled with hot stones in a hide, the band having no pot */
+  boiled?: boolean;
+  /** baked in the earth oven (for the midwinter feast, when it is) */
+  oven?: boolean;
+  feast?: boolean;
 }
 /**
  * Food kept in one pot, and how much of the usual going-off still happens to it there. Pots hold the foods that
@@ -582,7 +634,7 @@ export const FIBER_PER_THREAD = 2;
 /** Hanks of thread a band spins to try the spindle before it has a loom, and keeps by at most once it has. */
 export const THREAD_TRY = 4;
 export const THREAD_KEPT = 16;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'charcoal', 'sledge', 'cookpot'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'charcoal', 'sledge', 'cookpot', 'griddle'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage or a hank of thread into the stores, a charcoal clamp lit (its charcoal
@@ -744,6 +796,11 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
     // coiled wide and thick from clay tempered with grit, so it takes the fire evening after evening
     makes: 'cookpot', uses: { mud: 2, wood: 1 }, work: 50, skill: SK.pot, grow: 0.08, knows: 'stew', doing: 'Making a cooking pot',
     thought: 'Coiling a wide cooking pot from clay gritted with sand.', done: 'Fired a cooking pot and set it by the fire.',
+  },
+  griddle: {
+    // a flat slab picked from the riverbank and ground smooth with sand and water
+    makes: 'griddle', uses: { stone: 1 }, work: 40, skill: SK.tool, grow: 0.06, knows: 'griddle', doing: 'Grinding a grilling stone',
+    thought: 'Grinding a flat river stone smooth with sand and water.', done: 'Set a grilling stone over the embers of the hearth.',
   },
 };
 /** The recipes fired only in the kiln: too big for the embers of the hearth. */
@@ -957,7 +1014,7 @@ export interface Person {
   gave?: number;
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -1013,6 +1070,9 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   weir: spec({ wood: 8, fiber: 6, cordage: 3, work: 90, label: 'Fish weir' }),
   // a charcoal clamp by the kiln: a round bed dug and banked with earth, a centre stake, turf cut to cover the stack
   clamp: spec({ wood: 2, mud: 4, work: 35, label: 'Charcoal clamp' }),
+  // an earth oven by the fire: a pit dug and lined with stones, where a fire is burned down to heat them, the food
+  // laid in wrapped in leaves and the pit covered over with earth to bake
+  oven: spec({ wood: 2, mud: 3, work: 40, label: 'Earth oven' }),
 };
 /** The buildings a band raises for its own sake, in its spare hours over years, and never as a job of work. */
 export const MONUMENTS: readonly BuildKind[] = ['barrow', 'stones'];

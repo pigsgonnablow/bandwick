@@ -4,7 +4,7 @@ import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE, aDish } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
 import { SEASONED_HEAT } from './band';
-import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, STEW_FROM, STEW_TO, STEW_CALL, STEW_TICKS, STEW_BELONG, BREW_WARM, BREW_HOURS, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
+import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, STEW_FROM, STEW_TO, GRIDDLE_GAIN, GRIDDLED, RAW_SICK, RAW_WARM, RAW_WARM_AT, COOKED_SICK, STALE_SICK, GUT_DAYS, RAW_RISKY, OVEN_FROM, OVEN_LOAD, OVEN_BELONG, BOIL_TICKS, STEW_CALL, STEW_TICKS, STEW_BELONG, BREW_WARM, BREW_HOURS, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
   PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, CHARCOAL_CRACK, CLAMP_BURN, CHARCOAL_YIELD, SLEDGE_LOAD, SLEDGE_SNOW, MASTER_FALL, MASTER_WOOD, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
@@ -314,10 +314,14 @@ export function decide(s: Sim, p: Person) {
   if (c.feastDay === dayOf(s.tick) && hour >= 16.5 && hour < 21.5 && age >= 2 && hyp(p.x - c.x, p.z - c.z) < 24 && !p.memories.some((m) => m.kind === 'midwinter' && dayOf(m.tick) === c.feastDay))
     add('feast', 2.3);
   // from late afternoon, someone puts the band's stew on in the pot at the fire (or takes over one left simmering):
-  // the band's cook if they are about, else whoever is at camp
-  if (age >= 14 && p.sick === 0 && p.health > HEALTH.hunt && hour >= STEW_FROM && hour < STEW_TO && hyp(p.x - c.x, p.z - c.z) < 12 && busyWith(s, 'cook') === 0
-    && (s.stewWanted(c) || (!!c.stew && c.stew.ready < 0)))
-    add('cook', 1.5 * fit(p, SK.cook) * (cookOf(s) === p ? 1.35 : 0.8));
+  // the band's cook if they are about, else whoever is at camp; and earlier in the afternoon, they fill the earth
+  // oven, where there is meat to bake in it
+  if (age >= 14 && p.sick === 0 && p.health > HEALTH.hunt && hour >= OVEN_FROM && hour < STEW_TO && hyp(p.x - c.x, p.z - c.z) < 12 && busyWith(s, 'cook') === 0) {
+    const mode = s.cookMode(c);
+    const stewing = hour >= STEW_FROM;
+    if ((mode === 'oven' || (mode && stewing)) || (stewing && !!c.stew && c.stew.ready < 0 && !c.stew.oven))
+      add('cook', 1.5 * fit(p, SK.cook) * (cookOf(s) === p ? 1.35 : 0.8));
+  }
   // a tooth or a shell strung on a cord, for a partner or a close friend, now and then
   if (age >= 14 && !dark && ((c.stock.trinkets >= 1 && c.stock.fiber >= 1) || s.goodsOf().some((i) => i.kind === 'beads')) && s.tick - (p.gave ?? -1e9) > GIFT_DAYS * TICKS_PER_DAY && giftFor(s, p))
     add('gift', 0.32 + (s.has(p, 'kind') ? 0.1 : 0) + (s.has(p, 'greedy') ? -0.15 : 0));
@@ -697,15 +701,16 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
     case 'cook': {
       // to the stores for the makings, or straight to the pot if a stew is already simmering in it
       if (c.stew && c.stew.ready < 0) {
-        const at = s.potSpot(c);
+        if (c.stew.oven) return null;
+        const at = s.cookSpot(c, c.stew);
         const t = newTask(s, kind, ti(at.sx, at.sz), at.sx, at.sz);
         t.stage = 1;
         c.stew.cook = p.id;
-        p.thought = 'Seeing to the stew in the pot.';
+        p.thought = c.stew.boiled ? 'Seeing to the stew boiling in the hide.' : 'Seeing to the stew in the pot.';
         return t;
       }
       const st = s.storeSpot();
-      p.thought = 'Off to the stores for the makings of a stew.';
+      p.thought = s.cookMode(c) === 'oven' ? 'Off to the stores for the meat to bake in the oven.' : 'Off to the stores for the makings of a stew.';
       return newTask(s, kind, st.tile, st.x, st.z);
     }
     case 'eggs': case 'honey': case 'mushrooms': {
@@ -1475,12 +1480,18 @@ export function foodInHand(p: Person) {
   return p.carryAmt >= 1 && (k === CARRY.Berries || k === CARRY.Meat || k === CARRY.Fish || k === CARRY.Roots || k === CARRY.Nuts || k === CARRY.Eggs || k === CARRY.Honey || k === CARRY.Mushrooms || k === CARRY.Grain || k === CARRY.Greens);
 }
 
+/** The band's grilling stone at the fire, if it has one. */
+function griddleOf(s: Sim, c: Camp) {
+  return s.items.find((i) => i.kind === 'griddle' && i.band === c.id);
+}
+
 /**
  * A bowl from the band's pot: eating together, thanks to the cook for it, a brew to warm them on a cold evening,
  * and now and then a stew they remember as the best they ever had (more often the better the cook).
  */
 function ateStew(s: Sim, p: Person, stew: NonNullable<Sim['camp']['stew']>, full: boolean) {
-  p.belonging = clamp(p.belonging + STEW_BELONG);
+  // (baked in the oven, a meal shared is something of an occasion)
+  p.belonging = clamp(p.belonging + STEW_BELONG + (stew.oven ? OVEN_BELONG : 0));
   const cook = s.byId.get(stew.cook);
   if (cook && cook !== p && cook.alive) s.adjust(p, cook, 0.4);
   if (stew.brew) {
@@ -1770,7 +1781,7 @@ export function runTask(s: Sim, p: Person) {
         t.timer = t.amount ? 8 + COOK_TICKS : t.ref === 1 ? 10 : 8;
       }
       p.act = t.amount && t.timer > 8 ? ACT.Tend : ACT.Eat;
-      if (p.act === ACT.Tend) p.thought = 'Roasting something in the embers.';
+      if (p.act === ACT.Tend) p.thought = griddleOf(s, c) && (c.stock.grain >= 0.3 || c.stock.nuts >= 0.3) ? 'Baking flatbread on the hot stone.' : 'Roasting something in the embers.';
       face(p, c.x, c.z);
       if (--t.timer > 0) return;
       if (p.carry === CARRY.Bowl) p.carry = CARRY.None;
@@ -1787,15 +1798,33 @@ export function runTask(s: Sim, p: Person) {
       const potful = stew ? s.ladle(c, want) : 0;
       got += potful;
       const roast = s.knows('cooking') && s.hearthLit();
+      // (and with a grilling stone at the fire, the grain and acorns are baked on it into flatbread and cakes)
+      const griddle = roast ? griddleOf(s, c) : undefined;
+      let baked = 0, raw = 0, cooked = 0;
       for (const k of ['berries', 'greens', 'eggs', 'mushrooms', 'fish', 'meat', 'roots', 'nuts', 'grain', 'preserved', 'honey'] as const) {
         if (got >= want - 1e-6) break;
         // (more on top of a bowl of stew is roasted quickly at the same fire)
-        const worth = (t.amount || (potful > 0 && roast)) && COOKED.includes(k) ? COOK_GAIN : 1;
+        const hot = (t.amount || (potful > 0 && roast)) && COOKED.includes(k);
+        const worth = hot ? (griddle && GRIDDLED.includes(k) ? GRIDDLE_GAIN : COOK_GAIN) : 1;
         const take = Math.min(st[k], (want - got) / worth);
         st[k] -= take;
         s.book(`eaten.${k}`, take);
         got += take * worth;
+        if (hot && griddle && GRIDDLED.includes(k)) baked += take;
+        if (RAW_RISKY.includes(k)) { if (hot) cooked += take; else raw += take; }
         if (got >= want - 1e-6) break;
+      }
+      if (baked > 0.05 && griddle) s.wearTool(griddle);
+      // meat, fish and eggs eaten raw can turn the stomach (in the warm more than the cold, and cooked hardly ever);
+      // and so can a stew left in the pot overnight in the warm
+      const warm = s.tempAt(p) >= RAW_WARM_AT;
+      const stale = stew && potful > 0 && warm && hourOf(s.tick) < 12 ? STALE_SICK : 0;
+      const risk = RAW_SICK * (raw + cooked * COOKED_SICK) * (warm ? RAW_WARM : 1) + stale;
+      const turned = risk > 0 && p.sick === 0 && s.age(p) >= 1 && s.rAi.chance(risk);
+      if (turned) {
+        p.sick = GUT_DAYS;
+        s.book(raw > cooked ? 'sick.raw' : 'sick.stale', 1);
+        s.remember(p, 'bad_food', -5, 0.5, -1, raw > cooked ? 'Ate meat that had turned, and was sick with it for days.' : 'Ate food that had turned, and was sick with it for days.');
       }
       p.food = clamp(p.food + 48 * (got / portion));
       // and a spoonful of honey with it, while the band has some to spare: a treat to remember
@@ -1814,6 +1843,7 @@ export function runTask(s: Sim, p: Person) {
       }
       if (stew && potful > 0) ateStew(s, p, stew, potful >= want * 0.5);
       p.thought = got < want * 0.5 ? 'There was hardly anything to eat.' : small ? 'A small share. The stores have to last till spring.' : stew && potful > 0 ? (stew.brew ? 'Ate the stew and drank the hot herbs: warm right through.' : 'Ate from the stew pot with everyone.') : 'Ate well.';
+      if (turned) p.thought = 'Something they ate has turned their stomach.';
       finish(s, p);
       return;
     }
@@ -1822,20 +1852,21 @@ export function runTask(s: Sim, p: Person) {
         if (moving(go(s, p, t))) return;
         // the makings from the stores: gone to someone else's pot meanwhile, or nothing left to cook
         if (!c.stew) {
-          if (!s.stewWanted(c)) return finish(s, p);
-          const stew = s.startStew(c, p);
+          const mode = s.cookMode(c);
+          if (!mode) return finish(s, p);
+          const stew = s.startStew(c, p, mode);
           const main = (Object.keys(stew.raw) as (keyof typeof stew.raw)[]).sort((a, b) => stew.raw[b]! - stew.raw[a]!)[0];
           p.carry = main === 'fish' ? CARRY.Fish : main === 'meat' || main === 'preserved' ? CARRY.Meat : main === 'roots' ? CARRY.Roots : main === 'grain' ? CARRY.Grain
             : main === 'nuts' ? CARRY.Nuts : main === 'greens' ? CARRY.Greens : main === 'mushrooms' ? CARRY.Mushrooms : main === 'eggs' ? CARRY.Eggs : main === 'berries' ? CARRY.Berries : CARRY.None;
           p.carryAmt = 0;
         }
-        const at = s.potSpot(c);
+        const at = s.cookSpot(c, c.stew!);
         t.stage = 1;
         t.goal = s.tileOf({ x: at.sx, z: at.sz });
         t.gx = at.sx;
         t.gz = at.sz;
         p.path = null;
-        p.thought = `Taking the makings of ${aDish(c.stew!.dish)} to the pot.`;
+        p.thought = c.stew!.oven ? 'Carrying the meat out to the earth oven.' : `Taking the makings of ${aDish(c.stew!.dish)} to the ${c.stew!.boiled ? 'fire' : 'pot'}.`;
       }
       if (t.stage === 1) {
         if (moving(go(s, p, t))) return;
@@ -1843,15 +1874,24 @@ export function runTask(s: Sim, p: Person) {
         if (!c.stew || c.stew.ready >= 0) { p.carry = CARRY.None; return finish(s, p); }
         p.carry = CARRY.None;
         t.stage = 2;
-        t.timer = Math.max(4, STEW_TICKS - Math.max(0, s.tick - c.stew.started - 6));
+        // (the oven only wants filling and covering over; a stew wants seeing to till it is done)
+        t.timer = c.stew.oven ? OVEN_LOAD : Math.max(4, (c.stew.boiled ? BOIL_TICKS : STEW_TICKS) - Math.max(0, s.tick - c.stew.started - 6));
       }
       const stew = c.stew;
       if (!stew || stew.ready >= 0) return finish(s, p);
-      const pot = s.potSpot(c);
+      const pot = s.cookSpot(c, stew);
       p.act = ACT.Tend;
       face(p, pot.x, pot.z);
-      p.thought = stew.brew ? `Stirring the ${stew.dish}, and herbs steeping beside it.` : `Stirring the ${stew.dish}.`;
+      p.thought = stew.oven ? 'Laying the meat in on the hot stones, wrapped in leaves, and covering it over with earth.'
+        : stew.boiled ? `Dropping hot stones from the fire into the ${stew.dish}.` : stew.brew ? `Stirring the ${stew.dish}, and herbs steeping beside it.` : `Stirring the ${stew.dish}.`;
       if (--t.timer > 0) return;
+      if (stew.oven) {
+        // (covered over, it bakes on its own till the evening)
+        train(p, 'cook');
+        if (!p.memories.some((m) => m.kind === 'baked')) s.remember(p, 'baked', 4, 1, -1, stew.feast ? 'Baked the midwinter feast in the earth oven.' : 'Baked meat for the whole band in the earth oven.');
+        p.thought = 'The oven is covered over: it will be ready by the evening.';
+        return finish(s, p);
+      }
       s.stewDone(c);
       train(p, 'cook');
       s.practise(p, 'stew');
@@ -2412,7 +2452,11 @@ export function runTask(s: Sim, p: Person) {
       const st = c.stock;
       let got = 0;
       const want = s.age(p) < 12 ? FEAST_MEAL * 0.6 : FEAST_MEAL;
+      // (the feast baked in the earth oven first, where the band has one: it goes further)
+      const baked = c.stew?.oven ? s.ladle(c, want) : 0;
+      got += baked;
       for (const k of ['meat', 'fish', 'eggs', 'mushrooms', 'preserved', 'nuts', 'roots', 'grain', 'honey', 'berries', 'greens'] as const) {
+        if (got >= want - 1e-6) break;
         const take = Math.min(st[k], want - got);
         st[k] -= take;
         s.book(`eaten.${k}`, take);
@@ -2420,6 +2464,7 @@ export function runTask(s: Sim, p: Person) {
         if (got >= want - 1e-6) break;
       }
       p.food = clamp(p.food + 48 * got);
+      if (baked > 0) p.belonging = clamp(p.belonging + OVEN_BELONG);
       // the band's goods set out round the fire: the more of them, and the finer, the prouder the night
       const goods = s.goodsOf();
       const show = Math.min(1, goods.reduce((a, i) => a + 1 + (i.quality ?? 0), 0) / Math.max(4, s.members(c).length * 2));
