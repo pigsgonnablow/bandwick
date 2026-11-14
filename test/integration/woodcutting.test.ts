@@ -1,0 +1,231 @@
+// Woodcutting past the axe: the band's best woodcutter is known for it, a master gets more from each tree and is
+// seldom hurt, firewood seasoned under the woodpile roof burns longer, and charcoal burned in a clamp for the kiln.
+import { describe, it, expect } from 'vitest';
+import { SK, RECIPE_KEYS, Task, TaskKind, Building, SEASONED_HEAT, SEASONING, CLAMP_BURN, CHARCOAL_YIELD, CRAFT_TITLES } from '../../src/sim/band';
+import { DISCOVERY, ELITE, knowHowFor } from '../../src/sim/know';
+import { TICKS_PER_DAY, TICKS_PER_YEAR, seasonOf } from '../../src/sim/time';
+import { runTask } from '../../src/sim/ai';
+import { Sim, treeStage, isTreeType, LOGS, FIRE_HOLDS } from '../../src/sim/sim';
+import { sim, runTo, runYears } from '../helpers';
+
+/** A band two years on, with wood, clay and food in hand. */
+function band(seed = 2, knows: string[] = []) {
+  const s = runYears(sim(seed), 2);
+  const c = s.camp;
+  for (const k of knows) if (!c.knows.includes(k)) c.knows.push(k);
+  c.stock.wood += 80;
+  c.stock.mud += 30;
+  c.stock.meat += 40;
+  return s;
+}
+const task = (s: Sim, kind: TaskKind, at: { x: number; z: number }, ref = -1, stage = 0): Task =>
+  ({ kind, stage, goal: s.tileOf(at), gx: at.x, gz: at.z, ref, timer: 0, started: s.tick, amount: 0, near: false });
+const adult = (s: Sim) => s.members().find((q) => s.age(q) >= 18 && s.age(q) <= 50)!;
+/** A built building of this kind by the band's stockpile. */
+function built(s: Sim, kind: Building['kind']) {
+  const pile = s.buildings.find((b) => b.band === s.camp.id && b.kind === 'stockpile')!;
+  const b = { ...pile, id: s.newId(), kind, built: true, fuel: 0 };
+  s.buildings.push(b);
+  return b;
+}
+const hypot = Math.hypot;
+const spoil = (s: Sim) => (s as unknown as { spoil(): void }).spoil();
+
+describe('the band\'s woodcutter', () => {
+  it('is known by name once clearly the best with an axe', () => {
+    expect(CRAFT_TITLES[SK.wood]).toBe('woodcutter');
+    const s = band();
+    const ms = s.members().filter((q) => s.age(q) >= 16);
+    for (const q of ms) q.skills[SK.wood] = 6;
+    const p = ms[0];
+    p.skills[SK.wood] = 17;
+    for (const q of ms) delete q.known;
+    s.plan();
+    expect(p.known).toBe(SK.wood);
+    expect(s.titled(p)).toBe(`${p.name}, the woodcutter`);
+  });
+
+  it('gets more wood from a big tree once a master, and the same from a sapling', () => {
+    const fell = (skill: number, stage: number) => {
+      const s = band();
+      const p = adult(s);
+      p.skills[SK.wood] = skill;
+      let k = -1;
+      for (let i = 0; i < s.propType.length && k < 0; i++) if (s.propAlive[i] && isTreeType(s.propType[i]) && treeStage(s.propType[i]) === stage && hypot(s.propX[i] - s.camp.x, s.propZ[i] - s.camp.z) < 30) k = i;
+      expect(k).toBeGreaterThanOrEqual(0);
+      s.items.push({ id: s.newId(), kind: 'axe', band: s.camp.id, holder: p.id, wear: 0, made: s.tick, maker: -1 });
+      p.task = { ...task(s, 'fell', { x: s.propX[k], z: s.propZ[k] }, k, 1), timer: 1 };
+      p.x = s.propX[k];
+      p.z = s.propZ[k];
+      const tx = s.propX[k], tz = s.propZ[k];
+      runTask(s, p);
+      // (what one can't carry is left lying as logs by the stump)
+      let left = 0;
+      for (let i = 0; i < s.propType.length; i++) if (s.propAlive[i] && s.propType[i] === LOGS && hypot(s.propX[i] - tx, s.propZ[i] - tz) < 0.4) left += s.propVal[i];
+      return p.carryAmt + left;
+    };
+    // (a master past the mark by five: a grown tree's 14 wood and its bark, and a quarter again from the limbs)
+    const plain = fell(ELITE - 1, 2), master = fell(ELITE + 5, 2);
+    expect(master).toBeGreaterThan(plain);
+    expect(master - plain).toBe(Math.round(14 * 0.06 * 5));
+    expect(fell(ELITE + 5, 0)).toBe(fell(ELITE - 1, 0));
+  });
+});
+
+describe('seasoned firewood', () => {
+  it('is thought of by a master woodcutter feeding the fire from under the woodpile roof', () => {
+    const d = DISCOVERY.get('seasoning')!;
+    expect(d.needs).toEqual(['woodshed']);
+    expect(d.practice.dry_fire).toBeGreaterThan(0);
+    expect(d.requires).toEqual([{ kind: 'skill', skill: SK.wood, level: 16 }]);
+  });
+
+  it('dries under the roof a season ahead, only once the band knows to stack it so', () => {
+    const s = band();
+    const c = s.camp;
+    c.stock.wood = 120;
+    c.stock.seasoned = 0;
+    spoil(s);
+    expect(c.stock.seasoned).toBe(0);
+    built(s, 'woodshed');
+    spoil(s);
+    expect(c.stock.seasoned).toBe(0);
+    c.knows.push('seasoning');
+    spoil(s);
+    expect(c.stock.seasoned).toBeCloseTo(120 * SEASONING, 5);
+    for (let d = 0; d < 36; d++) spoil(s);
+    expect(c.stock.seasoned / c.stock.wood).toBeGreaterThan(0.9);
+    expect(c.stock.seasoned).toBeLessThanOrEqual(c.stock.wood);
+  });
+
+  it('takes the damp again in autumn and winter with no roof over it', () => {
+    const s = band(2, ['seasoning']);
+    const c = s.camp;
+    s.buildings = s.buildings.filter((b) => !(b.band === c.id && b.kind === 'woodshed'));
+    while (seasonOf(s.tick) < 2) s.tick += TICKS_PER_DAY;
+    c.stock.wood = 100;
+    c.stock.seasoned = 80;
+    spoil(s);
+    expect(c.stock.seasoned).toBeLessThan(80);
+  });
+
+  it('is burned first, and keeps the fire going longer', () => {
+    const s = band();
+    const c = s.camp;
+    c.stock.wood = 20;
+    c.stock.seasoned = 3;
+    const dry = s.takeFirewood(c, 4);
+    expect(dry).toBe(3);
+    expect(c.stock.wood).toBe(16);
+    expect(c.stock.seasoned).toBe(0);
+    const h = s.hearth();
+    h.fuel = 0;
+    expect(s.stoke(h, 4, 3)).toBeCloseTo(4 + 3 * (SEASONED_HEAT - 1), 6);
+    // (never past what the fire holds)
+    h.fuel = FIRE_HOLDS - 1;
+    expect(s.stoke(h, 4, 4)).toBeCloseTo(1, 6);
+    expect(h.fuel).toBe(FIRE_HOLDS);
+  });
+
+  it('carried to the fire, goes on first and what is left goes back seasoned', () => {
+    const s = band();
+    const c = s.camp;
+    const p = adult(s);
+    c.stock.wood = 30;
+    c.stock.seasoned = 30;
+    const h = s.hearth();
+    h.fuel = FIRE_HOLDS - 2.5;
+    p.task = { ...task(s, 'fuel', { x: c.x, z: c.z }, -1, 2), amount: 4, dry: 4, timer: 1 };
+    c.stock.wood -= 4;
+    c.stock.seasoned -= 4;
+    runTask(s, p);
+    expect(h.fuel).toBeCloseTo(FIRE_HOLDS, 6);
+    // 2 seasoned went on (2.5 of fuel), and the other 2 went back on the pile, still seasoned
+    expect(c.stock.wood).toBeCloseTo(28, 6);
+    expect(c.stock.seasoned).toBeCloseTo(28, 6);
+  });
+});
+
+describe('charcoal', () => {
+  it('is thought of by a woodcutter who pots, firing in the kiln', () => {
+    const d = DISCOVERY.get('charcoal')!;
+    expect(d.needs).toEqual(['kiln']);
+    expect(d.practice.fire_kiln).toBeGreaterThan(0);
+    expect(knowHowFor({ kind: 'clamp' })).toEqual(['charcoal']);
+  });
+
+  it('wants a clamp dug by the kiln, once the band has a kiln', () => {
+    const s = band(2, ['pottery', 'kiln', 'charcoal']);
+    const c = s.camp;
+    s.plan();
+    expect(s.buildings.some((b) => b.band === c.id && b.kind === 'clamp')).toBe(false);
+    const k = built(s, 'kiln');
+    k.x += 3;
+    s.plan();
+    const clamp = s.buildings.find((b) => b.band === c.id && b.kind === 'clamp');
+    expect(clamp).toBeDefined();
+    expect(Math.hypot(clamp!.x - k.x, clamp!.z - k.z)).toBeLessThan(4);
+    expect(c.plan).toContain('Dig a charcoal clamp by the kiln');
+  });
+
+  it('is burned in the clamp: stacked, it smoulders a day, then goes into the stores', () => {
+    const s = band(2, ['pottery', 'kiln', 'charcoal']);
+    const c = s.camp;
+    expect(s.canCraft('charcoal')).toBe(false);
+    built(s, 'kiln');
+    expect(s.canCraft('charcoal')).toBe(false);
+    const clamp = built(s, 'clamp');
+    expect(s.canCraft('charcoal')).toBe(true);
+    c.stock.charcoal = 0;
+    s.plan();
+    expect(c.jobs['craft.charcoal']).toBeGreaterThan(0);
+    expect(c.plan).toContain('Burn charcoal in the clamp for the kiln');
+    const p = adult(s);
+    p.skills[SK.wood] = ELITE - 2;
+    p.task = { ...task(s, 'craft', s.kilnSeat(clamp, p), RECIPE_KEYS.indexOf('charcoal'), 1), amount: 1, timer: 1 };
+    runTask(s, p);
+    expect(clamp.burnUntil).toBe(s.tick + CLAMP_BURN);
+    expect(clamp.charge).toBe(CHARCOAL_YIELD);
+    // (one stack at a time)
+    expect(s.canCraft('charcoal')).toBe(false);
+    expect(s.packBuildings().find((b) => b.id === clamp.id)!.look).toBe('clampLit');
+    runTo(s, s.tick + CLAMP_BURN + 12);
+    expect(clamp.burnUntil).toBeUndefined();
+    expect(c.stock.charcoal).toBeCloseTo(CHARCOAL_YIELD, 5);
+  });
+
+  it('is burned in the kiln, one for each firing, and the pots seldom crack', () => {
+    const s = band(2, ['pottery', 'kiln']);
+    const c = s.camp;
+    built(s, 'kiln');
+    const p = adult(s);
+    p.skills[SK.pot] = 8;
+    const fire = (charcoal: number) => {
+      let cracked = 0;
+      for (let i = 0; i < 400; i++) {
+        c.stock.charcoal = charcoal;
+        const before = c.ledger?.now['cracked.bowl'] ?? 0;
+        p.task = { ...task(s, 'craft', p, RECIPE_KEYS.indexOf('bowl'), 1), amount: 1, timer: 1 };
+        runTask(s, p);
+        if ((c.ledger?.now['cracked.bowl'] ?? 0) > before) cracked++;
+        if (charcoal) expect(c.stock.charcoal).toBe(charcoal - 1);
+      }
+      return cracked;
+    };
+    const wood = fire(0), coal = fire(5);
+    expect(wood).toBeGreaterThan(4);
+    expect(coal).toBeLessThan(wood);
+  });
+});
+
+it('a year on, a band that knows it all burns charcoal and keeps its firewood seasoned', () => {
+  const s = band(2, ['pottery', 'kiln', 'woodshed', 'seasoning', 'charcoal']);
+  const c = s.camp;
+  built(s, 'kiln');
+  if (!s.hasBuilt('woodshed')) built(s, 'woodshed');
+  for (const q of s.members()) if (s.age(q) >= 16) q.skills[SK.wood] = Math.max(q.skills[SK.wood], 12);
+  runTo(s, s.tick + TICKS_PER_YEAR);
+  expect(s.buildings.some((b) => b.band === c.id && b.kind === 'clamp' && b.built)).toBe(true);
+  expect((c.ledger?.now.charcoal ?? 0) + (c.ledger?.last.charcoal ?? 0)).toBeGreaterThan(0);
+  expect(s.seasonedShare(c)).toBeGreaterThan(0.3);
+});

@@ -13,6 +13,7 @@ export type Practice =
   | 'night_out' // a night under a lean-to or in the open (each adult)
   | 'evening_fire' // an evening by the camp fire (each adult)
   | 'damp_fire' // feeding the fire with damp wood
+  | 'dry_fire' // feeding the fire with wood from under the woodpile's roof
   | 'store_food' // food carried into the stores (per meal)
   | 'store_meat' // meat and fish carried into the stores (per meal)
   | 'store_berries' // berries carried into the stores (per meal)
@@ -406,6 +407,23 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'cut the woods near camp low so they grow back', memory: 'Began to coppice the woods near camp.',
   },
   {
+    // (a master woodcutter feeding the fire from under the woodpile's roof notices the old wood at the bottom of
+    // the stack, lain there since last year, burns hotter and longer than any new-cut log: they split the new wood
+    // and stack it to dry a season ahead)
+    key: 'seasoning', label: 'Seasoned firewood', needs: ['woodshed'], requires: [skill(SK.wood, 16)],
+    practice: { dry_fire: 1 }, odds: 30,
+    found: 'noticed the old logs from the bottom of the stack burned hotter and longer than new-cut wood, and began to split the wood and stack it a season ahead to dry',
+    taught: 'split and stack their firewood to season it', memory: 'Saw that wood stacked a season burns longest.',
+  },
+  {
+    // (someone who knows the woods, firing pots in the kiln and raking out the black, half-burned sticks that
+    // burned without flame, sees how fiercely they glow, and thinks of burning a whole stack of wood that way)
+    key: 'charcoal', label: 'Charcoal', needs: ['kiln'], requires: [skill(SK.wood, ELITE), skill(SK.pot, 6)],
+    practice: { fire_kiln: 1 }, odds: 30,
+    found: 'stacked split wood in a mound, covered it with turf and let it smoulder a day and a night: it came out black, light and ringing, and burned in the kiln hotter than any wood',
+    taught: 'burn charcoal in a clamp for the kiln', memory: 'Burned the first charcoal.',
+  },
+  {
     // (a toolmaker stringing teeth and shells for someone dear, or knapping a stone, thinks of grinding the
     // pebbles themselves smooth and boring them through: beads of any stone, as many as there are hours for)
     key: 'beads', label: 'Beads', needs: ['huts'], requires: [skill(SK.tool, 9)],
@@ -496,7 +514,7 @@ export const DISCOVERY = new Map(DISCOVERIES.map((d) => [d.key, d]));
 /** What a band has to know to build something. */
 export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   const out: string[] = [];
-  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir' } as Partial<Record<BuildKind, string>>)[b.kind];
+  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir', clamp: 'charcoal' } as Partial<Record<BuildKind, string>>)[b.kind];
   if (k) out.push(k);
   if (b.walls === 'daub') out.push('daub');
   if (b.walls === 'stone') out.push('stonework');

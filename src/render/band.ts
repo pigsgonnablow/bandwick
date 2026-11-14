@@ -289,6 +289,9 @@ export class BandLayer {
   private lights: THREE.PointLight[] = [];
   private smoke: THREE.Points;
   private smokeMat: THREE.ShaderMaterial;
+  /** the smoke from a charcoal clamp smouldering (the nearest one) */
+  private clampSmoke: THREE.Points;
+  private clampSmokeMat: THREE.ShaderMaterial;
   private selRing: THREE.Mesh;
   private hoverRing: THREE.Mesh;
   private buildings: NonNullable<Frame['buildings']> = [];
@@ -352,7 +355,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull']) {
+      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -435,6 +438,10 @@ export class BandLayer {
     this.smoke = sm.points;
     this.smokeMat = sm.mat;
     this.group.add(this.smoke);
+    const cs = makeSmoke();
+    this.clampSmoke = cs.points;
+    this.clampSmokeMat = cs.mat;
+    this.group.add(this.clampSmoke);
     // selection rings
     const ringMat = (c: number, o: number) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, depthWrite: false, side: THREE.DoubleSide });
     this.selRing = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.21, 24).rotateX(-Math.PI / 2), ringMat(0xe3ab4e, 0.95));
@@ -1606,8 +1613,8 @@ export class BandLayer {
 
   /** Which model draws a building: huts come in two shapes, each with wattle, daub and stone walls. */
   private modelOf(b: { kind: string; id: number; walls?: string; look?: string }) {
-    // (a garden plot as it grows, a monument as it goes up, a weir with fish in its basket)
-    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
+    // (a garden plot as it grows, a monument as it goes up, a weir with fish in its basket, a charcoal clamp smouldering)
+    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir' || b.kind === 'clamp') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
     if (b.kind !== 'hut' && b.kind !== 'storehouse') return b.kind;
     const shape = b.kind === 'storehouse' ? b.kind : b.id % 2 ? 'hut1' : 'hut0';
     const own = shape + (b.walls === 'daub' ? 'd' : b.walls === 'stone' ? 's' : '');
@@ -1655,6 +1662,7 @@ export class BandLayer {
       counts.set(kind, k + 1);
     };
     const fires: { x: number; y: number; z: number; fuel: number }[] = [];
+    const clamps: { x: number; y: number; z: number }[] = [];
     this.drawPiles();
     this.drawTraps();
     for (const b of this.buildings) {
@@ -1687,6 +1695,7 @@ export class BandLayer {
       }
       // fresh grass laid under a lean-to (a hut's is out of sight inside)
       if (b.bedding && b.kind === 'leanto' && b.built) put('bedding', cx, cz, rot, 1, 1, b.band);
+      if (b.kind === 'clamp' && b.look === 'clampLit') clamps.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz });
       if (b.kind === 'hearth' && b.fuel > 0 && (laid === undefined || laid >= 1)) fires.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, fuel: b.fuel });
     }
     for (const [kind, m] of this.buildingMeshes) {
@@ -1734,6 +1743,12 @@ export class BandLayer {
     this.smoke.visible = !!f0;
     if (f0) this.smokeMat.uniforms.uOrigin.value.set(f0.x, f0.y + 0.25, f0.z);
     this.smokeMat.uniforms.uNight.value = night;
+    // and a slow grey plume from the top of a smouldering charcoal clamp
+    let c0: { x: number; y: number; z: number } | undefined;
+    for (const c of clamps) if (!c0 || Math.hypot(c.x - camTarget.x, c.z - camTarget.z) < Math.hypot(c0.x - camTarget.x, c0.z - camTarget.z)) c0 = c;
+    this.clampSmoke.visible = !!c0;
+    if (c0) this.clampSmokeMat.uniforms.uOrigin.value.set(c0.x, c0.y + 0.16, c0.z);
+    this.clampSmokeMat.uniforms.uNight.value = night;
   }
 
   /** The band-colour glows gathered this frame (people and buildings), drawn on the ground. */

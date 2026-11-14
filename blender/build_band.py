@@ -34,6 +34,8 @@ Conventions (read by src/render/band.ts):
       (the windbreak reaches out in an arc behind the fire);
   bld__{weir,weirFull}                                            a fish weir across a river tile, origin on the river bed, its point (and basket trap)
       downstream to -y; ...Full with fish in the basket.
+  bld__{clamp,clampLit}                                           a charcoal clamp by the kiln: its bed cold, with the last charcoal raked out, and
+      lit, the stack covered over with turf and smouldering.
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
   bld__{plot,plotSown,plotRoots,plotGrain,plotRipe,plotStubble}  a garden plot through its year (bare or fallow, sown, roots in
       leaf, young grain, ripe grain, stubble with stooks); the fence goes round the same tile.
@@ -3835,6 +3837,96 @@ for x in (-0.06, 0.0, 0.06):
         v.co = v.co * 1.25 + Vector((-KR - 0.08 + x, -0.16, 0.016))
     q.paint(q._faces_of(new), (184, 156, 120), rnd, 0.04)  # not yet fired: pale and dull
 q.finish("bld__kiln")
+
+# a charcoal clamp: a round bed dug a little into the ground and banked with earth, blackened from the burns
+# before, with a centre stake; split wood stacked ready beside it and turves cut to cover the next stack.
+# bld__clamp is the clamp cold, the last burn's charcoal raked out in a heap; in bld__clampLit the stack is
+# built up round the stake into a dome, covered over with turf and earth, smouldering: a dark vent at the
+# top and the glow of the embers in the draught holes round its foot.
+CHARCOAL = (40, 36, 34)
+CHARCOAL_LT = (66, 60, 56)
+BILLET, BILLET_END = (128, 98, 66), (178, 146, 104)
+CR, CH = 0.17, 0.16
+
+
+def clamp(lit, seed):
+    q = Part()
+    rnd = random.Random(seed)
+    n = 22
+    # the bed: a shallow round of burnt earth inside a low bank of the earth dug out of it
+    bed = [[polar(CR * f, k / n * math.tau, z) for k in range(n)] for f, z in ((0.0, 0.004), (0.3, 0.004), (0.6, 0.004), (0.95, 0.006))]
+    ring_loft(q, bed, lambda i, k: CHARRED if i < 2 else rnd.choice((CHARRED, CHARRED, SOOT)), rnd, 0.04)
+    for k in range(6):  # ash blown about the bed
+        q.blob(polar(CR * rnd.uniform(0.2, 0.8), rnd.uniform(0, math.tau), 0.004), (0.03, 0.022, 0.003), ASH, rnd, 0.06, noise=0.2)
+    bank = []
+    for f, z in ((0.95, 0.006), (1.05, 0.03), (1.18, 0.036), (1.3, 0.012), (1.38, 0.0)):
+        bank.append([polar(CR * f * (1 + rnd.uniform(-0.03, 0.03)), k / n * math.tau, z * (1 + rnd.uniform(-0.15, 0.15))) for k in range(n)])
+    earth = lambda: rnd.choice((SOIL, SOIL, SOIL_LT, (110, 86, 60)))
+    ring_loft(q, bank, lambda i, k: SOOT if i == 0 else earth(), rnd, 0.05)
+    if lit:
+        # the dome: split wood stood on end round the stake, covered over with turves (grass side down, so the
+        # brown roots show, patched with green where one was laid the other way), earth thrown over the cracks
+        prof = [(0.97, 0.0), (0.98, 0.03), (0.93, 0.06), (0.82, 0.095), (0.64, 0.125), (0.42, 0.145), (0.2, 0.152), (0.07, 0.152)]
+        rings = []
+        for i, (rf, zf) in enumerate(prof):
+            ring = []
+            for k in range(n):
+                a = k / n * math.tau
+                r = CR * rf * (1 + rnd.uniform(-0.035, 0.035))
+                z = zf * (1 + rnd.uniform(-0.04, 0.04)) if i else 0.0
+                # four draught holes round the foot, where the air is let in: pushed in, dark
+                if i == 1 and k % 6 == 1:
+                    r *= 0.86
+                ring.append(polar(r, a, z))
+            rings.append(ring)
+        # (grass in patches where a turf was laid grass side up, the rest the brown of its roots; sooty round the vent)
+        green = {(i, k) for i in range(1, 5) for k in range(n) if (hash((i // 2, k // 2, seed)) % 6) == 0}
+        turf = lambda i, k: SOOT if i >= len(prof) - 2 else TURF if (i, k) in green else rnd.choice((SOIL, SOIL, SOIL_DK, (90, 70, 50)))
+        cap = ring_loft(q, rings, turf, rnd, 0.06)[-1]
+        mid = q.bm.verts.new((0, 0, CH * 0.98))
+        for k in range(n):  # the vent at the top, where the stake was drawn out: black, with a glow down in it
+            f = q.bm.faces.new((cap[k], cap[(k + 1) % n], mid))
+            q.paint([f], EMBER if k % 3 == 0 else CHARCOAL, rnd, 0.1)
+        for k in range(4):  # the draught holes: a dark mouth in the turf with the embers glowing in it
+            a = (k * 6 + 1.5) / n * math.tau
+            q.box(polar(CR * 0.93, a, 0.02), (0.016, 0.03, 0.022), CHARCOAL, rnd, 0.05, rot=Matrix.Rotation(a, 3, "Z"))
+            q.blob(polar(CR * 0.96, a, 0.016), (0.009, 0.013, 0.008), EMBER, rnd, 0.1)
+        for k in range(7):  # sods laid loose on the dome's shoulder, and earth heaped round its foot
+            a = rnd.uniform(0, math.tau)
+            q.box(polar(CR * rnd.uniform(0.45, 0.7), a, 0.11 + rnd.uniform(0, 0.02)), (0.05, 0.035, 0.014), TURF if k % 2 else SOIL,
+                  rnd, 0.06, rot=Matrix.Rotation(a, 3, "Z") @ Matrix.Rotation(rnd.uniform(-0.4, 0.4), 3, "X"))
+        for k in range(10):
+            a = k / 10 * math.tau + rnd.uniform(-0.2, 0.2)
+            q.blob(polar(CR * 1.0, a, 0.01), (0.03, 0.02, 0.014), SOIL_LT if k % 2 else SOIL, rnd, 0.06, noise=0.2)
+    else:
+        # cold: the stake standing in the middle of the bed, and the last burn raked out into a black heap
+        q.cyl(5, 0.008, 0.006, (0, 0, 0), (0, 0, 0.17), BARK, rnd, 0.05)
+        q.blob((0.05, 0.03, 0.012), (0.08, 0.065, 0.024), CHARCOAL, rnd, 0.08, noise=0.25, subdiv=2)
+        for k in range(16):  # lumps of charcoal, split along the grain, shining a little
+            q.box((0.05 + rnd.uniform(-0.09, 0.09), 0.03 + rnd.uniform(-0.07, 0.07), 0.03 + rnd.uniform(-0.01, 0.006)),
+                  (0.022, 0.012, 0.01), CHARCOAL_LT if k % 3 == 0 else CHARCOAL, rnd, 0.1, rot=Matrix.Rotation(rnd.uniform(0, math.pi), 3, "Z"))
+        for k in range(3):  # a few half-burned brands pulled out of the heap
+            a = rnd.uniform(0, math.tau)
+            c = (0.0 + math.cos(a) * 0.12, -0.04 + math.sin(a) * 0.06)
+            q.cyl(5, 0.009, 0.008, (c[0] - 0.04, c[1], 0.012), (c[0] + 0.04, c[1] + 0.02, 0.014), CHARCOAL if k % 2 else CHARRED, rnd, 0.06)
+        # turves cut and stacked, grass side up, ready to cover the next stack
+        for j in range(3):
+            for k in range(2):
+                q.box((-CR - 0.1 + k * 0.06, 0.16, 0.009 + j * 0.016), (0.055, 0.04, 0.015), SOIL if j < 2 else TURF, rnd, 0.06,
+                      rot=Matrix.Rotation(rnd.uniform(-0.12, 0.12), 3, "Z"))
+    # split wood stacked beside it: a full stack for the next burn while it is cold, what is left over while it burns
+    rows = 2 if lit else 4
+    for j in range(rows):
+        for k in range(4 - j // 2):
+            y = -0.2 + k * 0.03 + (j % 2) * 0.015
+            z = 0.012 + j * 0.022
+            q.cyl(5, 0.012, 0.012, (CR + 0.06, y, z), (CR + 0.24, y + rnd.uniform(-0.01, 0.01), z), BILLET if (j + k) % 2 else (110, 84, 58), rnd, 0.06)
+            q.cyl(5, 0.0115, 0.0115, (CR + 0.24, y, z), (CR + 0.243, y, z), BILLET_END, rnd, 0.04)
+    q.finish("bld__clampLit" if lit else "bld__clamp")
+
+
+clamp(False, 91)
+clamp(True, 91)
 
 # ---------------------------------------------------------------- cloth: the loom shed, tunics, blankets and sashes
 # Thread is spun from nettle and grass fiber, a pale grey-buff; some is dyed with alder bark (brown) and

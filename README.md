@@ -90,6 +90,23 @@ breaks. Fallen branches never need a tool, so a band that loses every tool still
 going. The band panel and the stockpile list the tools and how worn they are, and a woodcutter
 without an axe is drawn hacking with a stone.
 
+**Woodcutters.** Like the crafts, whoever is clearly a band's best at woodcutting is known for it ("Ada, the
+woodcutter"). A master woodcutter (woodcutting 15 and up) reads how a tree will fall and where it will split:
+they are caught by a falling tree a quarter as often, and get 6% more wood out of a young or grown tree for
+each level past 15 (the limbs worked up as well as the trunk). A band with a roof over its woodpile may later
+learn to season its firewood: a master woodcutter (woodcutting 16) feeding the fire from under the roof
+notices the old wood burns longest. From then on the wood is split and stacked a season ahead to dry, and each
+day a twelfth of what is still green under the roof dries through (wood left in the open takes the damp again
+in autumn and winter). Seasoned wood is burned first, and a load of it keeps the fire going a quarter longer.
+The woodpile roof's card shows how much of the pile is seasoned.
+
+**Charcoal.** Once a band has a kiln, a master woodcutter who has some pottery (woodcutting 15, pottery 6)
+firing in it may think of charcoal. The band digs a charcoal clamp near the kiln (2 wood and 4 mud): a round
+bed banked with earth. While the band is not short of wood, a woodcutter stacks 8 wood in it round a stake,
+covers it with turf and lights it; it smoulders a day and a night (drawn as a turf mound with smoke rising)
+and gives 4 charcoal (5 for a master). The band keeps up to 8. Each firing in the kiln burns one: the pots,
+bowls, lamps and jars crack 1 time in 100 instead of 4, and come out finer (worth two more levels of skill).
+
 **Digging stick.** Mud for daub and graves are dug by hand at first: two baskets a trip, and a grave
 takes a while. Digging that way is what leads someone to sharpen a stout stick and harden its point
 in the fire (a discovery). A digging stick is made by the fire from 1 wood. Diggers and gravediggers

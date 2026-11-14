@@ -3,8 +3,9 @@
 import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
+import { SEASONED_HEAT } from './band';
 import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, HERBS_WANT, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
-  PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
+  PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, CHARCOAL_CRACK, CLAMP_BURN, CHARCOAL_YIELD, MASTER_FALL, MASTER_WOOD, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
 import { runOn, weirBank } from './runs';
@@ -203,7 +204,7 @@ function craftFor(s: Sim, p: Person): { key: RecipeKey; score: number } | null {
     // (the morning's want of thread may be met already, counting the hanks still on the spindles)
     if (key === 'thread' && s.camp.stock.thread + s.making(s.camp, 'thread') >= s.threadWanted()) continue;
     const good = GOODS.includes(key as ItemKind);
-    if (good ? false : TRAP_KINDS.includes(key as ItemKind) ? !s.trapShort(key as ItemKind) : key !== 'cordage' && key !== 'thread' && s.toolToMake() !== key) continue;
+    if (good ? false : TRAP_KINDS.includes(key as ItemKind) ? !s.trapShort(key as ItemKind) : key !== 'cordage' && key !== 'thread' && key !== 'charcoal' && s.toolToMake() !== key) continue;
     // a master of the craft sits down to it whenever the band can spare them
     const score = w * fit(p, RECIPES[key].skill) * (good && p.skills[RECIPES[key].skill] >= ELITE && s.camp.provided ? MASTER_CRAFT : 1);
     if (!best || score > best.score) best = { key, score };
@@ -1051,7 +1052,7 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       const st = s.storeSpot(true);
       const t = newTask(s, kind, st.tile, st.x, st.z);
       t.amount = Math.min(4, Math.floor(c.stock.wood));
-      c.stock.wood -= t.amount;
+      t.dry = s.takeFirewood(c, t.amount);
       p.thought = s.hearthLit() ? 'Feeding the fire.' : 'Relighting the fire.';
       return t;
     }
@@ -1139,6 +1140,8 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
     }
     if ((t.kind === 'supply' || t.kind === 'fuel' || t.kind === 'bed') && t.amount > 0) {
       st[t.res ?? 'wood'] += t.amount;
+      // (the seasoned wood taken for the fire goes back as seasoned)
+      if (t.dry) { st.seasoned += t.dry; t.dry = 0; }
       t.amount = 0;
       if (p.carry === CARRY.Log || p.carry === CARRY.Fiber || p.carry === CARRY.Mud || p.carry === CARRY.Stone) { p.carry = CARRY.None; p.carryAmt = 0; }
     }
@@ -1380,9 +1383,9 @@ export function deposit(s: Sim, p: Person) {
     const h = kind === 'wood' ? s.hearth() : undefined;
     if (h && h.fuel <= 0 && hyp(p.x - s.camp.x, p.z - s.camp.z) < 4) {
       const put = Math.min(4, Math.floor(st.wood));
-      st.wood -= put;
+      const dry = s.takeFirewood(s.camp, put);
       s.book('burned', put);
-      h.fuel = Math.min(FIRE_HOLDS, h.fuel + put);
+      s.stoke(h, put, dry);
       s.buildingsVersion++;
       p.thought = 'Put an armful of wood straight on the dead fire.';
     }
@@ -2267,10 +2270,10 @@ export function runTask(s: Sim, p: Person) {
       // eating, talking and singing round the fire, and whoever sits nearest the woodpile keeps it built up
       const h = s.hearth();
       if (h.fuel < 3 && c.stock.wood >= 2) {
-        c.stock.wood -= 2;
+        const dry = s.takeFirewood(c, 2);
         s.book('burned', 2);
         const wasOut = h.fuel <= 0;
-        h.fuel = Math.min(FIRE_HOLDS, h.fuel + 2);
+        s.stoke(h, 2, dry);
         if (wasOut) s.buildingsVersion++;
       }
       p.act = t.timer % 14 < 7 ? ACT.Eat : ACT.Chat;
@@ -2810,7 +2813,8 @@ export function runTask(s: Sim, p: Person) {
         if (SEWN.includes(key) && s.toolsOf(c, 'needle').length) t.timer = Math.round(t.timer * NEEDLE_SPEED);
         if (s.hearthLit()) p.thought = rc.thought.replace(/\.$/, ' by the fire.');
       }
-      p.act = ACT.Sit;
+      // (stacking a charcoal clamp is work on one's feet; everything else is sat at)
+      p.act = key === 'charcoal' ? ACT.Tend : ACT.Sit;
       // after dark, a lamp lit beside them to see the work by
       if (isDark(s.tick) && (t.timer % 10 === 0 || s.heldBy(p)?.kind !== 'lamp') && s.lightLamp(p)) p.thought = rc.thought.replace(/\.$/, ' by lamplight.');
       const at = s.workshopFor(key);
@@ -2821,9 +2825,12 @@ export function runTask(s: Sim, p: Person) {
       trainSkill(p, rc.skill, rc.grow);
       p.thought = rc.done;
       // clay fired in the open embers often cracks, less for a practised potter; in a kiln, hardly ever
+      // (and fired with charcoal from the clamp, the kiln runs hotter and evener still)
       const fired = rc.skill === SK.pot;
       const kiln = fired && !!s.kilnOf();
-      const cracked = fired && r.chance(kiln ? KILN_CRACK : HEARTH_CRACK * Math.max(0.25, 1 - p.skills[SK.pot] / 20));
+      const charcoal = kiln && c.stock.charcoal >= 1;
+      if (charcoal) c.stock.charcoal -= 1;
+      const cracked = fired && r.chance(charcoal ? CHARCOAL_CRACK : kiln ? KILN_CRACK : HEARTH_CRACK * Math.max(0.25, 1 - p.skills[SK.pot] / 20));
       if (fired && !kiln) s.practise(p, 'fire_pot', cracked ? 2 : 1);
       if (fired && kiln) s.practise(p, 'fire_kiln');
       if (isDark(s.tick)) s.practise(p, 'night_work');
@@ -2839,11 +2846,19 @@ export function runTask(s: Sim, p: Person) {
       } else if (rc.makes === 'thread') {
         c.stock.thread += 1;
         s.book('spun', rc.uses.fiber ?? 0);
+      } else if (rc.makes === 'charcoal') {
+        // the stack covered over and lit: it smoulders on its own till it is opened (a skilled burner loses less to ash)
+        const clamp = s.clampOf();
+        if (clamp) {
+          clamp.burnUntil = s.tick + CLAMP_BURN;
+          clamp.charge = CHARCOAL_YIELD + (p.skills[SK.wood] >= ELITE ? 1 : 0);
+          s.buildingsVersion++;
+        }
       } else if (cracked) {
         s.book(`cracked.${rc.makes}`, 1);
         p.thought = `The ${ITEMS[rc.makes].label.toLowerCase()} cracked in the firing.`;
       } else {
-        const quality = s.qualityFor(p, key);
+        const quality = s.qualityFor(p, key, charcoal);
         s.items.push({ id: s.newId(), kind: rc.makes, band: p.band, holder: -1, wear: 0, made: s.tick, maker: p.id, quality });
         s.book(`made.${rc.makes}`, 1);
         if (GOODS.includes(rc.makes)) {
@@ -2896,8 +2911,10 @@ export function runTask(s: Sim, p: Person) {
         const k = t.ref;
         const type = s.propType[k];
         const sp = Math.floor(type / 12);
-        // a big tree's bark is stripped too, for kindling
-        const wood = WOOD_BY_STAGE[treeStage(type)] + (treeStage(type) >= 2 ? BARK : 0);
+        // a big tree's bark is stripped too, for kindling; and a master woodcutter, who reads where a trunk will
+        // split, works up the limbs as well and wastes less of it
+        const past = Math.max(0, p.skills[SK.wood] - ELITE);
+        const wood = WOOD_BY_STAGE[treeStage(type)] + (treeStage(type) >= 2 ? BARK : 0) + (treeStage(type) >= 1 ? Math.round(WOOD_BY_STAGE[treeStage(type)] * MASTER_WOOD * past) : 0);
         const stump = s.addProp(STUMP_BASE + sp, s.propX[k], s.propY[k], s.propZ[k], s.propRot[k], s.propScale[k]);
         const what = `${STAGE_WORD[treeStage(type)]} ${['pine', 'oak', 'birch'][sp]}`;
         // a trunk grown up from an old stump, or a long walk out past the stumps of the near woods, sets a
@@ -2917,7 +2934,8 @@ export function runTask(s: Sim, p: Person) {
             s.event('tool', `${p.name}'s ${tool.kind === 'axe' ? 'stone axe' : 'hand chopper'} broke on ${art(what)} ${what}.`, [p.id], p.x, p.z, 1);
           }
         }
-        if (r.chance(0.006)) {
+        // (a master reads how a tree will fall, and is seldom caught by it)
+        if (r.chance(0.006 * (p.skills[SK.wood] >= ELITE ? MASTER_FALL : 1))) {
           p.health -= 35;
           s.remember(p, 'injured', -15, 1, -1, 'Hurt by a falling tree.');
           s.event('injury', `${p.name} was hurt by a falling tree.`, [p.id], p.x, p.z, 2);
@@ -3353,12 +3371,19 @@ export function runTask(s: Sim, p: Person) {
       if (--t.timer > 0) return;
       const h = s.hearth();
       const wasOut = h.fuel <= 0;
-      // only what the fire has room for goes on: the rest goes back on the woodpile
-      const put = Math.max(0, Math.min(t.amount, FIRE_HOLDS - h.fuel));
+      // only what the fire has room for goes on: the rest goes back on the woodpile (seasoned wood, which burns
+      // longer, goes on first)
+      const dry = t.dry ?? 0;
+      const room = Math.max(0, FIRE_HOLDS - h.fuel);
+      const dryPut = Math.min(dry, room / SEASONED_HEAT);
+      const put = Math.min(t.amount, dryPut + (room - dryPut * SEASONED_HEAT));
       s.book('burned', put);
-      h.fuel += put;
+      s.stoke(h, put, dryPut);
       c.stock.wood += t.amount - put;
+      c.stock.seasoned += dry - dryPut;
+      t.dry = 0;
       if (s.dampWood()) s.practise(p, 'damp_fire');
+      else if (s.hasBuilt('woodshed')) s.practise(p, 'dry_fire');
       p.carry = CARRY.None;
       p.carryAmt = 0;
       t.amount = 0;
