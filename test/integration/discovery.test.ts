@@ -48,7 +48,7 @@ describe('discovery', () => {
   it('tells the first in the world to find something out as the story, and later bands more quietly', () => {
     const s = sim(2);
     const c = s.camp;
-    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0, thread: 0, fat: 0, sinew: 0 };
+    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0, thread: 0, fat: 0, sinew: 0, seasoned: 0, charcoal: 0 };
     const other = s.foundCamp(c.tile + 40, { ...stock }, -1, -1);
     other.knows.push('huts');
     s.camp = c;
@@ -73,7 +73,7 @@ describe('discovery', () => {
     const s = sim(1);
     const c = s.camp;
     c.knows.push('huts', 'preserving');
-    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0, thread: 0, fat: 0, sinew: 0 };
+    const stock = { berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0, thread: 0, fat: 0, sinew: 0, seasoned: 0, charcoal: 0 };
     const daughter = s.foundCamp(c.tile + 40, { ...stock }, c.id, -1);
     expect(daughter.knows).toEqual(['huts', 'preserving']);
     expect(daughter.knows).not.toBe(c.knows);

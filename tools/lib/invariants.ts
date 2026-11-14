@@ -5,7 +5,7 @@ import { WATER } from '../../src/sim/types';
 import { Sim, isTreeType } from '../../src/sim/sim';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, DAYS_PER_SEASON, yearOf, seasonOf } from '../../src/sim/time';
 import { FAR_GRAVE } from '../../src/sim/ai';
-import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, GOODS, GOODS_EACH, GOODS_OVER, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS, GARMENTS, isGarment, MEND_MAX, isMonument, type RecipeKey } from '../../src/sim/band';
+import { CARRY, MATERIALS, specOf, foodTotal, RECIPES, GOODS, GOODS_EACH, GOODS_OVER, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, NURSE_DAYS, GARMENTS, isGarment, MEND_MAX, isMonument, SWIDDEN_SOIL, type RecipeKey } from '../../src/sim/band';
 import { dayOf } from '../../src/sim/time';
 import { knowHowFor } from '../../src/sim/know';
 
@@ -222,7 +222,7 @@ export class InvariantChecker {
       if (b.kind === 'fence') { if (fences.has(b.tile)) flag('two fences round one plot', `${at} tile ${b.tile}`); fences.add(b.tile); }
       const pl = b.plot;
       if (b.kind !== 'plot' || !pl) continue;
-      const bad = [['growth', 0, 1], ['weeds', 0, 1], ['cond', 0.1, 1], ['soil', 0.4, 1], ['care', 0.6, 1.4], ['left', 0, 200], ['greens', 0, 50]] as const;
+      const bad = [['growth', 0, 1], ['weeds', 0, 1], ['cond', 0.1, 1], ['soil', 0.4, SWIDDEN_SOIL], ['care', 0.6, 1.4], ['left', 0, 200], ['greens', 0, 50]] as const;
       for (const [k, lo, hi] of bad) if (!Number.isFinite(pl[k]) || pl[k] < lo - 1e-6 || pl[k] > hi + 1e-6) flag(`plot ${k} out of range`, `${at} plot ${b.id} ${pl[k]}`);
       if (pl.crop && (winter || !b.built)) flag(winter ? 'crop growing in winter' : 'crop in an undug plot', `${at} plot ${b.id}`);
       if (!pl.crop && (pl.growth > 0 || pl.left > 0)) flag('empty plot with a crop left in it', `${at} plot ${b.id}`);

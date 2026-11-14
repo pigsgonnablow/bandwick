@@ -11,7 +11,7 @@ import { InvariantChecker } from '../../tools/lib/invariants';
 import { sim, runTo } from '../helpers';
 import { firstKill } from '../../src/sim/ai';
 
-const empty = (): Stock => ({ berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0, thread: 0, fat: 0, sinew: 0 });
+const empty = (): Stock => ({ berries: 0, meat: 0, fish: 0, preserved: 0, wood: 0, fiber: 0, cordage: 0, mud: 0, stone: 0, hides: 0, roots: 0, nuts: 0, herbs: 0, bones: 0, trinkets: 0, eggs: 0, honey: 0, mushrooms: 0, grain: 0, greens: 0, furs: 0, thread: 0, fat: 0, sinew: 0, seasoned: 0, charcoal: 0 });
 
 /** Add grown-ups, none of them kin to anyone, to the band the simulation is looking at. */
 function grow(s: Sim, n: number): Person[] {

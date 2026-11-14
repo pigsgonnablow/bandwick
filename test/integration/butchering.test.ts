@@ -13,7 +13,7 @@ import { sim, runYears } from '../helpers';
 function band(seed = 2, knows: string[] = ['preserving', 'butchering']) {
   const s = runYears(sim(seed), 2);
   for (const k of knows) if (!s.camp.knows.includes(k)) s.camp.knows.push(k);
-  Object.assign(s.camp.stock, { fat: 0, sinew: 0 });
+  Object.assign(s.camp.stock, { fat: 0, sinew: 0, seasoned: 0, charcoal: 0 });
   return s;
 }
 const adult = (s: Sim) => s.members().find((q) => s.age(q) >= 18 && s.age(q) <= 50 && q.alive)!;

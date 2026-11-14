@@ -40,6 +40,9 @@ const LAMP_TOOL = ITEM_KINDS.indexOf('lamp') + 1;
  * shoulder on the way, out in the water in front of whoever keeps it while it is hauled).
  */
 const HARPOON = 90, LINE = 89, LINE_CAST = 88, NET = 87, NET_OUT = 86;
+/** A log sledge dragged along behind a woodcutter on its rope: empty on the way out, loaded with logs on the way home. */
+const SLEDGE = 85, SLEDGE_FULL = 84;
+const SLEDGE_TOOL = ITEM_KINDS.indexOf('sledge') + 1;
 const HARPOON_TOOL = ITEM_KINDS.indexOf('harpoon') + 1, LINE_TOOL = ITEM_KINDS.indexOf('line') + 1, NET_TOOL = ITEM_KINDS.indexOf('net') + 1;
 /** The tip of the lamp's wick, where its flame burns, in the lamp model's own space (see LAMP_WICK in blender/build_band.py). */
 const LAMP_WICK = new THREE.Vector3(0.0155, 0.0085, 0);
@@ -289,6 +292,9 @@ export class BandLayer {
   private lights: THREE.PointLight[] = [];
   private smoke: THREE.Points;
   private smokeMat: THREE.ShaderMaterial;
+  /** the smoke from a charcoal clamp smouldering (the nearest one) */
+  private clampSmoke: THREE.Points;
+  private clampSmokeMat: THREE.ShaderMaterial;
   private selRing: THREE.Mesh;
   private hoverRing: THREE.Mesh;
   private buildings: NonNullable<Frame['buildings']> = [];
@@ -336,6 +342,7 @@ export class BandLayer {
       // a deer, or a boar or pig, laid out on its hide on the ground in front of whoever is butchering it
       [CARRY.Carcass, 'carcass'], [CARRY.BoarCarcass, 'boarCarcass'],
       [HARPOON, 'harpoon'], [LINE, 'line'], [LINE_CAST, 'lineCast'], [NET, 'net'], [NET_OUT, 'netOut'],
+      [SLEDGE, 'sledge'], [SLEDGE_FULL, 'sledgeFull'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
@@ -352,7 +359,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull']) {
+      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -435,6 +442,10 @@ export class BandLayer {
     this.smoke = sm.points;
     this.smokeMat = sm.mat;
     this.group.add(this.smoke);
+    const cs = makeSmoke();
+    this.clampSmoke = cs.points;
+    this.clampSmokeMat = cs.mat;
+    this.group.add(this.clampSmoke);
     // selection rings
     const ringMat = (c: number, o: number) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, depthWrite: false, side: THREE.DoubleSide });
     this.selRing = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.21, 24).rotateX(-Math.PI / 2), ringMat(0xe3ab4e, 0.95));
@@ -1217,6 +1228,9 @@ export class BandLayer {
       // a carcass being butchered lies on the ground in front of them, not in their hands
       const carcassDown = (carry === CARRY.Carcass || carry === CARRY.BoarCarcass) && s.act !== ACT.Dead ? carry : 0;
       if (carcassDown) carry = CARRY.None;
+      // logs on a sledge are dragged along behind on its rope, not carried; an empty one is dragged out to them
+      const dragged = s.tool === SLEDGE_TOOL && (s.act === ACT.Walk || s.act === ACT.Run || s.act === ACT.Idle) && !s.gesture && (carry === CARRY.Log || carry === CARRY.None) ? (carry === CARRY.Log ? SLEDGE_FULL : SLEDGE) : 0;
+      if (dragged) carry = CARRY.None;
       // a fisher's catch comes home on the spear it was caught with
       // (not one caught on a line or in a net: that is carried home in the hand)
       const onSpear = carry === CARRY.Fish && s.task === FISH_TASK && s.tool !== LINE_TOOL && s.tool !== NET_TOOL;
@@ -1233,7 +1247,7 @@ export class BandLayer {
         const t = U.uTime.value + (look % 997) * 0.37, ph = s.phase % 1;
         return spearInHand(spearHold(s.prevAct, t, ph, s.run), spearHold(s.shownAct, t, ph, s.run), smooth(0, 1, blend), elder * 0.18, s.gesture, gpr, gw);
       };
-      anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, toolCarry === STICK ? CARRY.Spear : toolCarry === NET ? CARRY.Grain : toolCarry || snared ? CARRY.Berries : carry);
+      anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, toolCarry === STICK ? CARRY.Spear : toolCarry === NET ? CARRY.Grain : toolCarry || snared || dragged ? CARRY.Berries : carry);
       col.set((s.dress & 512 ? TUNIC : CLOTH)[(look >>> 8) % (s.dress & 512 ? TUNIC.length : CLOTH.length)]).convertSRGBToLinear();
       const bc = this.colorMode ? this.bandColors.get(s.band) : undefined;
       if (bc) col.lerp(bc.color, 0.7);
@@ -1313,6 +1327,16 @@ export class BandLayer {
           }
           gm.setMatrixAt(gk, at);
           carryCount.set(gearOut, gk + 1);
+        }
+      }
+      if (dragged) {
+        const dm = this.carryMeshes.get(dragged);
+        const dk = carryCount.get(dragged) ?? 0;
+        if (dm && dk < dm.instanceMatrix.count) {
+          // (modelled with its rope rising to the right hand; never scaled with a child)
+          const un = 1 / Math.max(0.5, scale);
+          dm.setMatrixAt(dk, m4.clone().multiply(new THREE.Matrix4().makeScale(un, un, un)));
+          carryCount.set(dragged, dk + 1);
         }
       }
       if (toolCarry && s.act !== ACT.Dead) {
@@ -1606,8 +1630,8 @@ export class BandLayer {
 
   /** Which model draws a building: huts come in two shapes, each with wattle, daub and stone walls. */
   private modelOf(b: { kind: string; id: number; walls?: string; look?: string }) {
-    // (a garden plot as it grows, a monument as it goes up, a weir with fish in its basket)
-    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
+    // (a garden plot as it grows, a monument as it goes up, a weir with fish in its basket, a charcoal clamp smouldering)
+    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir' || b.kind === 'clamp') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
     if (b.kind !== 'hut' && b.kind !== 'storehouse') return b.kind;
     const shape = b.kind === 'storehouse' ? b.kind : b.id % 2 ? 'hut1' : 'hut0';
     const own = shape + (b.walls === 'daub' ? 'd' : b.walls === 'stone' ? 's' : '');
@@ -1655,6 +1679,7 @@ export class BandLayer {
       counts.set(kind, k + 1);
     };
     const fires: { x: number; y: number; z: number; fuel: number }[] = [];
+    const clamps: { x: number; y: number; z: number }[] = [];
     this.drawPiles();
     this.drawTraps();
     for (const b of this.buildings) {
@@ -1687,6 +1712,7 @@ export class BandLayer {
       }
       // fresh grass laid under a lean-to (a hut's is out of sight inside)
       if (b.bedding && b.kind === 'leanto' && b.built) put('bedding', cx, cz, rot, 1, 1, b.band);
+      if (b.kind === 'clamp' && b.look === 'clampLit') clamps.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz });
       if (b.kind === 'hearth' && b.fuel > 0 && (laid === undefined || laid >= 1)) fires.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, fuel: b.fuel });
     }
     for (const [kind, m] of this.buildingMeshes) {
@@ -1734,6 +1760,12 @@ export class BandLayer {
     this.smoke.visible = !!f0;
     if (f0) this.smokeMat.uniforms.uOrigin.value.set(f0.x, f0.y + 0.25, f0.z);
     this.smokeMat.uniforms.uNight.value = night;
+    // and a slow grey plume from the top of a smouldering charcoal clamp
+    let c0: { x: number; y: number; z: number } | undefined;
+    for (const c of clamps) if (!c0 || Math.hypot(c.x - camTarget.x, c.z - camTarget.z) < Math.hypot(c0.x - camTarget.x, c0.z - camTarget.z)) c0 = c;
+    this.clampSmoke.visible = !!c0;
+    if (c0) this.clampSmokeMat.uniforms.uOrigin.value.set(c0.x, c0.y + 0.16, c0.z);
+    this.clampSmokeMat.uniforms.uNight.value = night;
   }
 
   /** The band-colour glows gathered this frame (people and buildings), drawn on the ground. */

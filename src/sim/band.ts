@@ -77,7 +77,7 @@ export function train(p: Person, what: Training) {
 }
 
 /** What a person is known as when they are clearly the band's best at a craft. */
-export const CRAFT_TITLES: Partial<Record<number, string>> = { [SK.tool]: 'toolmaker', [SK.weave]: 'weaver', [SK.pot]: 'potter', [SK.hide]: 'hideworker', [SK.garden]: 'gardener' };
+export const CRAFT_TITLES: Partial<Record<number, string>> = { [SK.wood]: 'woodcutter', [SK.tool]: 'toolmaker', [SK.weave]: 'weaver', [SK.pot]: 'potter', [SK.hide]: 'hideworker', [SK.garden]: 'gardener' };
 
 /** What a person's body is doing (drives animation). */
 export const ACT = {
@@ -125,7 +125,7 @@ export const TASK_KINDS: TaskKind[] = [
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'sledge'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap', 'deadfall'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -197,6 +197,8 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   // a net knotted of cordage, stones tied along its foot to sink it, hauled through the water by two or three
   // (each haul a use: a year or so, before it is all mends)
   net: { label: 'Fishing net', uses: 50 },
+  // two runners of split ash curved up at the front, crossbars lashed on, and a hide rope to drag it by
+  sledge: { label: 'Log sledge', uses: 40 },
 };
 /**
  * Things made for their own sake in the hours a fed band has free: they are the band's goods, its wealth.
@@ -221,6 +223,43 @@ export const KILN_CRACK = 0.04;
 export const WOOD_PLENTY = 3;
 /** Above that, only someone this good at woodcutting still goes out for wood, unless the fire needs it. */
 export const WOODCUTTER = 10;
+/**
+ * A master woodcutter (from ELITE) reads how a tree will fall and where it will split: hurt by a falling tree
+ * this much as often as anyone else, and getting this much more wood out of a young or grown tree for each
+ * level past the mark (the limbs worked up as well as the trunk).
+ */
+export const MASTER_FALL = 0.25;
+export const MASTER_WOOD = 0.06;
+/**
+ * Seasoned firewood: a band that knows to split and stack its wood a season ahead, under the woodpile's roof,
+ * has a share of the pile dry right through, gaining this share of what is still green each day. A load of it
+ * on the fire burns this much longer than green wood.
+ */
+export const SEASONING = 1 / 12;
+export const SEASONED_HEAT = 1.25;
+/**
+ * A charcoal clamp: wood stacked in a mound by the kiln, covered with turf and earth and lit, smoulders this
+ * long and is broken open for this much charcoal. The band keeps this much charcoal by at most, and a firing in
+ * the kiln burns one of it: the kiln runs hotter and evener, so the clay cracks this often (instead of
+ * KILN_CRACK), and is worth this many more levels to the potter's work.
+ */
+export const CLAMP_BURN = 240;
+export const CHARCOAL_YIELD = 4;
+export const CHARCOAL_KEPT = 8;
+export const CHARCOAL_CRACK = 0.01;
+export const CHARCOAL_FINE = 2;
+/**
+ * A log sledge drags home this much of the logs lying out in the woods in one trip, where a shoulder takes 6;
+ * over snow, this much.
+ */
+export const SLEDGE_LOAD = 14;
+export const SLEDGE_SNOW = 20;
+/**
+ * Garden ground cleared by fire: the trees on it ring-barked and burned where they stand, and the ash dug in. It
+ * starts this rich (fresh ground is 1), less where there was only scrub and grass to burn, and tires as any plot.
+ */
+export const SWIDDEN_SOIL = 1.3;
+export const SWIDDEN_GRASS = 1.15;
 /** A master of a craft (the band's potter or toolmaker) is this much keener to sit down to it, and this much less to other work, when the band is fed. */
 export const MASTER_CRAFT = 1.6;
 export const MASTER_OTHER = 0.6;
@@ -468,11 +507,12 @@ export const FIBER_PER_THREAD = 2;
 /** Hanks of thread a band spins to try the spindle before it has a loom, and keeps by at most once it has. */
 export const THREAD_TRY = 4;
 export const THREAD_KEPT = 16;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'charcoal', 'sledge'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
-  /** what it makes: a length of cordage or a hank of thread into the stores, or an item onto the pile */
-  makes: 'cordage' | 'thread' | ItemKind;
+  /** what it makes: a length of cordage or a hank of thread into the stores, a charcoal clamp lit (its charcoal
+   * goes into the stores when it has burned), or an item onto the pile */
+  makes: 'cordage' | 'thread' | 'charcoal' | ItemKind;
   /** what it uses from the stores */
   uses: Partial<Record<'wood' | 'fiber' | 'cordage' | 'stone' | 'mud' | 'hides' | 'bones' | 'furs' | 'thread', number>>;
   /** ticks of work at the fire, before skill */
@@ -614,6 +654,17 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
     makes: 'net', uses: { cordage: 4, stone: 1 }, work: 100, skill: SK.weave, grow: 0.08, knows: 'nets', doing: 'Knotting a fishing net',
     thought: 'Knotting cordage into a net, mesh by mesh.', done: 'Knotted a fishing net and laid it on the pile.',
   },
+  charcoal: {
+    // split wood stacked on end round a centre stake in the clamp's bed, covered over with turf and earth, and lit
+    // from the top: it smoulders a day and a night (CLAMP_BURN) and is opened for the charcoal (CHARCOAL_YIELD)
+    makes: 'charcoal', uses: { wood: 8 }, work: 50, skill: SK.wood, grow: 0.06, knows: 'charcoal', doing: 'Stacking a charcoal clamp',
+    thought: 'Stacking split wood in the clamp and covering it over with turf.', done: 'Lit the charcoal clamp: it will smoulder till tomorrow.',
+  },
+  sledge: {
+    // two runners split from a straight ash, steamed and bent up at the front, crossbars lashed across, a rope to drag it by
+    makes: 'sledge', uses: { wood: 4, cordage: 2 }, work: 70, skill: SK.tool, grow: 0.07, knows: 'sledge', doing: 'Making a log sledge',
+    thought: 'Bending runners for a sledge and lashing crossbars across them.', done: 'Made a log sledge and laid it on the pile.',
+  },
 };
 /** The recipes fired only in the kiln: too big for the embers of the hearth. */
 export const KILNED: RecipeKey[] = ['jar'];
@@ -720,6 +771,8 @@ export interface Task {
   carcass?: CarcassKind;
   /** the carcass is laid out at the stores and being butchered */
   cutting?: boolean;
+  /** feeding the fire: how much of the wood carried to it is seasoned */
+  dry?: number;
   /** crafting and mending: how much of the cordage set aside was sinew */
   sinew?: number;
   /** the trap round: fat cut from the beavers taken in the deadfalls */
@@ -816,7 +869,7 @@ export interface Person {
   gave?: number;
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -870,6 +923,8 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   // a fish weir: stakes driven into the bed of a narrow river in a V pointing downstream, hazel withies and reeds
   // woven between them, and a long basket trap lashed in the gap at the point
   weir: spec({ wood: 8, fiber: 6, cordage: 3, work: 90, label: 'Fish weir' }),
+  // a charcoal clamp by the kiln: a round bed dug and banked with earth, a centre stake, turf cut to cover the stack
+  clamp: spec({ wood: 2, mud: 4, work: 35, label: 'Charcoal clamp' }),
 };
 /** The buildings a band raises for its own sake, in its spare hours over years, and never as a job of work. */
 export const MONUMENTS: readonly BuildKind[] = ['barrow', 'stones'];
@@ -938,6 +993,9 @@ export interface Building {
   catch?: number;
   /** a fish weir: the tick the fish in its basket were last tended (taken out, or the first one in): left longer, they slip free */
   kept?: number;
+  /** a charcoal clamp: the tick it will have burned through, and the charcoal it will give then (absent: cold) */
+  burnUntil?: number;
+  charge?: number;
   work: number; // done
   built: boolean;
   owner: number; // person id of the household head
@@ -975,6 +1033,8 @@ export interface Plot {
   last: number;
   /** how well it has been looked after, from the skill of whoever sowed and weeded it (see gardenSkill) */
   care: number;
+  /** cleared by fire: the woods on it burned and the ash dug in (absent: dug from open ground) */
+  burnt?: boolean;
 }
 export const newPlot = (): Plot => ({ crop: 0, sown: 0, growth: 0, weeds: 0, cond: 1, left: 0, greens: 0, soil: 1, guarded: 0, raided: 0, raider: '', reaped: 0, last: 0, care: 1 });
 /** Days from sowing to harvest: grain sown in spring is reaped at the end of summer, roots are dug in autumn. */
@@ -1196,6 +1256,10 @@ export interface Stock {
    * (absent in older saves until restored) */
   fat: number;
   sinew: number;
+  /** of the wood, how much is seasoned dry under the woodpile's roof (never more than the wood), and the
+   * charcoal burned in the clamp for the kiln (absent in older saves until restored) */
+  seasoned: number;
+  charcoal: number;
 }
 
 export interface SimEvent {

@@ -13,6 +13,9 @@ export type Practice =
   | 'night_out' // a night under a lean-to or in the open (each adult)
   | 'evening_fire' // an evening by the camp fire (each adult)
   | 'damp_fire' // feeding the fire with damp wood
+  | 'dry_fire' // feeding the fire with wood from under the woodpile's roof
+  | 'haul_logs' // a trip hauling logs home on the shoulder from a tree felled out in the woods (twice over the snow)
+  | 'tired_ground' // a harvest brought in from a garden plot whose ground is tiring (each harvester)
   | 'store_food' // food carried into the stores (per meal)
   | 'store_meat' // meat and fish carried into the stores (per meal)
   | 'store_berries' // berries carried into the stores (per meal)
@@ -406,6 +409,39 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'cut the woods near camp low so they grow back', memory: 'Began to coppice the woods near camp.',
   },
   {
+    // (a master woodcutter feeding the fire from under the woodpile's roof notices the old wood at the bottom of
+    // the stack, lain there since last year, burns hotter and longer than any new-cut log: they split the new wood
+    // and stack it to dry a season ahead)
+    key: 'seasoning', label: 'Seasoned firewood', needs: ['woodshed'], requires: [skill(SK.wood, 16)],
+    practice: { dry_fire: 1 }, odds: 30,
+    found: 'noticed the old logs from the bottom of the stack burned hotter and longer than new-cut wood, and began to split the wood and stack it a season ahead to dry',
+    taught: 'split and stack their firewood to season it', memory: 'Saw that wood stacked a season burns longest.',
+  },
+  {
+    // (a woodcutter going back and forth to a felled trunk out in the woods with a log at a time on the shoulder,
+    // dragging the last of it home over the snow, thinks of runners to drag the whole lot home at once)
+    key: 'sledge', label: 'Log sledge', needs: ['axe'], requires: [skill(SK.wood, 14), skill(SK.tool, 8)],
+    practice: { haul_logs: 1 }, odds: 30,
+    found: 'bent two runners of ash, lashed crossbars across them, and dragged home a whole felled tree on it in one trip',
+    taught: 'make log sledges and drag the logs home on them', memory: 'Dragged home the first load of logs on a sledge.',
+  },
+  {
+    // (a gardener who knows the woods, bringing in a thin harvest from ground grown tired, remembers how green and
+    // thick things came up where the woods had burned, and thinks of burning a stand of trees for a new plot)
+    key: 'swidden', label: 'Clearing by fire', needs: ['garden'], requires: [skill(SK.wood, 13), skill(SK.garden, 8)],
+    practice: { tired_ground: 1, far_tree: 0.2 }, odds: 25,
+    found: 'ring-barked a stand of trees by the gardens, burned them where they stood and dug the ash in: the first harvest from it was the best the band had seen',
+    taught: 'clear new garden ground by fire', memory: 'Burned a stand of trees for a garden, and dug in the ash.',
+  },
+  {
+    // (someone who knows the woods, firing pots in the kiln and raking out the black, half-burned sticks that
+    // burned without flame, sees how fiercely they glow, and thinks of burning a whole stack of wood that way)
+    key: 'charcoal', label: 'Charcoal', needs: ['kiln'], requires: [skill(SK.wood, ELITE), skill(SK.pot, 6)],
+    practice: { fire_kiln: 1 }, odds: 30,
+    found: 'stacked split wood in a mound, covered it with turf and let it smoulder a day and a night: it came out black, light and ringing, and burned in the kiln hotter than any wood',
+    taught: 'burn charcoal in a clamp for the kiln', memory: 'Burned the first charcoal.',
+  },
+  {
     // (a toolmaker stringing teeth and shells for someone dear, or knapping a stone, thinks of grinding the
     // pebbles themselves smooth and boring them through: beads of any stone, as many as there are hours for)
     key: 'beads', label: 'Beads', needs: ['huts'], requires: [skill(SK.tool, 9)],
@@ -496,7 +532,7 @@ export const DISCOVERY = new Map(DISCOVERIES.map((d) => [d.key, d]));
 /** What a band has to know to build something. */
 export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   const out: string[] = [];
-  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir' } as Partial<Record<BuildKind, string>>)[b.kind];
+  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir', clamp: 'charcoal' } as Partial<Record<BuildKind, string>>)[b.kind];
   if (k) out.push(k);
   if (b.walls === 'daub') out.push('daub');
   if (b.walls === 'stone') out.push('stonework');

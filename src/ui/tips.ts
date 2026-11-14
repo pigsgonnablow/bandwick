@@ -16,7 +16,7 @@ export const NEED_TIPS: Record<string, string> = {
 /** Skills on the Skills tab: what each one makes better. */
 export const SKILL_TIPS: Record<string, string> = {
   foraging: 'Foraging: picking berries, digging roots, gathering acorns, eggs, honey, mushrooms, herbs and grass. More skill picks faster and carries more home.',
-  woodcutting: 'Woodcutting: felling trees. More skill brings a tree down in fewer strokes.',
+  woodcutting: 'Woodcutting: felling trees, and burning charcoal in a clamp for the kiln. More skill brings a tree down in fewer strokes. A master (15 and up) is seldom caught by a falling tree, gets more wood out of each one, and loses less of a clamp to ash. Woodcutters also think of the log sledge and of clearing garden ground by fire.',
   building: 'Building: raising shelters, racks and stores, and digging mud. More skill gets the work done faster.',
   hunting: 'Hunting: bringing down deer. More skill means more spears that find their mark.',
   fishing: 'Fishing: more skill catches fish more often, and more of them at a time.',
@@ -128,6 +128,10 @@ export const CARD_TIPS: Record<string, string> = {
   Pelts: 'Pelts: fox and beaver furs from the deadfalls, kept to sew into fur cloaks.',
   Fat: 'Fat: cut from deer, boar, pigs and beavers when they are butchered. It fills the clay lamps, and pounded into meat on the drying rack it makes more dried food. Animals are fattest in autumn.',
   Sinew: 'Sinew: cords drawn from the back and legs of a butchered deer or boar and dried. Hide clothes are sewn with it instead of cordage, and a mend sewn with sinew holds longer.',
+  Seasoned: 'Seasoned: the share of the firewood split and stacked under the woodpile roof long enough to dry right through. It is burned first, and a load of it keeps the fire going a quarter longer than new-cut wood.',
+  Charcoal: 'Charcoal: wood burned slowly under turf in the charcoal clamp. Each firing in the kiln uses one: the kiln runs hotter and evener, so far fewer pots crack and they come out finer.',
+  Clamp: 'Clamp: the charcoal clamp\'s state. Once stacked and lit it smoulders a day and a night, then its charcoal goes into the stores.',
+  Stacking: 'Stacking: who is stacking split wood in the clamp and covering it with turf.',
   Thread: 'Thread: hanks of nettle and grass fiber spun on a spindle by the fire, for weaving cloth at the loom.',
   Weaving: 'Weaving: who is at the loom now, and what they are weaving.',
   Cloth: 'Cloth: how many of the band have a woven tunic to wear and a blanket to sleep under.',
