@@ -39,6 +39,8 @@ Conventions (read by src/render/band.ts):
       huts and the storehouse also come as ...d (wattle-and-daub) and ...s (drystone), e.g. bld__hut0d, bld__storehouses.
   bld__{plot,plotSown,plotRoots,plotGrain,plotRipe,plotStubble}  a garden plot through its year (bare or fallow, sown, roots in
       leaf, young grain, ripe grain, stubble with stooks); the fence goes round the same tile.
+  bld__plotBurnt                                                  a plot cleared by fire, before its first sowing: ash, charred stumps.
+  carry__{sledge,sledgeFull}                                      a log sledge dragged behind on a rope from the right hand, empty or loaded.
 Models face -Y in Blender (= +Z in the game). 1 unit = one 6 m tile; an adult is 0.4 tall.
 """
 import math
@@ -1781,6 +1783,50 @@ for x in (-0.05, -0.01, 0.03, 0.06):
     q.blob((x, 0.006, 0.024), (0.008, 0.005, 0.004), FLOAT_C, rnd, 0.06)
     q.blob((x + 0.01, -0.008, -0.026), (0.005, 0.005, 0.004), (128, 124, 116), rnd, 0.06, noise=0.2)
 q.finish("carry__net")
+
+# a log sledge, dragged along behind a woodcutter on a rope from the right hand (origin at their feet, the sledge
+# behind them to +y): two runners of split ash bent up at the front, four crossbars lashed across, a hide rope.
+# carry__sledgeFull has a felled tree's logs lashed along it; item__sledge is the empty sledge on its own.
+SLED_WOOD, SLED_DK, SLED_ROPE = (150, 118, 80), (118, 90, 60), (120, 96, 60)
+LOG_BARK, LOG_END = (104, 78, 54), (196, 164, 116)
+
+
+def sledge(q, rnd, full, rope=True, y0=0.1):
+    L = 0.32
+    for x in (-0.055, 0.055):  # the runners: flat along the ground, curving up at the front
+        pts = [(x, y0 + L, 0.008), (x, y0 + 0.06, 0.008), (x, y0 + 0.02, 0.016), (x, y0 - 0.005, 0.034), (x, y0 - 0.012, 0.05)]
+        for a, b in zip(pts, pts[1:]):
+            q.cyl(5, 0.0075, 0.0075, a, b, SLED_WOOD, rnd, 0.04)
+    for k in range(4):  # crossbars lashed across, standing a little proud of the runners
+        y = y0 + 0.04 + k * (L - 0.06) / 3
+        q.box((0, y, 0.02), (0.14, 0.016, 0.01), SLED_DK if k % 2 else SLED_WOOD, rnd, 0.05)
+        for x in (-0.055, 0.055):
+            q.box((x, y, 0.02), (0.018, 0.02, 0.014), SLED_ROPE, rnd, 0.05)
+    q.cyl(4, 0.005, 0.005, (-0.055, y0 - 0.012, 0.05), (0.055, y0 - 0.012, 0.05), SLED_DK, rnd, 0.04)  # the bow
+    if rope:  # the rope: from the bow up to the hand
+        q.cyl(3, 0.0028, 0.0028, (0.0, y0 - 0.012, 0.05), (0.04, y0 * 0.45, 0.11), SLED_ROPE, rnd, 0.0)
+        q.cyl(3, 0.0028, 0.0028, (0.04, y0 * 0.45, 0.11), (0.075, -0.035, 0.155), SLED_ROPE, rnd, 0.0)
+    if full:  # a felled tree's logs, cut to length, stacked along it and lashed down
+        for j, row in enumerate(((-0.04, 0.0, 0.04), (-0.02, 0.02), (0.0,))):
+            for x in row:
+                z = 0.047 + j * 0.036
+                a, b = (x, y0 + 0.0, z), (x + rnd.uniform(-0.004, 0.004), y0 + L + 0.02, z)
+                q.cyl(7, 0.02, 0.019, a, b, jit(LOG_BARK, rnd, 0.08), rnd, 0.06)
+                q.cyl(7, 0.0185, 0.0185, (a[0], a[1] - 0.001, z), (a[0], a[1] - 0.003, z), LOG_END, rnd, 0.04)
+                q.cyl(7, 0.0175, 0.0175, (b[0], b[1] + 0.001, z), (b[0], b[1] + 0.003, z), LOG_END, rnd, 0.04)
+        for y in (y0 + 0.08, y0 + L - 0.06):  # the lashings over the load
+            q.cyl(3, 0.003, 0.003, (-0.062, y, 0.02), (-0.03, y, 0.15), SLED_ROPE, rnd, 0.0)
+            q.cyl(3, 0.003, 0.003, (-0.03, y, 0.15), (0.03, y, 0.15), SLED_ROPE, rnd, 0.0)
+            q.cyl(3, 0.003, 0.003, (0.03, y, 0.15), (0.062, y, 0.02), SLED_ROPE, rnd, 0.0)
+
+
+for name, full in (("carry__sledge", False), ("carry__sledgeFull", True)):
+    q = Part()
+    sledge(q, random.Random(70), full)
+    q.finish(name)
+q = Part()
+sledge(q, random.Random(70), False, rope=False, y0=-0.16)
+q.finish("item__sledge")
 q = Part()  # a stone axe: a stout haft, the head lashed on near the top, blade facing forward
 q.cyl(5, 0.0075, 0.0065, (0, 0, -0.04), (0, 0, 0.175), (120, 92, 60), rnd, 0.03)
 q.box((0, -0.02, 0.152), (0.016, 0.05, 0.034), (132, 126, 118), rnd, 0.08, taper=0.7)
@@ -3209,6 +3255,36 @@ for sx, sy in ((-0.22, -0.08), (0.06, 0.1), (0.28, -0.2)):
         for v in q.blob((0, 0, 0), (0.016, 0.012, 0.022), jit(RIPE_EAR, rnd, 0.08), rnd, 0.06):
             v.co = top + Vector((math.cos(a) * 0.006, math.sin(a) * 0.006, 0.016)) + v.co
 q.finish("bld__plotStubble")
+
+# a plot cleared by fire, not yet sown: the trees ring-barked and burned where they stood, the ground black with
+# ash and dug over in rough lumps, charred stumps still standing, a blackened trunk or two not burned through
+q = Part()
+rnd = random.Random(66)
+ASHY, BURNT_DK, BURNT_SOIL, CHAR_WOOD = (128, 124, 118), (42, 36, 32), (70, 54, 42), (36, 30, 28)
+q.box((0, 0, 0.002), (HALF * 2, HALF * 2, 0.008), BURNT_SOIL, rnd, 0.05)
+for k in range(26):  # ash and charred earth in patches, and clods dug over
+    x, y = rnd.uniform(-HALF + 0.04, HALF - 0.04), rnd.uniform(-HALF + 0.04, HALF - 0.04)
+    c = rnd.choice((ASHY, BURNT_DK, BURNT_DK, SOIL_DK))
+    q.blob((x, y, 0.006), (rnd.uniform(0.06, 0.12), rnd.uniform(0.05, 0.1), 0.0025), c, rnd, 0.05, noise=0.15, subdiv=2)
+for k in range(20):
+    q.blob((rnd.uniform(-HALF + 0.05, HALF - 0.05), rnd.uniform(-HALF + 0.05, HALF - 0.05), 0.014), (0.014, 0.011, 0.008), jit(SOIL_DK, rnd, 0.15), rnd, 0.08, noise=0.3)
+for (x, y, r, h) in ((-0.22, -0.18, 0.034, 0.07), (0.2, 0.12, 0.028, 0.05), (-0.05, 0.27, 0.024, 0.09), (0.27, -0.25, 0.02, 0.04)):
+    q.cyl(7, r * 1.15, r, (x, y, 0.0), (x, y, h), CHAR_WOOD, rnd, 0.1)  # charred stumps, split and jagged at the top
+    for k in range(3):
+        a = k / 3 * math.tau + rnd.uniform(0, 1)
+        q.box((x + math.cos(a) * r * 0.5, y + math.sin(a) * r * 0.5, h + 0.008), (r * 0.6, r * 0.4, 0.02), CHAR_WOOD, rnd, 0.1,
+              rot=Matrix.Rotation(a, 3, "Z"))
+for (a, b) in (((-0.3, 0.05, 0.018), (0.02, -0.08, 0.018)), ((0.06, 0.32, 0.015), (0.32, 0.26, 0.015))):
+    q.cyl(7, 0.02, 0.017, a, b, CHAR_WOOD, rnd, 0.1)  # trunks the fire didn't burn through
+    q.blob(Vector(a).lerp(Vector(b), 0.5) + Vector((0, 0, 0.014)), (0.03, 0.012, 0.006), (210, 96, 40), rnd, 0.1)  # still glowing
+for side in range(4):  # the turf edge, scorched
+    for k in range(7):
+        t = -HALF + (k + 0.5) * 2 * HALF / 7
+        x, y = (t, -HALF) if side == 0 else (t, HALF) if side == 1 else (-HALF, t) if side == 2 else (HALF, t)
+        sx, sy = (0.12, 0.035) if side < 2 else (0.035, 0.12)
+        q.box((x, y, 0.01), (sx, sy, 0.02), jit(TURF if rnd.random() < 0.6 else (88, 82, 50), rnd, 0.1), rnd, 0.06, taper=0.8)
+q.cyl(4, 0.006, 0.005, (0.38, 0.36, -0.01), (0.35, 0.33, 0.2), POLE, rnd)  # the digging stick left stuck in it
+q.finish("bld__plotBurnt")
 
 # the garden fence: a hurdle of stakes and woven withies round the edge of the plot, knee high, the sides
 # leaning a little, a gap at the front (-y) closed with a hurdle propped across it

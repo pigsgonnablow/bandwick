@@ -40,6 +40,9 @@ const LAMP_TOOL = ITEM_KINDS.indexOf('lamp') + 1;
  * shoulder on the way, out in the water in front of whoever keeps it while it is hauled).
  */
 const HARPOON = 90, LINE = 89, LINE_CAST = 88, NET = 87, NET_OUT = 86;
+/** A log sledge dragged along behind a woodcutter on its rope: empty on the way out, loaded with logs on the way home. */
+const SLEDGE = 85, SLEDGE_FULL = 84;
+const SLEDGE_TOOL = ITEM_KINDS.indexOf('sledge') + 1;
 const HARPOON_TOOL = ITEM_KINDS.indexOf('harpoon') + 1, LINE_TOOL = ITEM_KINDS.indexOf('line') + 1, NET_TOOL = ITEM_KINDS.indexOf('net') + 1;
 /** The tip of the lamp's wick, where its flame burns, in the lamp model's own space (see LAMP_WICK in blender/build_band.py). */
 const LAMP_WICK = new THREE.Vector3(0.0155, 0.0085, 0);
@@ -339,6 +342,7 @@ export class BandLayer {
       // a deer, or a boar or pig, laid out on its hide on the ground in front of whoever is butchering it
       [CARRY.Carcass, 'carcass'], [CARRY.BoarCarcass, 'boarCarcass'],
       [HARPOON, 'harpoon'], [LINE, 'line'], [LINE_CAST, 'lineCast'], [NET, 'net'], [NET_OUT, 'netOut'],
+      [SLEDGE, 'sledge'], [SLEDGE_FULL, 'sledgeFull'],
     ];
     const carryMat = new THREE.MeshLambertMaterial({ vertexColors: true });
     carryMat.onBeforeCompile = (sh) => addCommon(sh);
@@ -355,7 +359,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'storehouse', 'storehoused', 'storehouses', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit']) {
+      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -1224,6 +1228,9 @@ export class BandLayer {
       // a carcass being butchered lies on the ground in front of them, not in their hands
       const carcassDown = (carry === CARRY.Carcass || carry === CARRY.BoarCarcass) && s.act !== ACT.Dead ? carry : 0;
       if (carcassDown) carry = CARRY.None;
+      // logs on a sledge are dragged along behind on its rope, not carried; an empty one is dragged out to them
+      const dragged = s.tool === SLEDGE_TOOL && (s.act === ACT.Walk || s.act === ACT.Run || s.act === ACT.Idle) && !s.gesture && (carry === CARRY.Log || carry === CARRY.None) ? (carry === CARRY.Log ? SLEDGE_FULL : SLEDGE) : 0;
+      if (dragged) carry = CARRY.None;
       // a fisher's catch comes home on the spear it was caught with
       // (not one caught on a line or in a net: that is carried home in the hand)
       const onSpear = carry === CARRY.Fish && s.task === FISH_TASK && s.tool !== LINE_TOOL && s.tool !== NET_TOOL;
@@ -1240,7 +1247,7 @@ export class BandLayer {
         const t = U.uTime.value + (look % 997) * 0.37, ph = s.phase % 1;
         return spearInHand(spearHold(s.prevAct, t, ph, s.run), spearHold(s.shownAct, t, ph, s.run), smooth(0, 1, blend), elder * 0.18, s.gesture, gpr, gw);
       };
-      anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, toolCarry === STICK ? CARRY.Spear : toolCarry === NET ? CARRY.Grain : toolCarry || snared ? CARRY.Berries : carry);
+      anim2.setXYZW(n, s.phase % 1, s.run, (look % 997) * 0.37, toolCarry === STICK ? CARRY.Spear : toolCarry === NET ? CARRY.Grain : toolCarry || snared || dragged ? CARRY.Berries : carry);
       col.set((s.dress & 512 ? TUNIC : CLOTH)[(look >>> 8) % (s.dress & 512 ? TUNIC.length : CLOTH.length)]).convertSRGBToLinear();
       const bc = this.colorMode ? this.bandColors.get(s.band) : undefined;
       if (bc) col.lerp(bc.color, 0.7);
@@ -1320,6 +1327,16 @@ export class BandLayer {
           }
           gm.setMatrixAt(gk, at);
           carryCount.set(gearOut, gk + 1);
+        }
+      }
+      if (dragged) {
+        const dm = this.carryMeshes.get(dragged);
+        const dk = carryCount.get(dragged) ?? 0;
+        if (dm && dk < dm.instanceMatrix.count) {
+          // (modelled with its rope rising to the right hand; never scaled with a child)
+          const un = 1 / Math.max(0.5, scale);
+          dm.setMatrixAt(dk, m4.clone().multiply(new THREE.Matrix4().makeScale(un, un, un)));
+          carryCount.set(dragged, dk + 1);
         }
       }
       if (toolCarry && s.act !== ACT.Dead) {

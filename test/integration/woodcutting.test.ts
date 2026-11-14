@@ -1,10 +1,10 @@
 // Woodcutting past the axe: the band's best woodcutter is known for it, a master gets more from each tree and is
 // seldom hurt, firewood seasoned under the woodpile roof burns longer, and charcoal burned in a clamp for the kiln.
 import { describe, it, expect } from 'vitest';
-import { SK, RECIPE_KEYS, Task, TaskKind, Building, SEASONED_HEAT, SEASONING, CLAMP_BURN, CHARCOAL_YIELD, CRAFT_TITLES } from '../../src/sim/band';
+import { SK, CARRY, RECIPE_KEYS, Task, TaskKind, Building, SLEDGE_LOAD, SLEDGE_SNOW, SWIDDEN_SOIL, SWIDDEN_GRASS, SEASONED_HEAT, SEASONING, CLAMP_BURN, CHARCOAL_YIELD, CRAFT_TITLES } from '../../src/sim/band';
 import { DISCOVERY, ELITE, knowHowFor } from '../../src/sim/know';
-import { TICKS_PER_DAY, TICKS_PER_YEAR, seasonOf } from '../../src/sim/time';
-import { runTask } from '../../src/sim/ai';
+import { TICKS_PER_DAY, TICKS_PER_YEAR, seasonOf, snowLies } from '../../src/sim/time';
+import { runTask, setup } from '../../src/sim/ai';
 import { Sim, treeStage, isTreeType, LOGS, FIRE_HOLDS } from '../../src/sim/sim';
 import { sim, runTo, runYears } from '../helpers';
 
@@ -228,4 +228,88 @@ it('a year on, a band that knows it all burns charcoal and keeps its firewood se
   expect(s.buildings.some((b) => b.band === c.id && b.kind === 'clamp' && b.built)).toBe(true);
   expect((c.ledger?.now.charcoal ?? 0) + (c.ledger?.last.charcoal ?? 0)).toBeGreaterThan(0);
   expect(s.seasonedShare(c)).toBeGreaterThan(0.3);
+});
+
+describe('the log sledge', () => {
+  it('is thought of by a woodcutter hauling logs home a load at a time', () => {
+    const d = DISCOVERY.get('sledge')!;
+    expect(d.needs).toEqual(['axe']);
+    expect(d.practice.haul_logs).toBeGreaterThan(0);
+  });
+
+  it('is made by the band once it knows how', () => {
+    const s = band(2, ['axe']);
+    const c = s.camp;
+    for (const k of ['axe', 'chopper', 'stick', 'basket', 'pot', 'needle', 'harpoon', 'line', 'net'] as const) s.giveTools(c, { [k]: 10 });
+    c.stock.cordage += 10;
+    expect(s.toolToMake(c)).not.toBe('sledge');
+    c.knows.push('sledge');
+    const make = s.toolToMake(c);
+    if (make !== 'sledge') expect(['cloak', 'hat', 'mittens', 'shoes', 'bag', 'cape', 'furcloak', 'lamp', 'jar', 'tunic', 'blanket']).toContain(make);
+    s.giveTools(c, { sledge: 1 });
+    expect(s.toolToMake(c)).not.toBe('sledge');
+  });
+
+  const haul = (sledge: boolean, snow = false) => {
+    const s = band(2, ['axe', 'sledge']);
+    const c = s.camp;
+    for (const it of s.toolsOf(c, 'sledge')) s.items.splice(s.items.indexOf(it), 1);
+    if (sledge) s.giveTools(c, { sledge: 1 });
+    if (snow) while (!snowLies(s.tick)) s.tick += TICKS_PER_DAY;
+    else while (snowLies(s.tick)) s.tick += TICKS_PER_DAY;
+    const p = adult(s);
+    const pile = s.storeSpot(true);
+    p.x = pile.x; p.z = pile.z;
+    const lp = s.addProp(LOGS, c.x + 6.2, 0, c.z + 0.3, 0, 1);
+    s.propVal[lp] = 30;
+    p.task = setup(s, p, 'haul');
+    expect(p.task?.ref).toBe(lp);
+    for (let i = 0; i < 400 && p.task?.kind === 'haul' && p.carry === CARRY.None; i++) { runTask(s, p); s.tick++; }
+    return { amt: p.carryAmt, held: s.heldBy(p)?.kind };
+  };
+  it('drags home far more than a shoulder takes, more again over the snow', () => {
+    const plain = haul(false), dragged = haul(true), snow = haul(true, true);
+    expect(plain.amt).toBe(6);
+    expect(dragged.held).toBe('sledge');
+    expect(dragged.amt).toBe(SLEDGE_LOAD);
+    expect(snow.amt).toBe(SLEDGE_SNOW);
+  });
+});
+
+describe('clearing by fire', () => {
+  it('is thought of by a gardener who knows the woods, bringing in a harvest from tired ground', () => {
+    const d = DISCOVERY.get('swidden')!;
+    expect(d.needs).toEqual(['garden']);
+    expect(d.practice.tired_ground).toBeGreaterThan(0);
+  });
+
+  it('burns a stand of trees off the new plot, and leaves the ground richer than fresh', () => {
+    const s = band(2, ['garden', 'swidden']);
+    const c = s.camp;
+    // (no plots yet: the band digs its first)
+    s.buildings = s.buildings.filter((b) => !(b.band === c.id && (b.kind === 'plot' || b.kind === 'fence')));
+    const tile = s.plotSite(c);
+    expect(tile).toBeGreaterThanOrEqual(0);
+    const logsBefore = s.countProps(LOGS);
+    (s as unknown as { planGardens(c: unknown, s: number): void }).planGardens(c, 0.5);
+    const b = s.buildings.find((q) => q.band === c.id && q.kind === 'plot')!;
+    expect(b.plot!.burnt).toBe(true);
+    expect([SWIDDEN_SOIL, SWIDDEN_GRASS]).toContain(b.plot!.soil);
+    expect(b.plot!.soil).toBeGreaterThan(1);
+    // (the trees burned where they stood: no logs left lying from them)
+    expect(s.countProps(LOGS)).toBe(logsBefore);
+    expect(c.plan).toContain('Clear new garden ground by fire');
+    b.built = true;
+    expect(s.plotLook(b)).toBe('plotBurnt');
+  });
+
+  it('looks for a stand of trees to burn, where a band digging by hand keeps to open ground', () => {
+    const s = band(2, ['garden']);
+    const c = s.camp;
+    s.buildings = s.buildings.filter((b) => !(b.band === c.id && (b.kind === 'plot' || b.kind === 'fence')));
+    const open = s.plotSite(c);
+    c.knows.push('swidden');
+    const fire = s.plotSite(c);
+    expect(s.treesOnTile[fire]).toBeGreaterThanOrEqual(s.treesOnTile[open]);
+  });
 });

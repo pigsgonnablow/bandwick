@@ -100,6 +100,20 @@ day a twelfth of what is still green under the roof dries through (wood left in 
 in autumn and winter). Seasoned wood is burned first, and a load of it keeps the fire going a quarter longer.
 The woodpile roof's card shows how much of the pile is seasoned.
 
+**Log sledge.** A tree too big to carry home in one load leaves the rest lying as logs. A woodcutter who knows
+toolmaking (woodcutting 14, toolmaking 8), going back and forth for them a load at a time (the more so over the
+snow), may think of a sledge: two runners of ash bent up at the front, crossbars lashed across, a rope to drag it
+by (made by the fire from 4 wood and 2 cordage). The band keeps one (two in a band of 20). A hauler fetches it
+from the stockpile when there is more lying out than a shoulder takes, and drags home 14 logs at a time, 20 over
+the snow, where a shoulder takes 6. It is drawn behind them on its rope, loaded or empty.
+
+**Clearing by fire.** A gardener who knows the woods (woodcutting 13, gardening 8), bringing in a harvest from
+tiring ground, may think of clearing new ground by fire. From then on the band looks for a stand of trees near
+camp for each new plot rather than open grass: the trees are ring-barked and burned where they stand (no logs
+come of them) and the ash is dug in. The ground starts richer than fresh, 30% richer where trees were burned
+(15% where there was only scrub), and tires with each harvest as any plot does. Until its first sowing the
+plot is drawn black with ash, charred stumps still standing in it.
+
 **Charcoal.** Once a band has a kiln, a master woodcutter who has some pottery (woodcutting 15, pottery 6)
 firing in it may think of charcoal. The band digs a charcoal clamp near the kiln (2 wood and 4 mud): a round
 bed banked with earth. While the band is not short of wood, a woodcutter stacks 8 wood in it round a stake,

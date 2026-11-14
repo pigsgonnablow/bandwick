@@ -125,7 +125,7 @@ export const TASK_KINDS: TaskKind[] = [
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
-export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net'] as const;
+export const ITEM_KINDS = ['chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'necklace', 'deadfall', 'furcloak', 'bowl', 'beads', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'sledge'] as const;
 /** Things set out in the land and left to work: checked on the band's daily round. */
 export const TRAP_KINDS: ItemKind[] = ['snare', 'fishtrap', 'deadfall'];
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -197,6 +197,8 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   // a net knotted of cordage, stones tied along its foot to sink it, hauled through the water by two or three
   // (each haul a use: a year or so, before it is all mends)
   net: { label: 'Fishing net', uses: 50 },
+  // two runners of split ash curved up at the front, crossbars lashed on, and a hide rope to drag it by
+  sledge: { label: 'Log sledge', uses: 40 },
 };
 /**
  * Things made for their own sake in the hours a fed band has free: they are the band's goods, its wealth.
@@ -246,6 +248,18 @@ export const CHARCOAL_YIELD = 4;
 export const CHARCOAL_KEPT = 8;
 export const CHARCOAL_CRACK = 0.01;
 export const CHARCOAL_FINE = 2;
+/**
+ * A log sledge drags home this much of the logs lying out in the woods in one trip, where a shoulder takes 6;
+ * over snow, this much.
+ */
+export const SLEDGE_LOAD = 14;
+export const SLEDGE_SNOW = 20;
+/**
+ * Garden ground cleared by fire: the trees on it ring-barked and burned where they stand, and the ash dug in. It
+ * starts this rich (fresh ground is 1), less where there was only scrub and grass to burn, and tires as any plot.
+ */
+export const SWIDDEN_SOIL = 1.3;
+export const SWIDDEN_GRASS = 1.15;
 /** A master of a craft (the band's potter or toolmaker) is this much keener to sit down to it, and this much less to other work, when the band is fed. */
 export const MASTER_CRAFT = 1.6;
 export const MASTER_OTHER = 0.6;
@@ -493,7 +507,7 @@ export const FIBER_PER_THREAD = 2;
 /** Hanks of thread a band spins to try the spindle before it has a loom, and keeps by at most once it has. */
 export const THREAD_TRY = 4;
 export const THREAD_KEPT = 16;
-export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'charcoal'] as const;
+export const RECIPE_KEYS = ['cordage', 'chopper', 'axe', 'stick', 'snare', 'fishtrap', 'basket', 'pot', 'cloak', 'needle', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'deadfall', 'furcloak', 'bowl', 'beads', 'thread', 'tunic', 'blanket', 'sash', 'lamp', 'jar', 'harpoon', 'line', 'net', 'charcoal', 'sledge'] as const;
 export type RecipeKey = (typeof RECIPE_KEYS)[number];
 export interface Recipe {
   /** what it makes: a length of cordage or a hank of thread into the stores, a charcoal clamp lit (its charcoal
@@ -645,6 +659,11 @@ export const RECIPES: Record<RecipeKey, Recipe> = {
     // from the top: it smoulders a day and a night (CLAMP_BURN) and is opened for the charcoal (CHARCOAL_YIELD)
     makes: 'charcoal', uses: { wood: 8 }, work: 50, skill: SK.wood, grow: 0.06, knows: 'charcoal', doing: 'Stacking a charcoal clamp',
     thought: 'Stacking split wood in the clamp and covering it over with turf.', done: 'Lit the charcoal clamp: it will smoulder till tomorrow.',
+  },
+  sledge: {
+    // two runners split from a straight ash, steamed and bent up at the front, crossbars lashed across, a rope to drag it by
+    makes: 'sledge', uses: { wood: 4, cordage: 2 }, work: 70, skill: SK.tool, grow: 0.07, knows: 'sledge', doing: 'Making a log sledge',
+    thought: 'Bending runners for a sledge and lashing crossbars across them.', done: 'Made a log sledge and laid it on the pile.',
   },
 };
 /** The recipes fired only in the kiln: too big for the embers of the hearth. */
@@ -1014,6 +1033,8 @@ export interface Plot {
   last: number;
   /** how well it has been looked after, from the skill of whoever sowed and weeded it (see gardenSkill) */
   care: number;
+  /** cleared by fire: the woods on it burned and the ash dug in (absent: dug from open ground) */
+  burnt?: boolean;
 }
 export const newPlot = (): Plot => ({ crop: 0, sown: 0, growth: 0, weeds: 0, cond: 1, left: 0, greens: 0, soil: 1, guarded: 0, raided: 0, raider: '', reaped: 0, last: 0, care: 1 });
 /** Days from sowing to harvest: grain sown in spring is reaped at the end of summer, roots are dug in autumn. */

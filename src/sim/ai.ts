@@ -5,7 +5,7 @@ import { PIGLET_RANGE } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
 import { SEASONED_HEAT } from './band';
 import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, HERBS_WANT, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
-  PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, CHARCOAL_CRACK, CLAMP_BURN, CHARCOAL_YIELD, MASTER_FALL, MASTER_WOOD, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
+  PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, CHARCOAL_CRACK, CLAMP_BURN, CHARCOAL_YIELD, SLEDGE_LOAD, SLEDGE_SNOW, MASTER_FALL, MASTER_WOOD, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
 import { runOn, weirBank } from './runs';
@@ -882,7 +882,14 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       p.thought = 'Hauling logs back to camp.';
       // a trunk the beavers brought down: the gnawing on it sets a trapper thinking
       if (s.propNote.get(k)?.startsWith('A birch felled by beavers')) s.practise(p, 'fur', 0.5);
-      return newTask(s, kind, s.propTile[k], s.propX[k] + 0.25, s.propZ[k] + 0.2, k);
+      const t = newTask(s, kind, s.propTile[k], s.propX[k] + 0.25, s.propZ[k] + 0.2, k);
+      // more lying there than a shoulder takes: the band's log sledge, if there is one free, to drag it all home
+      const sledge = s.propVal[k] > 6 ? s.toolFor(p, ['sledge']) : undefined;
+      if (sledge) {
+        if (takeFromPile(s, p, t, sledge)) p.thought = 'Fetching the sledge from the stockpile to drag logs home.';
+        else p.thought = 'Dragging the sledge out for the logs.';
+      }
+      return t;
     }
     case 'hunt': {
       // fresh tracks in the snow lead hunters to deer much further out, and keep them on the trail
@@ -2153,6 +2160,8 @@ export function runTask(s: Sim, p: Person) {
       pl.left -= n;
       train(p, 'garden.harvest');
       s.practise(p, 'harvest');
+      // (a thin harvest from tired ground sets a gardener who knows the woods thinking of fresh ground)
+      if (pl.soil < 0.8) s.practise(p, 'tired_ground');
       if (pl.left <= 0.3) {
         // the plot is bare: the ground is a little more tired for it
         // (the first harvest the band has ever brought in: no plot of theirs, this one included, reaped before)
@@ -2991,15 +3000,34 @@ export function runTask(s: Sim, p: Person) {
       return;
     }
     case 'haul': {
+      if (t.stage === -1) {
+        // to the pile for the sledge, then out to the logs
+        if (!s.propAlive[t.ref]) return finish(s, p);
+        if (moving(go(s, p, t))) return;
+        t.stage = 0;
+        t.goal = s.propTile[t.ref];
+        t.gx = s.propX[t.ref] + 0.25;
+        t.gz = s.propZ[t.ref] + 0.2;
+        p.path = null;
+        p.thought = 'Dragging the sledge out for the logs.';
+        return;
+      }
       if (t.stage === 0) {
         if (!s.propAlive[t.ref]) return finish(s, p);
         if (moving(go(s, p, t))) return;
-        const take = Math.min(6, s.propVal[t.ref]);
+        // a shoulder takes a log or two; a sledge the whole of a tree, more again over the snow
+        const sledge = s.heldBy(p)?.kind === 'sledge' ? s.heldBy(p) : undefined;
+        const snow = snowLies(s.tick);
+        const take = Math.min(sledge ? (snow ? SLEDGE_SNOW : SLEDGE_LOAD) : 6, s.propVal[t.ref]);
+        // (going back and forth for a log at a time, the snow most of all, is what gives someone the idea of runners)
+        if (!sledge && s.propVal[t.ref] > take) s.practise(p, 'haul_logs', snow ? 2 : 1);
+        if (sledge) s.wearTool(sledge);
         s.propVal[t.ref] -= take;
         if (s.propVal[t.ref] <= 0.01) s.removeProp(t.ref);
         else s.reserved.delete(t.ref);
         p.carry = CARRY.Log;
         p.carryAmt = take;
+        p.thought = sledge ? 'Dragging a sledge-load of logs home.' : 'Hauling logs back to camp.';
         goStore(s, p, t, 1);
       }
       if (moving(go(s, p, t))) return;

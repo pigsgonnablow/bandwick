@@ -14,6 +14,8 @@ export type Practice =
   | 'evening_fire' // an evening by the camp fire (each adult)
   | 'damp_fire' // feeding the fire with damp wood
   | 'dry_fire' // feeding the fire with wood from under the woodpile's roof
+  | 'haul_logs' // a trip hauling logs home on the shoulder from a tree felled out in the woods (twice over the snow)
+  | 'tired_ground' // a harvest brought in from a garden plot whose ground is tiring (each harvester)
   | 'store_food' // food carried into the stores (per meal)
   | 'store_meat' // meat and fish carried into the stores (per meal)
   | 'store_berries' // berries carried into the stores (per meal)
@@ -414,6 +416,22 @@ export const DISCOVERIES: Discovery[] = [
     practice: { dry_fire: 1 }, odds: 30,
     found: 'noticed the old logs from the bottom of the stack burned hotter and longer than new-cut wood, and began to split the wood and stack it a season ahead to dry',
     taught: 'split and stack their firewood to season it', memory: 'Saw that wood stacked a season burns longest.',
+  },
+  {
+    // (a woodcutter going back and forth to a felled trunk out in the woods with a log at a time on the shoulder,
+    // dragging the last of it home over the snow, thinks of runners to drag the whole lot home at once)
+    key: 'sledge', label: 'Log sledge', needs: ['axe'], requires: [skill(SK.wood, 14), skill(SK.tool, 8)],
+    practice: { haul_logs: 1 }, odds: 30,
+    found: 'bent two runners of ash, lashed crossbars across them, and dragged home a whole felled tree on it in one trip',
+    taught: 'make log sledges and drag the logs home on them', memory: 'Dragged home the first load of logs on a sledge.',
+  },
+  {
+    // (a gardener who knows the woods, bringing in a thin harvest from ground grown tired, remembers how green and
+    // thick things came up where the woods had burned, and thinks of burning a stand of trees for a new plot)
+    key: 'swidden', label: 'Clearing by fire', needs: ['garden'], requires: [skill(SK.wood, 13), skill(SK.garden, 8)],
+    practice: { tired_ground: 1, far_tree: 0.2 }, odds: 25,
+    found: 'ring-barked a stand of trees by the gardens, burned them where they stood and dug the ash in: the first harvest from it was the best the band had seen',
+    taught: 'clear new garden ground by fire', memory: 'Burned a stand of trees for a garden, and dug in the ash.',
   },
   {
     // (someone who knows the woods, firing pots in the kiln and raking out the black, half-burned sticks that
