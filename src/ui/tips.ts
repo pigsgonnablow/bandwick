@@ -124,6 +124,7 @@ export const CARD_TIPS: Record<string, string> = {
   Dried: 'Dried: meat and fish dried on the rack, in meals. Keeps for most of a year.',
   'Dried food': 'Dried food: meat and fish dried on the rack, in meals. Keeps for most of a year.',
   'In the basket': 'In the basket: fish the weir has caught, waiting for someone to carry them home.',
+  'On the water': 'On the water: who has the canoe out fishing the open water, or where it lies when nobody does.',
   Hides: 'Hides: deer hides, kept for cloaks and other clothes.',
   Pelts: 'Pelts: fox and beaver furs from the deadfalls, kept to sew into fur cloaks.',
   Fat: 'Fat: cut from deer, boar, pigs and beavers when they are butchered. It fills the clay lamps, and pounded into meat on the drying rack it makes more dried food. Animals are fattest in autumn.',

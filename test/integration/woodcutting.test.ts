@@ -432,6 +432,44 @@ describe('the dugout canoe', () => {
     expect(s.world.water[s.tileOf(p)]).toBe(0);
   });
 
+  it('keeps a fisher out on the water until the trip is done, hook and line in hand', () => {
+    const { s, c } = withCanoe();
+    for (const it of s.toolsOf(c, 'line')) s.items.splice(s.items.indexOf(it), 1);
+    s.giveTools(c, { line: 1 });
+    const p = adult(s);
+    const pile = s.storeSpot(true);
+    p.x = pile.x;
+    p.z = pile.z;
+    p.task = setup(s, p, 'canoe');
+    expect(s.heldBy(p)?.kind).toBe('line');
+    let fished = false;
+    // the whole sim runs: re-deciding, and putting tools back by the pile, must not cut the trip short
+    for (let i = 0; i < 1500 && p.task?.kind === 'canoe' && p.task.stage < 4; i++) {
+      s.step();
+      if (p.task?.kind === 'canoe' && p.task.stage === 2) {
+        fished = true;
+        expect(s.heldBy(p)?.kind).toBe('line');
+      }
+      if (p.task?.kind !== 'canoe') break;
+    }
+    expect(fished).toBe(true);
+    expect(s.world.water[s.tileOf(p)]).toBe(0);
+  });
+
+  it('is never left out on the water, even if its landing is gone', () => {
+    const { s, b } = withCanoe();
+    const p = adult(s);
+    p.x = b.x + 0.5;
+    p.z = b.z + 1.5;
+    p.task = setup(s, p, 'canoe');
+    for (let i = 0; i < 300 && !(p.task?.kind === 'canoe' && p.task.stage === 2); i++) { runTask(s, p); s.tick++; }
+    expect(s.world.water[s.tileOf(p)]).not.toBe(0);
+    s.buildings.splice(s.buildings.indexOf(b), 1);
+    runTask(s, p);
+    expect(p.task).toBeNull();
+    expect(s.world.water[s.tileOf(p)]).toBe(0);
+  });
+
   it('is never left out on the water: a fisher called away brings it back to the bank', () => {
     const { s, b } = withCanoe();
     const p = adult(s);

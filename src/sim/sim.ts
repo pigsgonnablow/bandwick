@@ -19,12 +19,12 @@ import {
   TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
   isDark, temperature, berriesRipe, freshFrozen, rutting, snowLies, isWinter, seasonPos, seasonOf, ageYears, yearOf, dayOf, hourOf,
 } from './time';
-import { decide, runTask, abandon, sendHome, delivering, foodInHand, FAR_GRAVE } from './ai';
+import { decide, runTask, abandon, sendHome, delivering, foodInHand, afloat, FAR_GRAVE } from './ai';
 import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard, deadfallNight, DEADFALL_RANGE } from './beasts';
 import { updatePigs, pigsDaily, packPigs, pigCard, penOf, pigsOf, pigsWanted, pigToKill, pigFeed, pigMeat, grown, PIG_ID } from './pigs';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets, ELITE } from './know';
 import { RunMap, mapRuns, runsTick, runOn, runExtra, runNear, weirSite, weirRot } from './runs';
-import { canoeSite, canoeRot, freeCanoe, openStock } from './canoe';
+import { canoeSite, canoeRot, freeCanoe, openStock, canoeTarget } from './canoe';
 
 export const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 const TREE_TYPES = SPECIES.length * STAGES * TREE_VARIANTS;
@@ -115,7 +115,7 @@ const STUMP_BASE = propId('stump_v0');
 const LOGS = propId('logs_v0');
 const GRAVE = propId('grave_v0');
 /** Work done with a tool in hand: the tool stays with them until it's done. */
-const TOOL_TASKS: TaskKind[] = ['fell', 'dig', 'bury', 'forage', 'roots', 'fish'];
+const TOOL_TASKS: TaskKind[] = ['fell', 'dig', 'bury', 'forage', 'roots', 'fish', 'canoe'];
 
 /** Annual chance of dying of old age, by age in years (piecewise linear). */
 const MORTALITY: number[][] = [[0, 0.03], [2, 0.012], [5, 0.004], [15, 0.003], [35, 0.006], [50, 0.02], [60, 0.05], [70, 0.13], [80, 0.32], [90, 0.7]];
@@ -1354,7 +1354,7 @@ export class Sim {
   private urgent(p: Person) {
     const k = p.task?.kind;
     // (out on the water in the canoe, nothing is done until it is back on the bank)
-    if (k === 'canoe' && p.task!.stage >= 1 && p.task!.stage <= 3) return false;
+    if (afloat(p)) return false;
     // starving: go and eat. Only when the store is bare is it worth staying out to hunt, fish or forage
     // (far from camp, turn back sooner: the walk home costs food too)
     const gathering = k === 'hunt' || k === 'fish' || k === 'forage';
@@ -3578,7 +3578,8 @@ export class Sim {
     const weir = mine.find((b) => b.kind === 'weir' && b.built && (b.catch ?? 0) >= 3);
     // the band's canoe drawn up on the bank, with fish out on the open water
     const canoe = freeCanoe(this, c);
-    const canoeFish = canoe ? openStock(this, canoe) : 0;
+    // (only while there is somewhere out there worth paddling to)
+    const canoeFish = canoe && canoeTarget(this, canoe) >= 0 ? openStock(this, canoe) : 0;
     // the gardens: plots to sow this spring, plots to weed, pick or guard, and ripe ones to bring in
     const plots = this.knows('garden') ? this.plots(c) : [];
     let claimed = 0;

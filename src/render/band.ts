@@ -1321,7 +1321,8 @@ export class BandLayer {
       }
       // a hook and line held out over the water by someone sat at it; a net out in the water in front of its keeper,
       // its float line on the surface (the others hauling it stand at its ends)
-      const fishing = (s.task === FISH_TASK || s.task === CANOE_TASK) && s.act !== ACT.Dead && carry === CARRY.None;
+      // (from the canoe, only once it lies still at the fishing: not paddling out or back)
+      const fishing = (s.task === FISH_TASK || (s.task === CANOE_TASK && speed < 0.2)) && s.act !== ACT.Dead && carry === CARRY.None;
       const gearOut = fishing && s.tool === LINE_TOOL && s.shownAct === ACT.Sit ? LINE_CAST : fishing && s.tool === NET_TOOL && s.shownAct === ACT.Fish ? NET_OUT : 0;
       if (gearOut) {
         const gm = this.carryMeshes.get(gearOut);

@@ -3,13 +3,13 @@
 import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
-import { SEASONED_HEAT, CANOE_SPEED, CANOE_CATCH } from './band';
+import { SEASONED_HEAT, CANOE_SPEED, CANOE_CATCH, CANOE_OPEN } from './band';
 import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, HERBS_WANT, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
   PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, CHARCOAL_CRACK, CLAMP_BURN, CHARCOAL_YIELD, SLEDGE_LOAD, SLEDGE_SNOW, MASTER_FALL, MASTER_WOOD, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
 import { runOn, weirBank } from './runs';
-import { freeCanoe, canoeTarget, openReach, openWater } from './canoe';
+import { freeCanoe, canoeTarget, openReach } from './canoe';
 import { addPig, gateOf, feedPigs, pigToKill, killPig, pigsHungry, pigsOf, grown } from './pigs';
 import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, daylight, yearOf, TICKS_PER_DAY, TICKS_PER_HOUR } from './time';
 import { WATER, DIRS4, treeId } from './types';
@@ -256,6 +256,11 @@ function busyWith(s: Sim, kind: TaskKind) {
 }
 
 export function decide(s: Sim, p: Person) {
+  // out on the water in the canoe: nothing else is thought of until it is back on the bank
+  if (afloat(p)) {
+    p.nextThink = s.tick + 30;
+    return;
+  }
   const age = s.age(p);
   const child = age < 14;
   const dark = isDark(s.tick);
@@ -1530,18 +1535,6 @@ function goStore(s: Sim, p: Person, t: Task, next: number) {
   p.path = null;
 }
 
-/** Whether there is open water (out of the reach of the bank) a few tiles out from some water by a bank. */
-function openNear(s: Sim, w: number) {
-  const N = s.N, x = w % N, z = Math.floor(w / N);
-  for (let dz = -3; dz <= 3; dz++)
-    for (let dx = -3; dx <= 3; dx++) {
-      const nx = x + dx, nz = z + dz;
-      if (nx < 0 || nz < 0 || nx >= N || nz >= N) continue;
-      if (openWater(s, nz * N + nx)) return true;
-    }
-  return false;
-}
-
 /** Whether someone has an infant of theirs to carry about. */
 function carriesInfant(s: Sim, p: Person) {
   for (const id of p.children) {
@@ -1559,14 +1552,41 @@ function besideCanoe(b: Building) {
 /** A canoe back on its bank (or brought back to it, if its fisher has to leave it), and its fisher stepping out. */
 export function landCanoe(s: Sim, p: Person, t: Task) {
   const b = s.building(t.ref);
-  if (!b || b.out !== p.id) return;
-  delete b.out;
-  s.buildingsVersion++;
-  if (t.stage >= 1 && t.stage <= 3) {
+  if (b && b.out === p.id) {
+    delete b.out;
+    s.buildingsVersion++;
+  }
+  if (t.stage < 1 || t.stage > 3) return;
+  // back to its bank (or, were it somehow gone, to the nearest dry ground the fisher can stand on)
+  if (b && b.out === undefined) {
     p.x = b.x + 0.5;
     p.z = b.z + 0.5;
-    p.path = null;
+  } else {
+    const dry = nearestDry(s, p.x, p.z);
+    p.x = dry.x;
+    p.z = dry.z;
   }
+  p.path = null;
+}
+
+/** Whether someone is out on the water in the canoe (paddling out, fishing, or paddling back). */
+export function afloat(p: Person) {
+  return p.task?.kind === 'canoe' && p.task.stage >= 1 && p.task.stage <= 3;
+}
+
+/** The middle of the nearest walkable dry tile to a point. */
+function nearestDry(s: Sim, x: number, z: number) {
+  const N = s.N, cx = Math.floor(x), cz = Math.floor(z);
+  for (let r = 0; r < 20; r++)
+    for (let dz = -r; dz <= r; dz++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+        const tx = cx + dx, tz = cz + dz;
+        if (tx < 0 || tz < 0 || tx >= N || tz >= N) continue;
+        const i = tz * N + tx;
+        if (s.world.water[i] === WATER.None && s.grid.walkable(i)) return { x: tx + 0.5, z: tz + 0.5 };
+      }
+  return { x: s.camp.x, z: s.camp.z };
 }
 
 /** Ask the renderer to play a one-off move (a spear thrust, a stab into the water). */
@@ -3237,9 +3257,9 @@ export function runTask(s: Sim, p: Person) {
         // fishing a river thick with the run, watching the fish nose along the bank for a way up, sets a fisher who
         // builds thinking of a fence across it
         if (runOn(s, w) && s.fish[w] > s.fishCap[w]) s.practise(p, 'run');
-        // fishing water by the bank fished thin, with the fish rising out on the open water past any spear's reach,
-        // sets someone who knows the woods thinking of a trunk to ride out on
-        if (s.fish[w] < s.fishCap[w] * 0.6 && openNear(s, w)) s.practise(p, 'far_water');
+        // fishing water by the bank fished thin, with the fish rising out on the open water past any spear's reach
+        // (enough of it for a canoe), sets someone who knows the woods thinking of a trunk to ride out on
+        if (s.fish[w] < s.fishCap[w] * 0.6 && !s.knows('canoe', c) && p.skills[SK.wood] >= 14 && openReach(s, t.bank ?? t.goal).length >= CANOE_OPEN) s.practise(p, 'far_water');
         const cold = winter ? WINTER_CATCH * (s.bitterWinter() ? BITTER_CATCH : 1) : 1;
         if (kind === 'net') {
           // whoever has come to help is here by now, or nearly: wait a little longer for those on the way
@@ -3346,6 +3366,7 @@ export function runTask(s: Sim, p: Person) {
         if (t.stage < 1 || t.stage > 3) return finish(s, p);
         return landCanoe(s, p, t), finish(s, p);
       }
+      // (the paddle out and back is drawn without the line cast: it is cast only at the fishing)
       if (t.stage === -1) {
         // the line fetched from the pile: on to the canoe
         if (moving(go(s, p, t))) return;
@@ -3816,7 +3837,7 @@ export function completeBuilding(s: Sim, b: Building, p: Person) {
   // the wedges that split its planks take the wear of it (worn out, they are made again)
   if (b.walls === 'plank') {
     const wedges = s.toolsOf(s.campById(b.band) ?? s.camp, 'wedges')[0];
-    if (wedges && s.wearTool(wedges)) s.event('tool', `The band's wedges split their last log at ${s.camp.name}.`, [p.id], b.x + 0.5, b.z + 0.5, 1);
+    if (wedges && s.wearTool(wedges)) s.event('tool', `The band's wedges split their last log at ${(s.campById(b.band) ?? s.camp).name}.`, [p.id], b.x + 0.5, b.z + 0.5, 1);
   }
   const label = labelOf(b).toLowerCase();
   const first = s.buildings.filter((q) => q.kind === b.kind && (q.walls ?? 'wood') === (b.walls ?? 'wood') && q.built && q.band === b.band).length === 1;
