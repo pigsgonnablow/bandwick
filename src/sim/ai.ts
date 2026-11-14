@@ -1,7 +1,7 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
 import type { Sim, Camp } from './sim';
-import { PIGLET_RANGE } from './sim';
+import { PIGLET_RANGE, aDish } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
 import { SEASONED_HEAT } from './band';
 import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, STEW_FROM, STEW_TO, STEW_CALL, STEW_TICKS, STEW_BELONG, BREW_WARM, BREW_HOURS, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
@@ -1475,7 +1475,6 @@ export function foodInHand(p: Person) {
   return p.carryAmt >= 1 && (k === CARRY.Berries || k === CARRY.Meat || k === CARRY.Fish || k === CARRY.Roots || k === CARRY.Nuts || k === CARRY.Eggs || k === CARRY.Honey || k === CARRY.Mushrooms || k === CARRY.Grain || k === CARRY.Greens);
 }
 
-/** On the way back to the stores with goods: they see the delivery through unless it's an emergency. */
 /**
  * A bowl from the band's pot: eating together, thanks to the cook for it, a brew to warm them on a cold evening,
  * and now and then a stew they remember as the best they ever had (more often the better the cook).
@@ -1493,10 +1492,11 @@ function ateStew(s: Sim, p: Person, stew: NonNullable<Sim['camp']['stew']>, full
   if (s.rAi.next() >= odds || p.memories.some((m) => m.kind === 'dish' && s.tick - m.tick < 16 * TICKS_PER_DAY)) return;
   const whose = cook === p ? 'their own' : `${cook.name}'s`;
   p.dish = `${whose} ${stew.dish}`;
-  s.remember(p, 'dish', 5, 1, cook.id, cook === p ? `Cooked a ${stew.dish} that was the best they had ever tasted.` : `Ate ${cook.name}'s ${stew.dish}: the best they had ever tasted.`);
+  s.remember(p, 'dish', 5, 1, cook.id, cook === p ? `Cooked ${aDish(stew.dish)} that was the best they had ever tasted.` : `Ate ${cook.name}'s ${stew.dish}: the best they had ever tasted.`);
   if (cook !== p) s.adjust(p, cook, 3);
 }
 
+/** On the way back to the stores with goods: they see the delivery through unless it's an emergency. */
 export function delivering(p: Person) {
   return p.task?.homeAt !== undefined && p.carry !== CARRY.None;
 }
@@ -1835,7 +1835,7 @@ export function runTask(s: Sim, p: Person) {
         t.gx = at.sx;
         t.gz = at.sz;
         p.path = null;
-        p.thought = `Taking the makings of a ${c.stew!.dish} to the pot.`;
+        p.thought = `Taking the makings of ${aDish(c.stew!.dish)} to the pot.`;
       }
       if (t.stage === 1) {
         if (moving(go(s, p, t))) return;
@@ -1855,7 +1855,7 @@ export function runTask(s: Sim, p: Person) {
       s.stewDone(c);
       train(p, 'cook');
       s.practise(p, 'stew');
-      if (!p.memories.some((m) => m.kind === 'cooked')) s.remember(p, 'cooked', 4, 1, -1, `Cooked a ${stew.dish} for the whole band.`);
+      if (!p.memories.some((m) => m.kind === 'cooked')) s.remember(p, 'cooked', 4, 1, -1, `Cooked ${aDish(stew.dish)} for the whole band.`);
       p.thought = `The ${stew.dish} is ready.`;
       finish(s, p);
       return;

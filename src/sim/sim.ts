@@ -194,6 +194,10 @@ export function dishOf(main: string | undefined, raw: Partial<Record<string, num
     : main === 'berries' ? 'berry mash' : 'broth';
   return broth && main ? `${base} in bone broth` : base;
 }
+/** A dish with its article: "a fish stew", "an egg stew". */
+export function aDish(dish: string) {
+  return `${/^[aeiou]/i.test(dish) ? 'an' : 'a'} ${dish}`;
+}
 
 export interface Camp {
   id: number;
@@ -1924,9 +1928,11 @@ export class Sim {
     const stew = c.stew;
     if (!stew) return;
     if (stew.ready < 0) {
+      // (and one still not done by the next noon is done anyway, whoever is still at it: the band must not be left
+      // with a pot it can neither eat from nor cook in again)
       const cooking = this.people.some((q) => q.alive && q.band === c.id && q.task?.kind === 'cook');
-      if (!cooking && this.tick - stew.started >= STEW_TICKS) this.stewDone(c);
-      return;
+      if ((!cooking && this.tick - stew.started >= STEW_TICKS) || this.evening() !== stew.evening) this.stewDone(c);
+      if (stew.ready < 0 || this.evening() === stew.evening) return;
     }
     if (stew.fill > 0.02 && this.evening() === stew.evening) return;
     // what nobody ate by the next noon goes to the dogs and the midden

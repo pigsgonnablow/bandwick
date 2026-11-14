@@ -5,7 +5,7 @@ import { SK, CARRY, SKILLS, CRAFT_TITLES, STEW_GAIN, STEW_MASTER, STEW_BERRIES, 
 import { DISCOVERY, ABLE } from '../../src/sim/know';
 import { TICKS_PER_DAY, hourOf } from '../../src/sim/time';
 import { runTask, setup } from '../../src/sim/ai';
-import { Sim, dishOf } from '../../src/sim/sim';
+import { Sim, dishOf, aDish } from '../../src/sim/sim';
 import { sim, runYears } from '../helpers';
 
 const COOKING = ['pottery', 'cooking', 'herbs', 'stew'];
@@ -133,6 +133,29 @@ describe('the stew', () => {
     expect(dishOf('fish', { fish: 3 }, false)).toBe('fish stew');
     expect(dishOf('nuts', { nuts: 3 }, false)).toBe('acorn porridge');
     expect(dishOf('meat', { meat: 3, roots: 1 }, true)).toBe('stew of meat and roots in bone broth');
+    expect(aDish('fish stew')).toBe('a fish stew');
+    expect(aDish('egg stew')).toBe('an egg stew');
+    expect(aDish('acorn porridge')).toBe('an acorn porridge');
+  });
+
+  it('is done by the next noon even if its cook never finished it, so the pot is free again', () => {
+    const s = band();
+    const c = s.camp;
+    c.stock.fish = 30;
+    toHour(s, 16);
+    const cook = adult(s);
+    s.startStew(c, cook);
+    // (still marked as cooking, but never coming back to it)
+    cook.task = setup(s, cook, 'cook');
+    expect(cook.task?.kind).toBe('cook');
+    s.tick += 4 * 10;
+    stewHour(s);
+    expect(c.stew!.ready).toBe(-1);
+    while (s.evening() === c.stew!.evening) s.tick++;
+    stewHour(s);
+    expect(c.stew).toBeUndefined();
+    // and the band can cook again this evening
+    expect(s.stewWanted(c)).toBe(true);
   });
 
   it('is eaten from the pot with everyone, and what is left by the next noon goes to waste', () => {
