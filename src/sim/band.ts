@@ -208,7 +208,7 @@ export const ITEMS: Record<ItemKind, ItemSpec> = {
   // the band's stew: the heat tells on it, and it cracks in a year or so (each stew cooked in it is a use)
   cookpot: { label: 'Cooking pot', uses: 50 },
   // a flat slab of river stone, ground smooth on top and propped over the embers on two stones, for flatbread and
-  // acorn cakes: the fire cracks it in the end (each baking is a use)
+  // acorn cakes: the fire cracks it in the end (each day it is baked on is a use: some six years)
   griddle: { label: 'Grilling stone', uses: 300 },
 };
 /**
@@ -824,6 +824,8 @@ export interface Item {
   maker: number;
   /** a lamp: the evening it was last filled with fat (it burns the night through, whoever sits by it) */
   lit?: number;
+  /** a grilling stone: the day it was last baked on (a day's baking wears it once, however many eat) */
+  baked?: number;
   /** a trap: the tile it is set on (absent or -1: on the pile; -2: in the basket of whoever is setting it); beads: -3, set aside for a gift */
   tile?: number;
   /** a trap: what it has caught and is holding, waiting for the round (meat for a snare, fish for a fish trap) */

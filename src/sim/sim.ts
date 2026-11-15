@@ -130,7 +130,7 @@ const ITEM_USE: Record<ItemKind, string> = {
   basket: 'trips with it', pot: 'days of holding food', cloak: 'cold days', needle: 'things sewn', hat: 'cold days',
   mittens: 'cold days', shoes: 'stretches of walking', cape: 'cold days', bag: 'loads carried', necklace: 'years worn', deadfall: 'days set', furcloak: 'cold days',
   bowl: 'days in use', beads: 'years worn', tunic: 'cold days', blanket: 'cold nights', sash: 'years kept',
-  lamp: 'evenings lit', jar: 'days of holding food', harpoon: 'trips to the water', line: 'trips to the water', net: 'hauls', sledge: 'loads dragged', cookpot: 'stews cooked', griddle: 'bakings',
+  lamp: 'evenings lit', jar: 'days of holding food', harpoon: 'trips to the water', line: 'trips to the water', net: 'hauls', sledge: 'loads dragged', cookpot: 'stews cooked', griddle: 'days of baking',
 };
 /** What kind of thing it is, in a few words. */
 const ITEM_ABOUT: Record<ItemKind, string> = {
@@ -1743,6 +1743,8 @@ export class Sim {
     it.wear += 1 / ITEMS[it.kind].uses / (1 + (it.quality ?? 0) * QUALITY_WEAR);
     if (it.wear < 0.999) return false;
     this.items.splice(this.items.indexOf(it), 1);
+    // (a cooking pot or a grilling stone is drawn at the hearth)
+    if (it.kind === 'cookpot' || it.kind === 'griddle') this.buildingsVersion++;
     // worn through on someone's back: they wear nothing there now
     if (it.wearer !== undefined && isGarment(it.kind)) {
       const w = this.byId.get(it.wearer);
@@ -1802,9 +1804,6 @@ export class Sim {
     { const k = small(1); if (k) return k; }
     // and a reed cape for whoever has no cloak and no hide to make one
     if (this.knows('capes', c) && c.stock.fiber >= 5 && c.stock.cordage >= 1 && cloaks + have('cape') < dressed && (!this.knows('cloaks', c) || c.stock.hides < HIDES_PER_CLOAK)) return 'cape';
-    // a grilling stone in the hearth, for the flatbread
-    // (where there is stone to be had for it)
-    if (this.knows('griddle', c) && have('griddle') < 1 && (c.stock.stone >= 1 || this.quarryTiles.length > 0)) return 'griddle';
     // a cooking pot for the band's stew (two in a big band, where one pot won't feed everyone)
     if (this.knows('stew', c) && have('cookpot') < this.cookpotsWanted(c)) return 'cookpot';
     // pots for the stores (more where there are greens, eggs and mushrooms to keep as well as berries)
@@ -1818,6 +1817,9 @@ export class Sim {
       if (c.stock.thread >= RECIPES.tunic.uses.thread! && have('tunic') < dressed) return 'tunic';
       if (c.stock.thread >= RECIPES.blanket.uses.thread! && have('blanket') < dressed) return 'blanket';
     }
+    // and a grilling stone in the hearth for the flatbread, last, where there is stone to be had for it (if the band
+    // has to go far for stone, it waits on that, and nothing else should wait on it)
+    if (this.knows('griddle', c) && have('griddle') < 1 && (c.stock.stone >= 1 || this.quarryTiles.some((t) => hyp((t % this.N) + 0.5 - c.x, Math.floor(t / this.N) + 0.5 - c.z) < 36))) return 'griddle';
     return null;
   }
   /** Cooking pots a band would keep at the fire: one, and a second in a big band. */
@@ -1947,6 +1949,8 @@ export class Sim {
     }
     c.stew = stew;
     c.stewed = stew.evening;
+    // (the pot or the hide at the fire, or the oven covered over, is drawn so)
+    this.buildingsVersion++;
     return stew;
   }
   /** The stew is cooked: the band can eat from it; the pot is an evening nearer cracking. */
@@ -1954,6 +1958,7 @@ export class Sim {
     const stew = c.stew;
     if (!stew || stew.ready >= 0) return;
     stew.ready = this.tick;
+    this.buildingsVersion++;
     const pot = stew.boiled || stew.oven ? undefined : this.cookpotOf(c);
     if (pot && this.wearTool(pot)) this.event('cookpot', `The cooking pot at ${c.name} cracked in the fire.`, [], c.x, c.z, 1);
   }
@@ -1990,6 +1995,7 @@ export class Sim {
     // what nobody ate by the next noon goes to the dogs and the midden
     for (const k of Object.keys(stew.raw) as (keyof Stew['raw'])[]) if (stew.raw[k]! > 1e-6) this.book(`spoiled.${k}`, stew.raw[k]!, c);
     delete c.stew;
+    this.buildingsVersion++;
   }
   /** Which evening it is: the night after a day counts as that day's evening, past midnight too. */
   evening(tick = this.tick) {

@@ -1774,7 +1774,7 @@ export function runTask(s: Sim, p: Person) {
           t.ref = 1;
           p.carry = CARRY.Bowl;
           p.carryAmt = 0;
-          p.thought = c.stew.brew ? `A bowl of ${c.stew.dish}, and hot herbs to drink.` : `A bowl of ${c.stew.dish} from the pot.`;
+          p.thought = c.stew.brew ? `A bowl of ${c.stew.dish}, and hot herbs to drink.` : `A bowl of ${c.stew.dish}${c.stew.oven ? ' from the oven' : c.stew.boiled ? '' : ' from the pot'}.`;
         }
         // with the fire lit, meat, fish, roots and acorns are roasted in the embers first
         t.amount = t.ref !== 1 && s.knows('cooking') && s.hearthLit() ? 1 : 0;
@@ -1814,11 +1814,16 @@ export function runTask(s: Sim, p: Person) {
         if (RAW_RISKY.includes(k)) { if (hot) cooked += take; else raw += take; }
         if (got >= want - 1e-6) break;
       }
-      if (baked > 0.05 && griddle) s.wearTool(griddle);
+      // (the stone wears with each day's baking, however many eat from it)
+      if (baked > 0.05 && griddle && griddle.baked !== dayOf(s.tick)) {
+        griddle.baked = dayOf(s.tick);
+        if (s.wearTool(griddle)) s.event('griddle', `The grilling stone at ${c.name} cracked in the fire.`, [], c.x, c.z, 1);
+      }
       // meat, fish and eggs eaten raw can turn the stomach (in the warm more than the cold, and cooked hardly ever);
       // and so can a stew left in the pot overnight in the warm
       const warm = s.tempAt(p) >= RAW_WARM_AT;
-      const stale = stew && potful > 0 && warm && hourOf(s.tick) < 12 ? STALE_SICK : 0;
+      // (the morning after: from dawn, not the small hours of the evening it was cooked)
+      const stale = stew && potful > 0 && warm && hourOf(s.tick) >= 5 && hourOf(s.tick) < 12 ? STALE_SICK : 0;
       const risk = RAW_SICK * (raw + cooked * COOKED_SICK) * (warm ? RAW_WARM : 1) + stale;
       const turned = risk > 0 && p.sick === 0 && s.age(p) >= 1 && s.rAi.chance(risk);
       if (turned) {
@@ -1842,7 +1847,7 @@ export function runTask(s: Sim, p: Person) {
         for (const q of company) s.adjust(p, q, 0.6);
       }
       if (stew && potful > 0) ateStew(s, p, stew, potful >= want * 0.5);
-      p.thought = got < want * 0.5 ? 'There was hardly anything to eat.' : small ? 'A small share. The stores have to last till spring.' : stew && potful > 0 ? (stew.brew ? 'Ate the stew and drank the hot herbs: warm right through.' : 'Ate from the stew pot with everyone.') : 'Ate well.';
+      p.thought = got < want * 0.5 ? 'There was hardly anything to eat.' : small ? 'A small share. The stores have to last till spring.' : stew && potful > 0 ? (stew.brew ? 'Ate the stew and drank the hot herbs: warm right through.' : stew.oven ? `Ate the ${stew.dish} with everyone.` : stew.boiled ? 'Ate the stew with everyone.' : 'Ate from the stew pot with everyone.') : 'Ate well.';
       if (turned) p.thought = 'Something they ate has turned their stomach.';
       finish(s, p);
       return;
@@ -3061,6 +3066,8 @@ export function runTask(s: Sim, p: Person) {
       } else {
         const quality = s.qualityFor(p, key, charcoal);
         s.items.push({ id: s.newId(), kind: rc.makes, band: p.band, holder: -1, wear: 0, made: s.tick, maker: p.id, quality });
+        // (a cooking pot or a grilling stone is drawn at the hearth)
+        if (rc.makes === 'cookpot' || rc.makes === 'griddle') s.buildingsVersion++;
         s.book(`made.${rc.makes}`, 1);
         if (GOODS.includes(rc.makes)) {
           s.book(`goods.${QUALITY[quality]}`, 1);

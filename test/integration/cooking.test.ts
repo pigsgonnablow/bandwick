@@ -289,9 +289,42 @@ describe('the grilling stone', () => {
     expect(d.practice.store_grain).toBeGreaterThan(0);
     const s = band(2, ['garden', 'grain', 'griddle']);
     s.camp.stock.stone = 3;
+    // (once the band has the rest of what it wants)
+    for (let k = 0; k < 40; k++) {
+      const make = s.toolToMake();
+      if (!make || make === 'griddle') break;
+      s.items.push({ id: s.newId(), kind: make, band: s.camp.id, holder: -1, wear: 0, made: s.tick, maker: -1 });
+    }
     expect(s.toolToMake()).toBe('griddle');
     s.items.push({ id: s.newId(), kind: 'griddle', band: s.camp.id, holder: -1, wear: 0, made: s.tick, maker: -1 });
     expect(s.hearthLook(s.hearth())).toEqual({ look: 'hearthPotEmptyStone' });
+  });
+
+  it('is made last, so a band far from stone goes on making its other things', () => {
+    const s = band(2, ['garden', 'grain', 'griddle']);
+    s.camp.stock.stone = 0;
+    s.camp.stock.mud = 10;
+    s.items = s.items.filter((i) => i.kind !== 'cookpot');
+    expect(s.toolToMake()).toBe('cookpot');
+    s.quarryTiles = [];
+    s.items.push({ id: s.newId(), kind: 'cookpot', band: s.camp.id, holder: -1, wear: 0, made: s.tick, maker: -1 });
+    expect(s.toolToMake()).not.toBe('griddle');
+  });
+
+  it('wears once for a day of baking, however many eat from it', () => {
+    const s = band(2, ['garden', 'grain', 'griddle']);
+    const c = s.camp;
+    const stone = { id: s.newId(), kind: 'griddle' as const, band: c.id, holder: -1, wear: 0, made: s.tick, maker: -1 };
+    s.items.push(stone);
+    c.stock.grain = 50;
+    toHour(s, 10);
+    for (const p of s.members().filter((q) => s.age(q) >= 14).slice(0, 4)) {
+      p.food = 40;
+      p.task = setup(s, p, 'eat');
+      p.x = p.task!.gx; p.z = p.task!.gz;
+      for (let k = 0; k < 40 && p.task; k++) runTask(s, p);
+    }
+    expect(stone.wear).toBeCloseTo(1 / 300, 6);
   });
 
   it('bakes the grain and acorns eaten at the fire into flatbread, which fills more than roasting', () => {
@@ -374,8 +407,11 @@ describe('the earth oven', () => {
     c.stock.wood = 10;
     expect(s.cookMode()).toBe('oven');
     const cook = adult(s);
+    const version = s.buildingsVersion;
     const stew = s.startStew(c, cook, 'oven');
     expect(stew.oven).toBe(true);
+    // (the oven and the hearth are drawn anew)
+    expect(s.buildingsVersion).toBeGreaterThan(version);
     expect(stew.fill / stew.raw.meat!).toBeCloseTo(OVEN_GAIN, 5);
     expect(c.stock.wood).toBeCloseTo(10 - OVEN_WOOD, 5);
     expect(stew.dish).toBe(ovenDish('meat'));
