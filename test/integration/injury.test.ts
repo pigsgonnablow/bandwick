@@ -74,11 +74,11 @@ describe('accidents', () => {
   it('tells a death from a wound gone bad, a fall or a bite as such', () => {
     const s = sim(1);
     const [a, b, c] = s.members().filter((p) => s.age(p) >= 14);
-    s.kill(a, 'wound');
+    s.kill(a, 'wound gone bad');
     expect(s.events.at(-1)!.text).toContain('died of a wound gone bad');
     s.kill(b, 'fall');
     expect(s.events.at(-1)!.text).toContain('died in a fall');
-    s.kill(c, 'bite');
+    s.kill(c, 'adder bite');
     expect(s.events.at(-1)!.text).toContain('died of an adder bite');
   });
 });

@@ -1226,7 +1226,7 @@ export class Sim {
     if (r.chance(forLife)) {
       p[k] = -1;
       const how = k === 'lame' ? 'will walk with a limp for the rest of their life' : k === 'oneEye' ? 'has lost the sight of one eye' : 'will never have the full use of that hand again';
-      this.event('maimed', `${p.name} ${how}.`, [p.id], p.x, p.z, 2);
+      this.event('injury', `${p.name} ${how}.`, [p.id], p.x, p.z, 2);
       this.remember(p, 'maimed', -20, 2, -1, k === 'lame' ? 'Left lame for life.' : k === 'oneEye' ? 'Lost the sight of one eye.' : 'Left with a crippled hand.');
     } else {
       p[k] = Math.max(p[k] ?? 0, this.tick + Math.round(r.int(days[0], days[1]) * TICKS_PER_DAY));
@@ -1554,7 +1554,7 @@ export class Sim {
       starvation: 'starved', cold: 'froze to death', fever: 'died of fever', 'old age': 'died of old age',
       weakness: 'wasted away', childbirth: 'died giving birth', hunting: 'was killed on a hunt', infancy: 'died in infancy',
       accident: 'died in an accident', sickness: 'was taken by the sickness', drowning: 'drowned', wolves: 'was killed by wolves',
-      fall: 'died in a fall', wound: 'died of a wound gone bad', bite: 'died of an adder bite',
+      fall: 'died in a fall', 'wound gone bad': 'died of a wound gone bad', 'adder bite': 'died of an adder bite',
       bear: 'was killed by a bear', killed: `was killed by ${killer?.name ?? 'someone'}`,
     };
     const violent = cause === 'killed' || cause === 'wolves' || cause === 'bear' || cause === 'drowning';
@@ -2963,7 +2963,7 @@ export class Sim {
       const wounded = (p.wounded ?? 0) > this.tick;
       if (wounded) daily *= WOUND_RISK;
       if (r.next() < daily) {
-        this.kill(p, wounded ? 'wound' : age < 3 ? 'infancy' : age > 50 ? (r.chance(0.15) ? 'fall' : 'old age') : this.everydayDeath(p, worn));
+        this.kill(p, wounded ? 'wound gone bad' : age < 3 ? 'infancy' : age > 50 ? (r.chance(0.15) ? 'fall' : 'old age') : this.everydayDeath(p, worn));
         continue;
       }
       // healing: a bad leg, an eye or a hand that was mending has mended
@@ -3089,7 +3089,7 @@ export class Sim {
     const r = this.rLife;
     if (p.sick > 0 || worn) return 'fever';
     const x = r.next();
-    return x < 0.4 ? 'fever' : x < 0.65 ? 'fall' : x < 0.85 ? 'accident' : seasonOf(this.tick) === 1 ? 'bite' : 'fever';
+    return x < 0.4 ? 'fever' : x < 0.65 ? 'fall' : x < 0.85 ? 'accident' : seasonOf(this.tick) === 1 ? 'adder bite' : 'fever';
   }
 
   /** An accident that doesn't kill (or not at once): a fall, a cut, a burn, something in the eye. */
