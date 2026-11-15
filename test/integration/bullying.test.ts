@@ -69,4 +69,27 @@ describe('being mocked', () => {
     s.tick += 11;
     expect(s.spares(bully, victim)).toBe(false);
   });
+
+  it('only counts a tormentor who still lives in the same band', () => {
+    const s = sim(1);
+    const [bully, victim] = pair(s);
+    for (let i = 0; i < RELENTLESS; i++) s.mocked(bully, victim);
+    expect(s.tormentor(victim)).toBe(bully);
+    bully.band = -99;
+    expect(s.tormentor(victim)).toBeUndefined();
+  });
+
+  it('never sends the one they tormented into exile with the bully, even their own partner', () => {
+    const s = sim(1);
+    const bully = s.members().find((p) => p.partner >= 0 && s.age(p) >= 16)!;
+    const victim = s.byId.get(bully.partner)!;
+    for (const p of s.members()) p.traits = ['cautious'];
+    bully.traits = ['cruel'];
+    s.adjust(victim, bully, 100);
+    bully.shunned = s.tick - 2 * TICKS_PER_SEASON;
+    for (const x of s.members()) if (x !== victim) s.adjust(x, bully, -200);
+    for (let i = 0; i < PICKED_ON; i++) s.mocked(bully, victim);
+    expect(s.events.some((e) => e.kind === 'exile')).toBe(true);
+    expect(victim.band).not.toBe(bully.band);
+  });
 });

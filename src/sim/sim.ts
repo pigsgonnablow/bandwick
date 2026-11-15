@@ -3644,7 +3644,7 @@ export class Sim {
   tormentor(q: Person) {
     for (const [by] of q.mocked ?? []) {
       const p = this.byId.get(by);
-      if (p && p.alive && this.mockings(p, q) >= RELENTLESS) return p;
+      if (p && p.alive && p.band === q.band && this.mockings(p, q) >= RELENTLESS) return p;
     }
     return undefined;
   }
@@ -3816,8 +3816,9 @@ export class Sim {
       return;
     }
     const partner = this.byId.get(att.partner);
-    const loyal = partner && partner.alive && partner.band === att.band && this.opinion(partner, att) > 20;
-    const group = loyal ? this.household(att) : [att];
+    // (never the one they tormented, even if that was their own partner)
+    const loyal = partner && partner.alive && partner !== vic && partner.band === att.band && this.opinion(partner, att) > 20;
+    const group = (loyal ? this.household(att) : [att]).filter((x) => x !== vic);
     const site = this.chooseSite({ from: c, min: 14, max: 40, avoid: 14, reachFrom: this.tileOf(att) });
     if (site < 0) {
       if (why === 'bully') return;

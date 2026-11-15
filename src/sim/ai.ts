@@ -2075,6 +2075,8 @@ export function runTask(s: Sim, p: Person) {
         s.adjust(p, q, gain);
         s.adjust(q, p, gain - 1);
       }
+      // (driven out for it just now, they are already on their way: leave that task be)
+      if (p.task !== t) return;
       finish(s, p);
       return;
     }
