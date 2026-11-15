@@ -2064,11 +2064,12 @@ export function runTask(s: Sim, p: Person) {
       if (--t.timer > 0) return;
       p.belonging = clamp(p.belonging + 24 + (s.has(q, 'charismatic') ? 8 : 0));
       q.belonging = clamp(q.belonging + 12 + (s.has(p, 'charismatic') ? 6 : 0));
-      if (s.has(p, 'cruel') && r.chance(0.22)) {
+      if (s.has(p, 'cruel') && !s.spares(p, q) && r.chance(0.22)) {
         s.adjust(q, p, -9);
         s.adjust(p, q, -2);
         s.remember(q, 'insulted', -8, 0.6, p.id, `${p.name} mocked them.`);
         p.thought = `Mocked ${q.name}.`;
+        s.mocked(p, q);
       } else {
         const gain = 2 + r.int(0, 4) + (s.has(p, 'kind') ? 1 : 0);
         s.adjust(p, q, gain);

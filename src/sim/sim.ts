@@ -8,7 +8,7 @@ import {
 } from './types';
 const PROP_NAMES_LOCAL = PROP_NAMES.map((n) => n.split('_')[0]);
 import {
-  Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, isMonument, MONUMENT_MOVE, MONUMENT_SPLIT, Deer, Herd, Wolf, Pack, WOLF, Beast, Den, Pig, Stock, SimEvent, Task, TaskKind, Memory,
+  Item, ItemKind, ITEMS, ITEM_KINDS, TRAP_KINDS, RECIPES, RECIPE_KEYS, RecipeKey, SKILLS, CRAFT_TITLES, Person, Building, BuildKind, BUILD, FIBER_PER_CORD, specOf, labelOf, wallsFor, Walls, isMonument, MONUMENT_MOVE, MONUMENT_SPLIT, PICKED_ON, RELENTLESS, Deer, Herd, Wolf, Pack, WOLF, Beast, Den, Pig, Stock, SimEvent, Task, TaskKind, Memory,
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, FURS_PER_CLOAK, FURS_KEPT, BEAST, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
   BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HARPOON_HIT, HARPOON_CATCH, LINE_CATCH, LINE_AGE, NET_CREW, NET_HAND, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, REMAINS, ROT_FROM, BONES_FROM, remainsStage,
   QUALITY_WEAR, GOODS, GOODS_EACH, GOODS_OVER, WOOD_PLENTY, KILN_CRACK, HEARTH_CRACK, SEASONING, SEASONED_HEAT, CHARCOAL_KEPT, CHARCOAL_CRACK, CHARCOAL_FINE, SWIDDEN_SOIL, SWIDDEN_GRASS, CANOE_CATCH,
@@ -17,7 +17,7 @@ import {
   RUN_FISH, WEIR_PASS, WEIR_HOLDS, CROP, CROP_NAMES, newPlot, GROW_DAYS, PLOT_YIELD, SEED_PER_PLOT, GREENS_PER_DAY, GREENS_LOAD, LEAN_GARDEN, PLENTY_GARDEN, SOIL_REST, SOIL_FALLOW,
 } from './band';
 import {
-  TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, START_TICK, DAYS_PER_YEAR,
+  TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, TICKS_PER_SEASON, START_TICK, DAYS_PER_YEAR,
   isDark, temperature, berriesRipe, freshFrozen, rutting, snowLies, isWinter, seasonPos, seasonOf, ageYears, yearOf, dayOf, hourOf,
 } from './time';
 import { decide, runTask, abandon, sendHome, delivering, foodInHand, afloat, FAR_GRAVE } from './ai';
@@ -3008,9 +3008,10 @@ export class Sim {
         if (p === q) continue;
         const op = this.opinion(p, q);
         if (op < 20) this.adjust(p, q, 0.25);
-        if (this.has(p, 'cruel') && r.chance(0.01)) {
+        if (this.has(p, 'cruel') && r.chance(0.01) && p.band === q.band && !this.spares(p, q)) {
           this.adjust(q, p, -6);
           this.remember(q, 'insulted', -6, 0.5, p.id, `${p.name} was cruel to them.`);
+          if (q.alive && p.alive) this.mocked(p, q);
         }
       }
     // famine
@@ -3226,7 +3227,7 @@ export class Sim {
       for (const q of adults) if (q !== p) warmth += this.opinion(p, q);
       warmth /= Math.max(1, adults.length - 1);
       const sc = (this.has(p, 'ambitious') ? 2 : 0) + (this.has(p, 'wanderlust') ? 2.5 : 0) + (this.has(p, 'charismatic') ? 1 : 0) +
-        (this.has(p, 'brave') ? 0.5 : 0) - warmth / 20 + (age < 35 ? 0.5 : 0) + r.next() * 0.6;
+        (this.has(p, 'brave') ? 0.5 : 0) - warmth / 20 + (age < 35 ? 0.5 : 0) + (this.tormentor(p) ? 1.5 : 0) + r.next() * 0.6;
       if (sc > best) { best = sc; leader = p; }
     }
     if (!leader) return false;
@@ -3237,7 +3238,10 @@ export class Sim {
       if (group.length >= ms.length * 0.45) break;
       if (group.includes(q)) continue;
       const op = this.opinion(q, leader);
-      if (op > 30 || (this.has(q, 'wanderlust') && op > 0)) for (const h of this.household(q)) if (!group.includes(h)) group.push(h);
+      // (anyone being tormented by someone who is staying jumps at the chance to get away)
+      const bully = this.tormentor(q);
+      const escape = !!bully && !group.includes(bully) && op > 0;
+      if (op > 30 || escape || (this.has(q, 'wanderlust') && op > 0)) for (const h of this.household(q)) if (!group.includes(h)) group.push(h);
     }
     const grown = group.filter((p) => this.age(p) >= 16);
     const stayGrown = adults.length - grown.length;
@@ -3625,12 +3629,189 @@ export class Sim {
       }
   }
 
-  /** A killer the band can't forgive is driven out, with whoever stands by them. */
-  private exile(att: Person, vic: Person, c: Camp) {
+  // ------------------------------------------------------------------ bullying
+  /** Whether a mocker has been made to leave someone be, for now. */
+  spares(p: Person, q: Person) {
+    return !!q.spared?.some(([by, until]) => by === p.id && until > this.tick);
+  }
+  /** How many times one person has mocked another in the last year. */
+  mockings(p: Person, q: Person) {
+    let n = 0;
+    for (const [by, t] of q.mocked ?? []) if (by === p.id && t > this.tick - TICKS_PER_YEAR) n++;
+    return n;
+  }
+  /** Whoever has been tormenting them this past year (mocked them RELENTLESS times or more), if anyone. */
+  tormentor(q: Person) {
+    for (const [by] of q.mocked ?? []) {
+      const p = this.byId.get(by);
+      if (p && p.alive && this.mockings(p, q) >= RELENTLESS) return p;
+    }
+    return undefined;
+  }
+  private spare(p: Person, q: Person, days: number) {
+    q.spared = (q.spared ?? []).filter(([by, until]) => by !== p.id && until > this.tick);
+    q.spared.push([p.id, this.tick + days * TICKS_PER_DAY]);
+    // (a fresh start: the tally against them is wiped)
+    q.mocked = q.mocked?.filter(([by]) => by !== p.id);
+  }
+
+  /**
+   * Someone was just mocked by a cruel member of their band. Once in a while is just a cruel tongue; the same
+   * person again and again (PICKED_ON times in a year) and the band notices; RELENTLESS times and it comes to a head:
+   * the one picked on snaps, or someone who loves them steps in, or they give up and go; and a bully who keeps on
+   * after being told to stop has the band turn against them, and at last is driven out.
+   */
+  mocked(p: Person, q: Person) {
+    const r = this.rLife;
+    const yearAgo = this.tick - TICKS_PER_YEAR;
+    q.mocked = (q.mocked ?? []).filter(([, t]) => t > yearAgo);
+    q.mocked.push([p.id, this.tick]);
+    const n = this.mockings(p, q);
+    const c = this.campById(q.band);
+    if (n < PICKED_ON || !c || c.gone || p.band !== q.band) return;
+    const ms = this.members(c);
+    const prev = this.camp;
+    this.camp = c;
+    const relentless = n >= RELENTLESS;
+    if (relentless && !q.memories.some((m) => m.kind === 'tormented' && m.subject === p.id && m.tick > yearAgo)) {
+      // it wears them down: they keep to themselves and stop feeling part of the band
+      this.remember(q, 'tormented', -20, 1, p.id, `${p.name} would not leave them alone.`);
+      q.belonging = Math.max(0, q.belonging - 30);
+      q.thought = `Keeping out of ${p.name}'s way.`;
+    }
+    // a grown victim who has had enough turns on them (not the timid; the brave most of all)
+    if (relentless && this.age(q) >= 14 && q.health > 40 && !this.has(q, 'cautious') &&
+      r.chance(this.has(q, 'brave') ? 0.5 : 0.15)) this.snap(p, q);
+    // someone who loves them steps in
+    else if (!this.stepIn(p, q, ms, relentless ? 0.5 : 0.3)) {
+      const shunned = p.shunned !== undefined && p.shunned > this.tick - TICKS_PER_YEAR * 2;
+      const rebuked = p.rebuked !== undefined && p.rebuked > yearAgo;
+      // shunned, and picking on someone again already: the band drives them out
+      if (shunned && p.shunned! < this.tick - TICKS_PER_SEASON) this.driveOut(p, q, ms, c);
+      // told to stop, and kept on: the band turns its back on them
+      else if (relentless && rebuked && !shunned) this.shun(p, q, ms, c);
+      // no one helps, and they can bear it no longer: they leave for another band
+      else if (relentless && !rebuked && this.age(q) >= 16 && r.chance(0.3)) this.flee(p, q, c);
+    }
+    this.camp = prev;
+  }
+
+  /** The one picked on rounds on the bully at last: a scuffle, not a feud to the death. */
+  private snap(p: Person, q: Person) {
+    const r = this.rLife;
+    const grit = (x: Person) => x.health / 100 + (this.has(x, 'brave') ? 0.6 : 0) + (this.has(x, 'cruel') ? 0.3 : 0) +
+      Math.min(1, Math.max(0, this.age(x) - 12) / 10) * 0.6 + r.next() * 1.2;
+    const him = (x: Person) => (x.sex ? 'him' : 'her');
+    if (grit(q) >= grit(p)) {
+      this.spare(p, q, DAYS_PER_YEAR / 2);
+      this.adjust(p, q, 6);
+      p.health = Math.max(5, p.health - 8);
+      this.remember(q, 'stood_up', 12, 1.5, p.id, `Stood up to ${p.name} at last.`);
+      this.remember(p, 'shamed', -8, 0.5, q.id, `Was knocked down by ${q.name}.`);
+      q.thought = `Showed ${p.name}.`;
+      this.event('bully_snap', `${q.name} had taken all ${q.sex ? 'he' : 'she'} could of ${p.name}'s mockery and knocked ${him(p)} down. ${p.name} let ${him(q)} be after that.`,
+        [q.id, p.id], q.x, q.z, 3);
+    } else {
+      q.health = Math.max(5, q.health - 12);
+      this.adjust(q, p, -10);
+      this.remember(q, 'beaten', -14, 1, p.id, `Rounded on ${p.name} and came off worse.`);
+      this.event('bully_snap', `${q.name} rounded on ${p.name} after one jibe too many, and came off worse.`, [q.id, p.id], q.x, q.z, 2);
+    }
+  }
+
+  /** Someone who loves the one being picked on tells the bully to stop. A bully who cares what they think listens. */
+  private stepIn(p: Person, q: Person, ms: Person[], chance: number) {
+    const r = this.rLife;
+    let d: Person | null = null, best = 0;
+    for (const x of ms) {
+      if (x === p || x === q || this.age(x) < 14 || this.has(x, 'cruel') || this.has(x, 'cautious')) continue;
+      const close = x.id === q.partner || this.isKin(x, q);
+      const care = this.opinion(x, q) + (close ? 40 : 0);
+      if (care < 35 || this.opinion(x, q) <= this.opinion(x, p)) continue;
+      const sc = care + (this.has(x, 'brave') ? 20 : 0) + (this.has(x, 'kind') ? 10 : 0) + r.next() * 10;
+      if (sc > best) { best = sc; d = x; }
+    }
+    if (!d || !r.chance(chance)) return false;
+    p.rebuked = this.tick;
+    this.adjust(d, p, -8);
+    this.adjust(p, d, -3);
+    this.adjust(q, d, 10);
+    this.remember(q, 'defended', 8, 1, d.id, `${d.name} stood up for them against ${p.name}.`);
+    this.remember(d, 'defended', 3, 0.5, q.id, `Stood up for ${q.name} against ${p.name}.`);
+    d.thought = `Told ${p.name} to leave ${q.name} be.`;
+    // a bully listens to someone they like or are bound to, or who has the standing to make them
+    const heeds = this.opinion(p, d) > 30 || this.isKin(p, d) || p.partner === d.id || this.has(d, 'charismatic') ||
+      (this.has(d, 'brave') && r.chance(0.35));
+    if (heeds) this.spare(p, q, DAYS_PER_YEAR / 2);
+    this.event('bully_defend', `${d.name} told ${p.name} to stop picking on ${q.name}. ${heeds ? `${p.name} let ${q.sex ? 'him' : 'her'} be.` : `${p.name} only laughed.`}`,
+      [d.id, p.id, q.id], d.x, d.z, 2);
+    return true;
+  }
+
+  /** A bully told to stop who keeps on: the whole band turns against them. */
+  private shun(p: Person, q: Person, ms: Person[], c: Camp) {
+    p.shunned = this.tick;
+    for (const x of ms) {
+      if (x === p) continue;
+      const close = x.id === p.partner || this.isKin(x, p);
+      this.adjust(x, p, close ? -8 : this.has(x, 'kind') ? -35 : this.has(x, 'cruel') ? -5 : -25);
+    }
+    p.belonging = Math.max(0, p.belonging - 40);
+    this.remember(p, 'shunned', -20, 1, -1, `The band turned against them for tormenting ${q.name}.`);
+    this.spare(p, q, DAYS_PER_YEAR / 4);
+    p.thought = 'No one will look at them.';
+    this.event('bully_shun', `${p.name} would not stop tormenting ${q.name}, though told to. Now the people of ${c.name} turn their backs on ${p.sex ? 'him' : 'her'}.`,
+      [p.id, q.id], p.x, p.z, 3);
+  }
+
+  /** Shunned, and still at it: the band drives the bully out, if most of the grown-ups side with the one picked on. */
+  private driveOut(p: Person, q: Person, ms: Person[], c: Camp) {
+    let against = 0, n = 0;
+    for (const x of ms) {
+      if (x === p || x === q || this.age(x) < 16) continue;
+      n++;
+      if (x.id !== p.partner && !this.isKin(x, p) && this.opinion(x, q) >= this.opinion(x, p)) against++;
+    }
+    if (!n || against * 2 <= n) return;
+    this.exile(p, q, c, 'bully');
+  }
+
+  /** No one stops it, and they can bear it no longer: they go to live with a neighbouring band. */
+  private flee(p: Person, q: Person, from: Camp) {
+    // (not leaving young children behind, unless their partner is there to raise them)
+    const partner = this.byId.get(q.partner);
+    const loyal = partner && partner.alive && partner.band === q.band && partner !== p && this.opinion(partner, q) > 20;
+    const group = loyal ? this.household(q) : [q];
+    if (group.includes(p)) return;
+    if (!loyal && this.members(from).some((ch) => this.age(ch) < 14 && (ch.mother === q.id || ch.father === q.id || ch.carer === q.id))) return;
+    let to: Camp | null = null, near = 40;
+    for (const o of this.liveCamps()) {
+      if (o === from || !this.members(o).length) continue;
+      const dist = hyp(o.x - from.x, o.z - from.z);
+      if (dist < near) { near = dist; to = o; }
+    }
+    if (!to) return;
+    this.join(group, to);
+    for (const k of this.unknownTo(from, to)) {
+      if (to.learning?.some((l) => l.k === k)) continue;
+      (to.learning ??= []).push({ k, at: this.tick + TICKS_PER_DAY * DAYS_PER_YEAR / 4, by: q.id });
+    }
+    for (const m of this.members(to)) if (!group.includes(m)) { this.adjust(q, m, 10); this.adjust(m, q, 8); }
+    // the band they left thinks less of the one who drove them off
+    for (const x of this.members(from)) if (x !== p) this.adjust(x, p, this.isKin(x, q) ? -15 : -4);
+    this.remember(q, 'fled', -6, 2, p.id, `Left ${from.name} to get away from ${p.name}.`);
+    this.event('bully_flee', `${q.name} could bear ${p.name}'s mockery no longer and left ${from.name} for ${to.name}${group.length > 1 ? `, taking ${q.sex ? 'his' : 'her'} family` : ''}.`,
+      group.map((x) => x.id).concat(p.id), q.x, q.z, 3);
+    this.camp = from;
+  }
+
+  /** A killer the band can't forgive is driven out, with whoever stands by them (or a bully who would not stop). */
+  private exile(att: Person, vic: Person, c: Camp, why: 'killed' | 'bully' = 'killed') {
     const ms = this.members(c).filter((q) => q !== att);
     let regard = 0;
     for (const q of ms) regard += this.opinion(q, att);
-    if (ms.length && regard / ms.length > -15) {
+    // (a bully is only driven out once the band has had its say: see driveOut)
+    if (why === 'killed' && ms.length && regard / ms.length > -15) {
       this.event('death_quarrel', `${att.name} killed ${vic.name} in a quarrel. The band let it lie.`, [att.id, vic.id], att.x, att.z, 4);
       return;
     }
@@ -3639,6 +3820,7 @@ export class Sim {
     const group = loyal ? this.household(att) : [att];
     const site = this.chooseSite({ from: c, min: 14, max: 40, avoid: 14, reachFrom: this.tileOf(att) });
     if (site < 0) {
+      if (why === 'bully') return;
       this.event('death_quarrel', `${att.name} killed ${vic.name} in a quarrel. There was nowhere to send ${att.sex ? 'him' : 'her'}.`, [att.id, vic.id], att.x, att.z, 4);
       return;
     }
@@ -3659,7 +3841,7 @@ export class Sim {
       this.remember(partner, 'exiled', -10, 3, att.id, `Stayed behind when ${att.name} was driven out.`);
     }
     for (const p of group) this.remember(p, 'exiled', -30, 4, -1, p === att ? `Was driven out of ${c.name}.` : `Went into exile with ${att.name}.`);
-    this.event('exile', `${att.name} killed ${vic.name} in a quarrel and was driven out of ${c.name}${group.length > 1 ? `. ${group.length === 2 ? `${partner!.name} went too` : `${partner!.name} and the children went too`}` : ''}. They made a camp alone at ${nc.name}.`,
+    this.event('exile', `${att.name} ${why === 'bully' ? `would not stop tormenting ${vic.name}` : `killed ${vic.name} in a quarrel`} and was driven out of ${c.name}${group.length > 1 ? `. ${group.length === 2 ? `${partner!.name} went too` : `${partner!.name} and the children went too`}` : ''}. They made a camp alone at ${nc.name}.`,
       [att.id, vic.id, ...group.filter((p) => p !== att).map((p) => p.id)], att.x, att.z, 5);
     this.camp = c;
   }

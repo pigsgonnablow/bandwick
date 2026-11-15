@@ -1034,6 +1034,14 @@ export interface Person {
   dish?: string;
   /** when they last gave someone an ornament (absent: never); the one they wear is an item worn at the neck */
   gave?: number;
+  /** who has mocked them in the last year, and when ([mocker id, tick]; absent: no one) */
+  mocked?: [number, number][];
+  /** mockers who have been made to leave them be, and until when ([mocker id, until tick]) */
+  spared?: [number, number][];
+  /** when someone last stood up to them for tormenting someone (absent: never) */
+  rebuked?: number;
+  /** when their band last turned against them for tormenting someone (absent: never) */
+  shunned?: number;
 }
 
 export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe'] as const;
@@ -1103,6 +1111,10 @@ export const MONUMENTS: readonly BuildKind[] = ['barrow', 'stones'];
 export const isMonument = (kind: BuildKind) => kind === 'barrow' || kind === 'stones';
 /** How much each monument a band has raised holds it where it is: the chance it moves away, or splits, scaled. */
 export const MONUMENT_MOVE = 0.4;
+/** Mocked this many times in a year by the same person, someone is being picked on, and the band starts to notice. */
+export const PICKED_ON = 3;
+/** ...and this many times, it is torment: something has to give (see Sim.mocked). */
+export const RELENTLESS = 4;
 export const MONUMENT_SPLIT = 0.7;
 /** How far a monument's work can run ahead of the stone brought to it (in stones' worth of work). */
 export const MONUMENT_AHEAD = 1.5;
