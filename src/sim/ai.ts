@@ -3623,6 +3623,10 @@ function graveSpot(s: Sim) {
         if (s.buildings.some((b) => b.tile === i || (isMonument(b.kind) && Math.abs(b.x - x) <= 1 && Math.abs(b.z - z) <= 1))) continue;
         let graves = 0;
         for (let k = 0; k < s.propCount; k++) if (s.propAlive[k] && s.propTile[k] === i && s.propType[k] >= GRAVE && s.propType[k] < GRAVE + 2) graves++;
+        // (and a grave begun but not finished, or one someone is carrying a body to now, takes its place too)
+        for (const q of s.people) {
+          if (q.alive ? q.task?.kind === 'bury' && q.task.stage === 2 && q.task.goal === i : !q.buried && (q.grave ?? 0) > 0 && s.tileOf(q) === i) graves++;
+        }
         if (graves >= 2) continue;
         if (!s.grid.find(c.tile, i)) continue;
         return { x: x + 0.3 + graves * 0.42, z: z + 0.55 };

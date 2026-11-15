@@ -360,6 +360,25 @@ describe('burial in a famine', () => {
     expect(Math.hypot(p.x - (c.x + 3), p.z - (c.z + 3))).toBeLessThan(1);
     expect(p.grave).toBeUndefined();
   });
+
+  it('lays the next of its dead in a grave of their own, not in one begun for someone else', () => {
+    const { s, p } = famine();
+    // one carried to the burial ground and their grave begun
+    const a = s.members().find((o) => s.age(o) >= 20 && !s.heldBy(o))!;
+    Object.assign(a, { x: p.x, z: p.z, food: 80, warmth: 90, rest: 90, task: setup(s, a, 'bury'), path: null });
+    for (let i = 0; i < 400 && !((p.grave ?? 0) > 0.3); i++) runTask(s, a);
+    expect(p.grave).toBeGreaterThan(0.3);
+    // (and while they are away, another death: buried in full)
+    const d = s.members().find((o) => o !== a && s.age(o) >= 20)!;
+    Object.assign(d, { x: s.camp.x - 3, z: s.camp.z - 3, task: null, path: null });
+    s.kill(d, 'hunger');
+    const b = s.members().find((o) => o !== a && s.age(o) >= 20 && !s.heldBy(o))!;
+    Object.assign(b, { x: d.x, z: d.z, food: 80, warmth: 90, rest: 90, task: setup(s, b, 'bury'), path: null });
+    expect(b.task?.ref).toBe(d.id);
+    for (let i = 0; i < 400 && !d.buried; i++) runTask(s, b);
+    expect(d.buried).toBe(true);
+    expect(Math.hypot(d.x - p.x, d.z - p.z)).toBeGreaterThan(0.3);
+  });
 });
 
 describe('the unburied dead', () => {
