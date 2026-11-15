@@ -107,14 +107,20 @@ describe('buildings', () => {
       expect(BUILD[kind].shelter).toBeGreaterThan(0);
     }
     expect(BUILD.hut.shelter).toBeGreaterThan(BUILD.leanto.shelter);
-    const hut = wallsFor('hut').map((walls) => specOf({ kind: 'hut', walls }));
-    expect(wallsFor('hut')).toEqual(['wood', 'daub', 'stone']);
+    expect(wallsFor('hut')).toEqual(['wood', 'daub', 'stone', 'plank']);
+    // (mud and stone: warmer for more work; split planks are the woodcutter's way to a better wall for less)
+    const heavy = ['wood', 'daub', 'stone'] as const;
+    const hut = heavy.map((walls) => specOf({ kind: 'hut', walls }));
     for (let i = 1; i < hut.length; i++) {
       expect(hut[i].shelter).toBeGreaterThan(hut[i - 1].shelter);
       expect(hut[i].work).toBeGreaterThan(hut[i - 1].work);
     }
-    const store = wallsFor('storehouse').map((walls) => specOf({ kind: 'storehouse', walls }));
+    const store = heavy.map((walls) => specOf({ kind: 'storehouse', walls }));
     for (let i = 1; i < store.length; i++) expect(store[i].keep).toBeLessThan(store[i - 1].keep);
+    const plank = specOf({ kind: 'hut', walls: 'plank' });
+    expect(plank.shelter).toBeGreaterThan(hut[0].shelter);
+    expect(plank.work).toBeLessThan(hut[0].work);
+    expect(specOf({ kind: 'storehouse', walls: 'plank' }).keep).toBeLessThan(store[0].keep);
   });
 
   it('need nothing discovered for what a band starts with', () => {

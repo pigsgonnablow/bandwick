@@ -114,6 +114,22 @@ come of them) and the ash is dug in. The ground starts richer than fresh, 30% ri
 (15% where there was only scrub), and tires with each harvest as any plot does. Until its first sowing the
 plot is drawn black with ash, charred stumps still standing in it.
 
+**Wedges and split timber.** A master woodcutter who has done some building (woodcutting 15, building 8), raising
+a hut or a store framed in round poles, hauling a big oak home a log at a time, or felling far out, may think of
+splitting oak along its grain with wedges. The band makes a set of fire-hardened oak wedges and a maul (3 wood) and
+from then on can raise huts and storehouses in split planks: a hut takes 9 wood and 120 work instead of 14 and 150
+and keeps out 84% of the cold instead of 78%; a store takes 6 wood instead of 10 and lets food spoil half as fast
+instead of 60%. Planks are weighed against the other walls with everything else, and the wedges wear a little with
+each building split out.
+
+**Dugout canoe.** A woodcutter who fishes (woodcutting 14, fishing 10), fishing a bank fished thin with open water
+beyond it, or the run going by in the middle of the river, may think of hollowing a trunk to ride. The band then
+burns and scrapes out a great pine (10 wood, 160 work) and draws it up on a bank near camp with at least 6 tiles of
+open water in reach: lake, wide river or the shallows along the coast, with no bank beside them. One grown fisher at
+a time runs it down to the water, paddles out to the richest open water within 9 tiles, fishes sitting in it (with a
+hook and line if the band has one), and comes home with 40% more than from the bank, from fish nobody else can get
+at. It stays drawn up while the lakes are frozen. A fisher out in it is never called back until it is on the bank.
+
 **Charcoal.** Once a band has a kiln, a master woodcutter who has some pottery (woodcutting 15, pottery 6)
 firing in it may think of charcoal. The band digs a charcoal clamp near the kiln (2 wood and 4 mud): a round
 bed banked with earth. While the band is not short of wood, a woodcutter stacks 8 wood in it round a stake,
