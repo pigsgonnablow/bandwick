@@ -58,6 +58,7 @@ export type Practice =
   | 'piglet' // a boar brought down on the hunt (a striped piglet counts most), or a garden plot rooted up by the boar (each gardener)
   | 'laid' // one of the band's dead laid in the burial ground by camp (each adult there to see it)
   | 'raise' // a spell of work on a monument
+  | 'stew' // a stew cooked for the band in the pot at the fire (each cook)
 
 /**
  * What someone has to be before they can have an idea. Only skill levels for now; a new kind of
@@ -268,6 +269,54 @@ export const DISCOVERIES: Discovery[] = [
     practice: { evening_fire: 1 }, odds: 200,
     found: 'dropped meat in the embers by mistake, and found it tender and filling: from then on the band roasted its food',
     taught: 'roast their food in the embers', memory: 'Roasted the first meal in the embers.',
+  },
+  {
+    // (someone who knows hides, filling a hide bag with water by the fire on the evening of a kill, sees a stone
+    // from the hearth roll into it and the water hiss and steam, and thinks of boiling the meat that way)
+    key: 'boiling', label: 'Stone boiling', needs: ['cooking', 'preserving'], requires: [skill(SK.forage, ABLE), skill(SK.hide, 6)],
+    practice: { carcass: 1, evening_fire: 0.02 }, odds: 14,
+    found: 'slung a hide on stakes by the fire, filled it with water and meat and dropped stones in from the fire one after another till it boiled: that evening the whole band ate a stew from it',
+    taught: 'boil a stew in a hide with hot stones from the fire', memory: 'Boiled the first stew with hot stones.',
+  },
+  {
+    // (someone bringing in the grain who knows how to shape a stone, roasting a handful of it on a flat stone
+    // by the fire, thinks of grinding it and baking it as a cake)
+    key: 'griddle', label: 'Grilling stone', needs: ['cooking', 'grain'], requires: [skill(SK.tool, 8), skill(SK.garden, 6)],
+    practice: { store_grain: 1 }, odds: 15,
+    found: 'ground a handful of grain, wetted it and baked it flat on a hot stone by the fire: the flatbread filled far more than the raw grain, and from then on a grilling stone stood in the hearth',
+    taught: 'bake flatbread and acorn cakes on a hot stone', memory: 'Baked the first flatbread on a hot stone.',
+  },
+  {
+    // (a builder who hunts, digging a pit by the fire on the evening of a big kill, with stones from the hearth
+    // still hot in it, thinks of burying the meat in with them)
+    key: 'oven', label: 'Earth oven', needs: ['cooking', 'digstick'], requires: [skill(SK.build, 9), skill(SK.hunt, 9)],
+    practice: { carcass: 1, dig_stick: 0.2 }, odds: 25,
+    found: 'dug a pit by the fire, heated stones in it, laid in a whole haunch wrapped in leaves and covered it with earth: by evening it was tender right through, and from then on the band baked its big kills and its feasts in the ground',
+    taught: 'bake their kills and their feasts in an earth oven', memory: 'Baked the first meal in an earth oven.',
+  },
+  {
+    // (a potter firing a new pot in the embers of the hearth, with roots roasting beside it, sees the water left
+    // in the bottom of it boil, and thinks of setting a pot of water in the fire with the meal in it)
+    key: 'stew', label: 'Stew pot', needs: ['cooking', 'pottery'], requires: [skill(SK.pot, 7), skill(SK.forage, ABLE)],
+    practice: { fire_pot: 1, fire_kiln: 0.5 }, odds: 16,
+    found: 'set a pot of water in the embers with meat and roots in it, and that evening the whole band ate a stew from it: from then on someone kept a pot simmering at the fire for everyone',
+    taught: 'cook a stew for the band in a pot at the fire', memory: 'Cooked the first stew for the band.',
+  },
+  {
+    // (the band's cook, stirring the pot beside the hunters cracking marrow from the bones of a kill, thinks of
+    // throwing the cracked bones in to simmer)
+    key: 'broth', label: 'Bone broth', needs: ['stew'], requires: [skill(SK.cook, ABLE), skill(SK.hunt, 6)],
+    practice: { stew: 1, carcass: 0.5 }, odds: 20,
+    found: 'threw the cracked bones from a kill into the stew pot and let them simmer the day through: the broth was rich and filling, and from then on no bone was thrown away',
+    taught: 'boil the bones from the kills into broth', memory: 'Simmered the first bone broth.',
+  },
+  {
+    // (someone who knows the healing plants, sitting with the sick or watching the stew, thinks of steeping the
+    // herbs in the pot and giving them hot)
+    key: 'brews', label: 'Herbal brews', needs: ['stew', 'herbs'], requires: [skill(SK.cook, 9), skill(SK.forage, 12)],
+    practice: { sickbed: 1, stew: 0.25 }, odds: 12,
+    found: 'steeped the healing herbs in the cooking pot and gave the brew hot to someone with a fever: it broke sooner, and on cold nights the whole band drank it to warm themselves',
+    taught: 'steep herbs in the pot for the sick and the cold', memory: 'Steeped the first herb brew.',
   },
   {
     // (someone gathering fallen branches under the oaks, who knows which plants are bitter and how to

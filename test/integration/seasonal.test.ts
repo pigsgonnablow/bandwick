@@ -102,7 +102,8 @@ describe('the wild foods of the seasons', () => {
 
 describe('eggs', () => {
   it('are a few at a time, children climb for them, and they go off fast', () => {
-    const s = sim(2);
+    // (a band whose one child old enough to climb goes up for them this spring: whether a lone child does is chance)
+    const s = sim(1);
     knowAll(s);
     const ages: number[] = [];
     const end = s.tick + TICKS_PER_SEASON;

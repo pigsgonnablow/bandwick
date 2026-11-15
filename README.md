@@ -294,6 +294,44 @@ kiln: each holds 20 of the herbs, grain or acorns (those first) and keeps them g
 The band keeps a jar for every 20 of them it has put by, and one over, up to ten, standing in two files
 beside the stockpile.
 
+**The stew pot.** A good potter who forages well (pottery 7, foraging 10), firing pots, may think of setting a
+pot right in the fire and cooking in it. The band makes a cooking pot (2 mud and 1 wood; two once the band is
+24 strong), and each afternoon its best cook takes greens, roots, grain, nuts, eggs, fish or meat from the
+stores and stirs them over the hearth until the stew is done. A stew goes further than the same food eaten
+cold, and further again in a skilled cook's hands; the band comes to the fire to eat it together in the evening
+and the next morning, and what is still in the pot at noon goes off. Cooking is its own skill: the band's
+best cook is known by name ("Ada, the cook"), eating together brings the band closer and wins the cook regard,
+and now and then someone remembers a dish as the best meal they ever had. The hearth is drawn with the pot
+on its stones, steaming while a stew is in, and people carry their bowls away from it.
+
+**Bone broth and brews.** A cook who hunts (cooking 10, hunting 6), cooking or cutting up a carcass, may think
+of boiling the bones: the bones from the kills go into the pot, which then fills more people. A cook who knows
+herbs (cooking 9, foraging 12), at a sickbed or at the stew, may think of brewing them: the band gathers more
+herbs, a nurse steeps a hot brew in the pot for the sick, which brings a fever down faster and makes it less
+deadly, and on cold nights herbs go into the evening pot so those who eat it feel the cold less until morning.
+
+**Stone boiling.** Before it has pots, a band that knows hides (foraging 10, hidework 6) may think of stone
+boiling, on the evening of a kill: the evening stew is boiled in a hide slung on three stakes by the fire, the cook
+dropping in stones heated in the fire one after another. It takes longer than a pot and fills less (20% more than
+raw, a little more from a good cook), with no broth or brews, and once the band has a cooking pot it uses that.
+
+**Grilling stone.** A toolmaker who gardens (toolmaking 8, gardening 6), bringing in the grain, may think of baking
+it: the band grinds a flat river stone smooth (1 stone) and props it over the embers. Grain and acorns eaten at the
+lit fire are then baked on it into flatbread and acorn cakes, which fill 55% more than raw, where roasting gives
+25%. The stone lasts for years.
+
+**Earth oven.** A builder who hunts (building 9, hunting 9), back with a kill, may think of an earth oven, and the
+band digs one a little way from the fire (2 wood and 3 mud): a pit lined with stones and banked with earth. When the
+stores hold more fresh meat and fish than will keep (4 meals a head), the cook fills it in the early afternoon
+instead of putting a stew on: a fire is burned down in it (2 wood), the meat, fish and roots are laid in wrapped in
+leaves and covered with earth, and by evening they are baked through, filling 50% more than raw. The band eats it
+together at the fire like the stew, and feels closer still for it. On the day of the midwinter feast the feast is
+baked in the oven, and eaten first. While it bakes the oven is drawn as a low mound of earth with smoke seeping from it.
+
+**Bad food.** Meat, fish and eggs eaten raw can turn the stomach: about 1 meal in 100, two and a half times that in
+the warm months, and roasted or stewed hardly ever. A stew left in the pot overnight in the warm can turn too.
+Either way it is a couple of days' sickness, nursed with herbs like a fever.
+
 **Penned pigs.** A hunter with a garden at home who brings down a boar (a striped piglet most of all), or
 a gardener who finds a plot rooted up by the boar in the night, may think of keeping one: penned pigs, a
 discovery once the band knows its gardens and the boar (hunting 10, gardening 8). The band builds a pen by

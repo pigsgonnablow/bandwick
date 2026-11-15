@@ -1,0 +1,509 @@
+// Cooking in a pot: the band's cook puts a stew on at the fire each evening and everyone eats from it together;
+// bone broth from the cracked bones of the kills; and herb brews for fevers and for cold nights.
+import { describe, it, expect } from 'vitest';
+import { SK, CARRY, SKILLS, CRAFT_TITLES, GRIDDLE_GAIN, COOK_GAIN, BOIL_GAIN, OVEN_GAIN, OVEN_TICKS, OVEN_WOOD, FEAST_MEAL, STEW_GAIN, STEW_MASTER, STEW_BERRIES, BROTH_FILL, BROTH_KEEP, BREW_HERBS, BREW_WARM, BREW_KEEP, HERBS_WANT, HERBS_BREW} from '../../src/sim/band';
+import { DISCOVERY, ABLE } from '../../src/sim/know';
+import { TICKS_PER_DAY, hourOf, dayOf } from '../../src/sim/time';
+import { runTask, setup } from '../../src/sim/ai';
+import { Sim, dishOf, aDish, ovenDish } from '../../src/sim/sim';
+import { sim, runYears } from '../helpers';
+
+const COOKING = ['pottery', 'cooking', 'herbs', 'stew'];
+/** A band a year on that knows the stew pot (and whatever else is asked), with a cooking pot by the fire. */
+function band(seed = 2, knows: string[] = []) {
+  const s = runYears(sim(seed), 1);
+  const c = s.camp;
+  for (const k of [...COOKING, ...knows]) if (!c.knows.includes(k)) c.knows.push(k);
+  s.items.push({ id: s.newId(), kind: 'cookpot', band: c.id, holder: -1, wear: 0, made: s.tick, maker: -1 });
+  for (const k of ['berries', 'greens', 'mushrooms', 'eggs', 'fish', 'meat', 'roots', 'grain', 'nuts', 'preserved'] as const) c.stock[k] = 0;
+  s.hearth().fuel = 10;
+  return s;
+}
+const adult = (s: Sim) => s.members().find((q) => s.age(q) >= 18 && s.age(q) <= 50 && q.sick === 0)!;
+const stewHour = (s: Sim) => (s as unknown as { stewHour(c: unknown): void }).stewHour(s.camp);
+/** Step to the next time of day at this hour. */
+function toHour(s: Sim, h: number) {
+  do s.step(); while (Math.abs(hourOf(s.tick) - h) > 0.01);
+}
+
+describe('the discoveries', () => {
+  it('thinks of the stew pot firing a pot by the fire, once the band roasts its food and knows pottery', () => {
+    const d = DISCOVERY.get('stew')!;
+    expect(d.needs).toEqual(['cooking', 'pottery']);
+    expect(d.practice.fire_pot).toBeGreaterThan(0);
+    expect(d.requires).toEqual([{ kind: 'skill', skill: SK.pot, level: 7 }, { kind: 'skill', skill: SK.forage, level: ABLE }]);
+  });
+  it('thinks of broth and brews at the stew pot, the cook who is good at it', () => {
+    const broth = DISCOVERY.get('broth')!, brews = DISCOVERY.get('brews')!;
+    expect(broth.needs).toEqual(['stew']);
+    expect(brews.needs).toEqual(['stew', 'herbs']);
+    expect(broth.practice.stew).toBeGreaterThan(0);
+    expect(brews.practice.sickbed).toBeGreaterThan(0);
+    for (const d of [broth, brews]) expect(d.requires.some((r) => r.kind === 'skill' && r.skill === SK.cook)).toBe(true);
+  });
+});
+
+describe('the cook', () => {
+  it('is a skill shown once the band knows the stew pot, and the best at it is known as the cook', () => {
+    expect(SKILLS[SK.cook]).toBe('cooking');
+    expect(CRAFT_TITLES[SK.cook]).toBe('cook');
+    const s = runYears(sim(2), 1);
+    expect(s.shownSkills()).not.toContain(SK.cook);
+    s.camp.knows.push('pottery', 'stew');
+    expect(s.shownSkills()).toContain(SK.cook);
+    const ms = s.members().filter((q) => s.age(q) >= 16);
+    for (const q of ms) { q.skills[SK.cook] = 5; for (let k = 0; k < SK.cook; k++) q.skills[k] = Math.min(q.skills[k], 4); delete q.known; }
+    ms[0].skills[SK.cook] = 14;
+    s.plan();
+    expect(ms[0].known).toBe(SK.cook);
+    expect(s.titled(ms[0])).toBe(`${ms[0].name}, the cook`);
+  });
+
+  it('comes into the world knowing something of cooking from what they know of food', () => {
+    const s = sim(3);
+    for (const p of s.members()) expect(p.skills[SK.cook]).toBeCloseTo(p.skills[SK.forage] * 0.6, 5);
+  });
+
+  it('puts the stew on in the late afternoon, takes it to the pot and stirs it till it is ready', () => {
+    const s = band();
+    const c = s.camp;
+    c.stock.fish = 30;
+    // (just before anyone would think of it)
+    toHour(s, 14);
+    const p = adult(s);
+    p.x = c.x; p.z = c.z;
+    expect(s.stewWanted()).toBe(true);
+    p.task = setup(s, p, 'cook');
+    for (let k = 0; k < 400 && p.task?.kind === 'cook'; k++) { runTask(s, p); s.tick++; }
+    expect(c.stew).toBeDefined();
+    expect(c.stew!.ready).toBeGreaterThan(0);
+    expect(c.stew!.cook).toBe(p.id);
+    expect(c.stew!.dish).toBe('fish stew');
+    expect(c.stewed).toBe(s.evening());
+    expect(s.stewWanted()).toBe(false);
+    // (and the pot is a stew nearer cracking)
+    expect(s.cookpotOf()!.wear).toBeGreaterThan(0);
+  });
+
+  it('feeds the band day after day in a band left to itself', () => {
+    const s = band(3);
+    const c = s.camp;
+    c.stock.fish = 40; c.stock.roots = 40; c.stock.meat = 20;
+    let stews = 0, seen: unknown;
+    const cooks = new Set<number>();
+    const start = s.tick;
+    while (s.tick < start + 8 * TICKS_PER_DAY) {
+      s.step();
+      if (c.stew && c.stew !== seen && c.stew.ready >= 0) { seen = c.stew; stews++; cooks.add(c.stew.cook); }
+    }
+    expect(stews).toBeGreaterThanOrEqual(6);
+    expect(s.stores().now.eaten).toBeGreaterThan(0);
+  });
+});
+
+describe('the stew', () => {
+  it('takes the foods that go off fastest first, enough for the evening and the morning, and fills more than raw', () => {
+    const s = band();
+    const c = s.camp;
+    c.stock.greens = 2; c.stock.fish = 4; c.stock.meat = 50; c.stock.nuts = 50;
+    const p = adult(s);
+    p.skills[SK.cook] = 0;
+    const stew = s.startStew(c, p);
+    expect(stew.raw.greens).toBe(2);
+    expect(stew.raw.fish).toBe(4);
+    expect(stew.raw.meat).toBeGreaterThan(0);
+    expect(stew.raw.nuts).toBeUndefined();
+    expect(c.stock.greens).toBe(0);
+    const raw = Object.values(stew.raw).reduce((a, b) => a + b!, 0);
+    expect(stew.fill).toBeGreaterThan(raw * 1.25);
+    expect(stew.fill).toBeLessThan(raw * STEW_GAIN + 1e-6);
+  });
+
+  it('fills more from a master cook, and puts berries in only for sweetness', () => {
+    expect(new Sim(sim(2).world).stewGain('meat', 20)).toBeCloseTo(STEW_GAIN + STEW_MASTER);
+    const s = band();
+    const c = s.camp;
+    c.stock.berries = 100;
+    const stew = s.startStew(c, adult(s));
+    // (a pot of nothing but berries is a small one: they make up no more than a share of what the band wants)
+    expect(stew.raw.berries).toBeGreaterThan(0);
+    expect(c.stock.berries).toBeGreaterThan(100 * (1 - STEW_BERRIES));
+  });
+
+  it('is called by what most of it is', () => {
+    expect(dishOf('fish', { fish: 3 }, false)).toBe('fish stew');
+    expect(dishOf('nuts', { nuts: 3 }, false)).toBe('acorn porridge');
+    expect(dishOf('meat', { meat: 3, roots: 1 }, true)).toBe('stew of meat and roots in bone broth');
+    expect(aDish('fish stew')).toBe('a fish stew');
+    expect(aDish('egg stew')).toBe('an egg stew');
+    expect(aDish('acorn porridge')).toBe('an acorn porridge');
+  });
+
+  it('is done by the next noon even if its cook never finished it, so the pot is free again', () => {
+    const s = band();
+    const c = s.camp;
+    c.stock.fish = 30;
+    toHour(s, 16);
+    const cook = adult(s);
+    s.startStew(c, cook);
+    // (still marked as cooking, but never coming back to it)
+    cook.task = setup(s, cook, 'cook');
+    expect(cook.task?.kind).toBe('cook');
+    s.tick += 4 * 10;
+    stewHour(s);
+    expect(c.stew!.ready).toBe(-1);
+    while (s.evening() === c.stew!.evening) s.tick++;
+    stewHour(s);
+    expect(c.stew).toBeUndefined();
+    // and the band can cook again this evening
+    expect(s.stewWanted(c)).toBe(true);
+  });
+
+  it('is eaten from the pot with everyone, and what is left by the next noon goes to waste', () => {
+    const s = band();
+    const c = s.camp;
+    c.stock.fish = 30;
+    toHour(s, 16);
+    const cook = adult(s);
+    s.startStew(c, cook);
+    s.stewDone(c);
+    const p = s.members().find((q) => q !== cook && s.age(q) >= 14)!;
+    p.food = 40;
+    p.x = c.x + 1; p.z = c.z;
+    p.task = setup(s, p, 'eat');
+    p.x = p.task!.gx; p.z = p.task!.gz;
+    const before = c.stew!.fill, food = p.food;
+    runTask(s, p);
+    expect(p.carry).toBe(CARRY.Bowl);
+    for (let k = 0; k < 40 && p.task; k++) runTask(s, p);
+    expect(p.carry).toBe(CARRY.None);
+    expect(c.stew!.fill).toBeLessThan(before);
+    expect(p.food).toBeGreaterThan(food);
+    // the next noon
+    const spoiled = s.stores().now.spoiled;
+    while (s.evening() === c.stew!.evening) s.tick++;
+    stewHour(s);
+    expect(c.stew).toBeUndefined();
+    expect(s.stores().now.spoiled).toBeGreaterThan(spoiled);
+  });
+});
+
+describe('bone broth', () => {
+  it('boils the bones from the kills into the stew, leaving a few for the tools', () => {
+    const s = band(2, ['broth', 'needles']);
+    const c = s.camp;
+    c.stock.fish = 30;
+    c.stock.bones = 6;
+    const stew = s.startStew(c, adult(s));
+    expect(stew.bones).toBeGreaterThan(0);
+    expect(c.stock.bones).toBeGreaterThanOrEqual(BROTH_KEEP);
+    expect(stew.dish).toContain('bone broth');
+    // (the bones' broth is food from nothing)
+    const raw = Object.values(stew.raw).reduce((a, b) => a + b!, 0);
+    expect(stew.fill).toBeGreaterThan(raw * STEW_GAIN + stew.bones! * BROTH_FILL - 1e-6);
+  });
+});
+
+describe('herbal brews', () => {
+  it('keeps more herbs once the band brews', () => {
+    const s = band();
+    expect(s.herbsWanted()).toBe(HERBS_WANT);
+    s.camp.knows.push('brews');
+    expect(s.herbsWanted()).toBe(HERBS_BREW);
+  });
+
+  it('steeps hot herbs with the stew on a cold evening, and warms whoever eats', () => {
+    const s = band(2, ['brews']);
+    const c = s.camp;
+    c.stock.fish = 30;
+    c.stock.herbs = 10;
+    const cook = adult(s);
+    s.tempAt = () => -5;
+    const stew = s.startStew(c, cook);
+    expect(stew.brew).toBe(true);
+    expect(c.stock.herbs).toBeCloseTo(10 - BREW_HERBS);
+    s.stewDone(c);
+    const p = s.members().find((q) => q !== cook && s.age(q) >= 14)!;
+    p.warmth = 30;
+    p.food = 40;
+    p.x = c.x + 1; p.z = c.z;
+    p.task = setup(s, p, 'eat');
+    for (let k = 0; k < 40 && p.task; k++) runTask(s, p);
+    expect(p.warmth).toBeGreaterThanOrEqual(30 + BREW_WARM - 0.01);
+    expect(p.warmed).toBeGreaterThan(s.tick);
+    expect(BREW_KEEP).toBeLessThan(1);
+  });
+
+  it('has no brew on a warm evening', () => {
+    const s = band(2, ['brews']);
+    s.camp.stock.fish = 30;
+    s.camp.stock.herbs = 10;
+    s.tempAt = () => 18;
+    expect(s.startStew(s.camp, adult(s)).brew).toBeUndefined();
+  });
+
+  it('nurses a fever with a hot brew steeped in the pot, which breaks it sooner', () => {
+    const s = band(2, ['brews']);
+    const c = s.camp;
+    c.stock.herbs = 5;
+    const sick = s.members().find((q) => s.age(q) >= 14)!;
+    sick.sick = 6;
+    sick.x = c.x + 2; sick.z = c.z + 1;
+    sick.task = null;
+    const nurse = s.members().find((q) => q !== sick && s.age(q) >= 18 && q.sick === 0)!;
+    nurse.x = c.x; nurse.z = c.z;
+    nurse.task = setup(s, nurse, 'nurse');
+    expect(nurse.task!.brew).toBe(true);
+    for (let k = 0; k < 400 && nurse.task?.kind === 'nurse'; k++) { runTask(s, nurse); sick.nextThink = s.tick + 100; }
+    expect(sick.brewed).toBeGreaterThan(s.tick);
+    expect(nurse.carry).toBe(CARRY.None);
+  });
+});
+
+describe('the cooking pot', () => {
+  it('is made by the potters once the band knows the stew pot, and stands at the hearth', () => {
+    const s = band();
+    s.items = s.items.filter((i) => i.kind !== 'cookpot');
+    s.camp.stock.mud = 10;
+    expect(s.toolToMake()).toBe('cookpot');
+    expect(s.hearthLook(s.hearth())).toEqual({});
+    s.items.push({ id: s.newId(), kind: 'cookpot', band: s.camp.id, holder: -1, wear: 0, made: s.tick, maker: -1 });
+    expect(s.hearthLook(s.hearth())).toEqual({ look: 'hearthPotEmpty' });
+    s.camp.stock.fish = 30;
+    s.startStew(s.camp, adult(s));
+    expect(s.hearthLook(s.hearth())).toEqual({ look: 'hearthPot' });
+    // the cook squats by the pot, just outside the stones, wherever the hearth faces
+    for (let r = 0; r < 4; r++) {
+      s.hearth().rot = r;
+      const at = s.potSpot();
+      expect(Math.hypot(at.x - s.camp.x, at.z - s.camp.z)).toBeCloseTo(Math.hypot(0.12, 0.13), 5);
+      expect(Math.hypot(at.sx - s.camp.x, at.sz - s.camp.z)).toBeGreaterThan(0.4);
+    }
+  });
+});
+
+describe('the grilling stone', () => {
+  it('is thought of bringing in the grain, and ground by a toolmaker for the hearth', () => {
+    const d = DISCOVERY.get('griddle')!;
+    expect(d.needs).toEqual(['cooking', 'grain']);
+    expect(d.practice.store_grain).toBeGreaterThan(0);
+    const s = band(2, ['garden', 'grain', 'griddle']);
+    s.camp.stock.stone = 3;
+    // (once the band has the rest of what it wants)
+    for (let k = 0; k < 40; k++) {
+      const make = s.toolToMake();
+      if (!make || make === 'griddle') break;
+      s.items.push({ id: s.newId(), kind: make, band: s.camp.id, holder: -1, wear: 0, made: s.tick, maker: -1 });
+    }
+    expect(s.toolToMake()).toBe('griddle');
+    s.items.push({ id: s.newId(), kind: 'griddle', band: s.camp.id, holder: -1, wear: 0, made: s.tick, maker: -1 });
+    expect(s.hearthLook(s.hearth())).toEqual({ look: 'hearthPotEmptyStone' });
+  });
+
+  it('is made last, so a band far from stone goes on making its other things', () => {
+    const s = band(2, ['garden', 'grain', 'griddle']);
+    s.camp.stock.stone = 0;
+    s.camp.stock.mud = 10;
+    s.items = s.items.filter((i) => i.kind !== 'cookpot');
+    expect(s.toolToMake()).toBe('cookpot');
+    s.quarryTiles = [];
+    s.items.push({ id: s.newId(), kind: 'cookpot', band: s.camp.id, holder: -1, wear: 0, made: s.tick, maker: -1 });
+    expect(s.toolToMake()).not.toBe('griddle');
+  });
+
+  it('wears once for a day of baking, however many eat from it', () => {
+    const s = band(2, ['garden', 'grain', 'griddle']);
+    const c = s.camp;
+    const stone = { id: s.newId(), kind: 'griddle' as const, band: c.id, holder: -1, wear: 0, made: s.tick, maker: -1 };
+    s.items.push(stone);
+    c.stock.grain = 50;
+    toHour(s, 10);
+    for (const p of s.members().filter((q) => s.age(q) >= 14).slice(0, 4)) {
+      p.food = 40;
+      p.task = setup(s, p, 'eat');
+      p.x = p.task!.gx; p.z = p.task!.gz;
+      for (let k = 0; k < 40 && p.task; k++) runTask(s, p);
+    }
+    expect(stone.wear).toBeCloseTo(1 / 300, 6);
+  });
+
+  it('bakes the grain and acorns eaten at the fire into flatbread, which fills more than roasting', () => {
+    const fill = (stone: boolean) => {
+      const s = band(2, ['garden', 'grain', 'griddle']);
+      const c = s.camp;
+      if (stone) s.items.push({ id: s.newId(), kind: 'griddle', band: c.id, holder: -1, wear: 0, made: s.tick, maker: -1 });
+      c.stock.grain = 20;
+      toHour(s, 10);
+      const p = adult(s);
+      p.food = 40;
+      p.task = setup(s, p, 'eat');
+      p.x = p.task!.gx; p.z = p.task!.gz;
+      for (let k = 0; k < 40 && p.task; k++) runTask(s, p);
+      return 20 - c.stock.grain;
+    };
+    const roasted = fill(false), baked = fill(true);
+    expect(baked).toBeCloseTo((roasted * COOK_GAIN) / GRIDDLE_GAIN, 3);
+  });
+});
+
+describe('stone boiling', () => {
+  it('is thought of by someone who knows hides, on the evening of a kill', () => {
+    const d = DISCOVERY.get('boiling')!;
+    expect(d.needs).toEqual(['cooking', 'preserving']);
+    expect(d.practice.carcass).toBeGreaterThan(0);
+  });
+
+  it('boils the band\'s stew in a hide where there is no pot, filling less, with no broth or brew', () => {
+    const s = band(2, ['boiling', 'preserving', 'broth', 'brews']);
+    const c = s.camp;
+    s.items = s.items.filter((i) => i.kind !== 'cookpot');
+    c.knows = c.knows.filter((k) => k !== 'stew');
+    expect(s.shownSkills()).toContain(SK.cook);
+    c.stock.fish = 30; c.stock.bones = 10; c.stock.herbs = 20;
+    toHour(s, 14);
+    expect(s.cookMode()).toBe('boil');
+    const cook = adult(s);
+    cook.skills[SK.cook] = 0;
+    const stew = s.startStew(c, cook, 'boil');
+    expect(stew.boiled).toBe(true);
+    expect(stew.fill / stew.raw.fish!).toBeCloseTo(BOIL_GAIN, 5);
+    expect(stew.bones).toBeUndefined();
+    expect(stew.brew).toBeUndefined();
+    expect(s.hearthLook(s.hearth())).toEqual({ look: 'hearthBoil' });
+    // and once there is a pot, the pot
+    delete c.stew; delete c.stewed;
+    c.knows.push('stew');
+    s.items.push({ id: s.newId(), kind: 'cookpot', band: c.id, holder: -1, wear: 0, made: s.tick, maker: -1 });
+    expect(s.cookMode()).toBe('pot');
+  });
+});
+
+describe('the earth oven', () => {
+  /** A band with its earth oven dug. */
+  const withOven = (seed = 2) => {
+    const s = band(seed, ['digstick', 'oven']);
+    s.plan();
+    const b = s.buildings.find((q) => q.band === s.camp.id && q.kind === 'oven')!;
+    expect(b).toBeDefined();
+    b.built = true;
+    return { s, b };
+  };
+
+  it('is thought of digging by the fire on the evening of a kill, and dug a little way from the fire', () => {
+    const d = DISCOVERY.get('oven')!;
+    expect(d.needs).toEqual(['cooking', 'digstick']);
+    expect(d.practice.carcass).toBeGreaterThan(0);
+    const { s, b } = withOven();
+    expect(Math.hypot(b.x + 0.5 - s.camp.x, b.z + 0.5 - s.camp.z)).toBeLessThan(5);
+  });
+
+  it('bakes the meat the band has more of than will keep, in the early afternoon, and it is ready by the evening', () => {
+    const { s, b } = withOven();
+    const c = s.camp;
+    c.stock.meat = 80;
+    toHour(s, 12.5);
+    delete c.stew; delete c.stewed;
+    for (const q of s.members()) if (q.task?.kind === 'cook') q.task = null;
+    c.stock.wood = 10;
+    expect(s.cookMode()).toBe('oven');
+    const cook = adult(s);
+    const version = s.buildingsVersion;
+    const stew = s.startStew(c, cook, 'oven');
+    expect(stew.oven).toBe(true);
+    // (the oven and the hearth are drawn anew)
+    expect(s.buildingsVersion).toBeGreaterThan(version);
+    expect(stew.fill / stew.raw.meat!).toBeCloseTo(OVEN_GAIN, 5);
+    expect(c.stock.wood).toBeCloseTo(10 - OVEN_WOOD, 5);
+    expect(stew.dish).toBe(ovenDish('meat'));
+    expect(s.ovenLook(b)).toEqual({ look: 'ovenLit' });
+    // (no pot at the hearth for it)
+    expect(s.hearthLook(s.hearth()).look).toBe('hearthPotEmpty');
+    const stewHour = (s as unknown as { stewHour(c: unknown): void }).stewHour.bind(s);
+    s.tick += OVEN_TICKS - 1;
+    stewHour(c);
+    expect(stew.ready).toBe(-1);
+    s.tick += 1;
+    stewHour(c);
+    expect(stew.ready).toBe(s.tick);
+    expect(s.ovenLook(b)).toEqual({});
+  });
+
+  it('is not filled for a few days\' meat, nor late in the afternoon', () => {
+    const { s } = withOven();
+    const c = s.camp;
+    c.stock.wood = 10; c.stock.meat = 8;
+    toHour(s, 12.5);
+    delete c.stew; delete c.stewed;
+    expect(s.cookMode()).toBe('pot');
+    c.stock.meat = 80;
+    toHour(s, 15);
+    delete c.stew; delete c.stewed;
+    expect(s.cookMode()).toBe('pot');
+  });
+
+  it('bakes the midwinter feast, which the band eats first at the fire', () => {
+    const { s } = withOven();
+    const c = s.camp;
+    c.stock.wood = 10; c.stock.meat = 12; c.stock.roots = 20;
+    toHour(s, 12.5);
+    delete c.stew; delete c.stewed;
+    for (const q of s.members()) if (q.task?.kind === 'cook') q.task = null;
+    expect(s.cookMode()).toBe('pot');
+    c.feastDay = dayOf(s.tick);
+    expect(s.cookMode()).toBe('oven');
+    const stew = s.startStew(c, adult(s), 'oven');
+    expect(stew.feast).toBe(true);
+    const heads = s.members().reduce((n, q) => n + (s.age(q) < 2 ? 0 : s.age(q) < 12 ? 0.6 : 1), 0);
+    expect(stew.fill).toBeCloseTo(Math.min(heads * FEAST_MEAL, (12 + 20) * OVEN_GAIN), 3);
+    s.stewDone(c);
+    toHour(s, 17);
+    const p = s.members().find((q) => s.age(q) >= 14)!;
+    p.food = 40;
+    p.task = setup(s, p, 'feast');
+    p.x = p.task!.gx; p.z = p.task!.gz;
+    const before = stew.fill, roots = c.stock.roots;
+    for (let k = 0; k < 200 && p.task?.kind === 'feast'; k++) runTask(s, p);
+    expect(p.task).toBeNull();
+    expect(stew.fill).toBeLessThan(before);
+    expect(c.stock.roots).toBe(roots);
+  });
+});
+
+describe('bad food', () => {
+  /** How many of so many meals of raw (or roasted) meat turned someone's stomach, in the warm or the cold. */
+  const sickOf = (lit: boolean) => {
+    const s = band(2);
+    const c = s.camp;
+    toHour(s, 10);
+    s.hearth().fuel = lit ? 10 : 0;
+    const p = adult(s);
+    let sick = 0;
+    for (let i = 0; i < 300; i++) {
+      c.stock.meat = 50;
+      p.sick = 0; p.food = 30;
+      p.task = setup(s, p, 'eat');
+      p.x = p.task!.gx; p.z = p.task!.gz;
+      for (let k = 0; k < 40 && p.task; k++) runTask(s, p);
+      if (p.sick > 0) sick++;
+      s.hearth().fuel = lit ? 10 : 0;
+    }
+    return sick;
+  };
+
+  it('raw meat turns the stomach now and then, and roasted far less', () => {
+    const raw = sickOf(false), roasted = sickOf(true);
+    expect(raw).toBeGreaterThan(0);
+    expect(raw).toBeGreaterThan(roasted * 2);
+  });
+});
+
+describe('old saves', () => {
+  it('gives everyone a cooking skill from their foraging', () => {
+    const s = runYears(sim(2), 1);
+    const d = s.serialize();
+    for (const p of d.people) p.skills = p.skills.slice(0, SK.cook);
+    const t = new Sim(s.world, d);
+    for (const p of t.people) expect(p.skills[SK.cook]).toBeCloseTo(p.skills[SK.forage] * 0.6, 4);
+  });
+});
+
