@@ -5,6 +5,7 @@ exports[`golden histories > seed 1, five years on 1`] = `
   "bands": [
     "Drathholt",
   ],
+<<<<<<< HEAD
   "events": 97,
   "everLived": 13,
   "hash": "93acdd46",
@@ -17,6 +18,20 @@ exports[`golden histories > seed 1, five years on 1`] = `
     "felled": 144,
     "froze": 0,
     "kills": 26,
+=======
+  "events": 106,
+  "everLived": 14,
+  "hash": "53b06290",
+  "homes": 8,
+  "pop": 13,
+  "stats": {
+    "births": 4,
+    "boarKills": 10,
+    "deaths": 1,
+    "felled": 150,
+    "froze": 0,
+    "kills": 39,
+>>>>>>> pr103
     "peak": 13,
     "starved": 0,
     "wolfKills": 26,
@@ -35,6 +50,7 @@ exports[`golden histories > seed 1, five years on 1`] = `
     "Gre brewed willow bark and bitter leaves for a fever, and the fever broke: the band had its first healer.",
     "Gre dug up the fat roots under the reeds and the meadow grass with a sharpened stick, and found they kept all winter.",
     "Gre noticed roots sprouting where the scraps were thrown the spring before, and dug a plot by the camp to set them in on purpose: the band's first garden.",
+<<<<<<< HEAD
     "Keul discovered how to dry and smoke meat and fish.",
     "Shunyor and the others raised the camp's first drying rack.",
     "Galia saw that a roof over the woodpile would keep the firewood dry.",
@@ -71,6 +87,26 @@ exports[`golden histories > seed 1, five years on 1`] = `
     "Galia bent two runners of ash, lashed crossbars across them, and dragged home a whole felled tree on it in one trip.",
     "Keul slung a hide on stakes by the fire, filled it with water and meat and dropped stones in from the fire one after another till it boiled: that evening the whole band ate a stew from it.",
     "The people of Drathholt held a feast by the fire on the longest night.",
+=======
+    "Thead ground a sliver of deer bone to a point, burned an eye through it, and sewed a seam in half the time.",
+    "Gre learned to follow a sounder of wild boar into the thickets and take one on the braced spear.",
+    "Gre brought down the band's first wild boar at Drathholt.",
+    "Gre took an ember to a hive in a hollow tree, smoked the bees drowsy and came away with the comb.",
+    "Thead cut soles from a hide and gathered them at the ankle with a thong: shoes, and the long walks were easier.",
+    "Galia lashed a stone head to a wooden haft and made the first axe, heavy enough for the big trees.",
+    "Galia rubbed the seed from the heads of the wild grass, sowed it in a garden plot, and reaped a harvest of grain that keeps the year round.",
+    "Galia bent two runners of ash, lashed crossbars across them, and dragged home a whole felled tree on it in one trip.",
+    "The people of Drathholt held a feast by the fire on the longest night.",
+    "Dryjia noticed the old logs from the bottom of the stack burned hotter and longer than new-cut wood, and began to split the wood and stack it a season ahead to dry.",
+    "Thead, 25, died of fever.",
+    "Shunyor brought in the first harvest from the gardens of Drathholt.",
+    "Gre drove a ring of stakes round a garden plot and wove withies between them, and the deer kept out.",
+    "Galia pushed a stick through a stone whorl, set it turning, and drew nettle fiber out into a thread finer than any cord: the first spindle.",
+    "Gre wove grass round a ring of withies into a deep basket, and came home with the berries of a dozen bushes.",
+    "Gre worked out how to weave walls of reeds and plaster them with mud.",
+    "The people of Drathholt held a feast by the fire on the longest night.",
+    "Shunyor noticed the hares keep to their runs, and set a loop of cord across one.",
+>>>>>>> pr103
   ],
   "tick": 58895,
 }
@@ -81,16 +117,26 @@ exports[`golden histories > seed 2, five years on 1`] = `
   "bands": [
     "Brainford",
   ],
+<<<<<<< HEAD
   "events": 96,
   "everLived": 12,
   "hash": "84c6f348",
+=======
+  "events": 103,
+  "everLived": 14,
+  "hash": "bb01f4e4",
+>>>>>>> pr103
   "homes": 9,
   "pop": 11,
   "stats": {
     "births": 2,
     "boarKills": 0,
     "deaths": 1,
+<<<<<<< HEAD
     "felled": 157,
+=======
+    "felled": 137,
+>>>>>>> pr103
     "froze": 0,
     "kills": 10,
     "peak": 11,
@@ -141,7 +187,11 @@ exports[`golden histories > seed 2, five years on 1`] = `
     "Trandae threw the cracked bones from a kill into the stew pot and let them simmer the day through: the broth was rich and filling, and from then on no bone was thrown away.",
     "Troune learned which of the mushrooms in the autumn woods are good to eat, and which make you sick.",
     "Troune coiled a tall jar, fired it hard in the kiln, filled it with grain and sealed its mouth with clay: it came out dry and sweet a year later.",
+<<<<<<< HEAD
     "Mekair sewed a hide into a bag with a strap for the shoulder, and brought home more from every trip.",
+=======
+    "Mekair drove wedges of hardened oak one after another into the end of a log and split it from end to end along the grain: two planks from one trunk, and more again from a big one.",
+>>>>>>> pr103
     "Trandae whittled a hook from a thorn, baited it, and pulled a fish up through a hole in the ice on a line.",
     "The people of Brainford held a feast by the fire on the longest night.",
   ],
@@ -154,16 +204,26 @@ exports[`golden histories > seed 3, five years on 1`] = `
   "bands": [
     "Kekhollow",
   ],
+<<<<<<< HEAD
   "events": 88,
   "everLived": 16,
   "hash": "afc7523d",
+=======
+  "events": 104,
+  "everLived": 13,
+  "hash": "561d01b5",
+>>>>>>> pr103
   "homes": 8,
   "pop": 15,
   "stats": {
     "births": 6,
     "boarKills": 0,
     "deaths": 1,
+<<<<<<< HEAD
     "felled": 150,
+=======
+    "felled": 146,
+>>>>>>> pr103
     "froze": 0,
     "kills": 9,
     "peak": 15,
@@ -202,6 +262,7 @@ exports[`golden histories > seed 3, five years on 1`] = `
     "Troukeur worked out how to weave walls of reeds and plaster them with mud.",
     "Zuo and the others raised the camp's first storehouse.",
     "Troukeur lashed a stone head to a wooden haft and made the first axe, heavy enough for the big trees.",
+<<<<<<< HEAD
     "The people of Kekhollow held a feast by the fire on the longest night.",
     "Kekui bent two runners of ash, lashed crossbars across them, and dragged home a whole felled tree on it in one trip.",
     "Shou drove a ring of stakes round a garden plot and wove withies between them, and the deer kept out.",
@@ -212,6 +273,14 @@ exports[`golden histories > seed 3, five years on 1`] = `
     "Pea slung a hide on stakes by the fire, filled it with water and meat and dropped stones in from the fire one after another till it boiled: that evening the whole band ate a stew from it.",
     "Pea and the others raised the camp's first fish weir.",
     "Troukeur sewed a hide into a bag with a strap for the shoulder, and brought home more from every trip.",
+=======
+    "Troukeur walled the firing in a dome of clay with a hole to stoke it, and the pots came out whole and ringing hard: the band's first kiln.",
+    "Kekui and the others raised the camp's first kiln.",
+    "Shou drove stakes across the river and wove withies between them, and the run swam into a basket at the point: the first fish weir.",
+    "Kekui and the others raised the camp's first fish weir.",
+    "The people of Kekhollow held a feast by the fire on the longest night.",
+    "Troukeur drove wedges of hardened oak one after another into the end of a log and split it from end to end along the grain: two planks from one trunk, and more again from a big one.",
+>>>>>>> pr103
   ],
   "tick": 58895,
 }

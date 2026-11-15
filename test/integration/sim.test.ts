@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Sim, SaveData, LOGS } from '../../src/sim/sim';
 import { generateWorld } from '../../src/sim/worldgen';
 import { TICKS_PER_DAY, TICKS_PER_YEAR, START_TICK, DAYS_PER_SEASON, seasonOf } from '../../src/sim/time';
-import { FAR_GRAVE, completeBuilding, standOn } from '../../src/sim/ai';
+import { FAR_GRAVE, completeBuilding, standOn, setup, runTask } from '../../src/sim/ai';
 import { runChecked, InvariantChecker } from '../../tools/lib/invariants';
 import { sim, world, runTo, runYears } from '../helpers';
 import { REMAINS, remainsStage } from '../../src/sim/band';
@@ -308,6 +308,76 @@ describe('the dead', () => {
       expect(s.people.some((q) => q.alive && q.task?.kind === 'bury' && q.task.ref === p.id)).toBe(false);
     }
     expect(p.buried).toBe(false);
+  });
+});
+
+describe('burial in a famine', () => {
+  const FOODS = ['berries', 'meat', 'fish', 'preserved', 'roots', 'nuts', 'eggs', 'honey', 'mushrooms', 'grain', 'greens'] as const;
+  // a hungry late winter: the stores bare, everyone starving, and one of the band dead by the camp
+  const famine = () => {
+    const s = sim(1);
+    while (seasonOf(s.tick) !== 3) runTo(s, s.tick + 200);
+    const c = s.camp;
+    const p = s.members().find((q) => s.age(q) >= 20 && s.age(q) < 50)!;
+    Object.assign(p, { x: c.x + 3, z: c.z + 3, task: null, path: null });
+    s.kill(p, 'hunger');
+    const starve = () => {
+      for (const k of FOODS) c.stock[k] = 0;
+      for (const q of s.members()) q.food = Math.min(q.food, 2);
+    };
+    starve();
+    return { s, p, starve };
+  };
+
+  it('still buries its dead, though nobody has eaten', () => {
+    const { s, p, starve } = famine();
+    const end = s.tick + 6 * TICKS_PER_DAY;
+    // (whatever food is found is eaten where it is found: none reaches the stores)
+    while (s.tick < end && !p.buried) {
+      s.step();
+      if (s.tick % 10 === 0) starve();
+    }
+    expect(p.buried).toBe(true);
+  });
+
+  it('finishes a grave someone else began, rather than starting it again', () => {
+    const { s, p } = famine();
+    const c = s.camp;
+    // half dug by someone called away, the body lying beside it
+    p.grave = 0.5;
+    const q = s.members().find((o) => s.age(o) >= 20 && !s.heldBy(o))!;
+    Object.assign(q, { x: p.x, z: p.z, food: 80, warmth: 90, rest: 90, task: setup(s, q, 'bury'), path: null });
+    expect(q.task?.ref).toBe(p.id);
+    let ticks = 0;
+    while (!p.buried && ticks < 200) {
+      runTask(s, q);
+      ticks++;
+    }
+    expect(p.buried).toBe(true);
+    // the 10 ticks at the graveside and the other half of a bare-handed grave (45), not a whole one and a carry
+    expect(ticks).toBeLessThanOrEqual(10 + 23 + 2);
+    // and not carried off to a new grave
+    expect(Math.hypot(p.x - (c.x + 3), p.z - (c.z + 3))).toBeLessThan(1);
+    expect(p.grave).toBeUndefined();
+  });
+
+  it('lays the next of its dead in a grave of their own, not in one begun for someone else', () => {
+    const { s, p } = famine();
+    // one carried to the burial ground and their grave begun
+    const a = s.members().find((o) => s.age(o) >= 20 && !s.heldBy(o))!;
+    Object.assign(a, { x: p.x, z: p.z, food: 80, warmth: 90, rest: 90, task: setup(s, a, 'bury'), path: null });
+    for (let i = 0; i < 400 && !((p.grave ?? 0) > 0.3); i++) runTask(s, a);
+    expect(p.grave).toBeGreaterThan(0.3);
+    // (and while they are away, another death: buried in full)
+    const d = s.members().find((o) => o !== a && s.age(o) >= 20)!;
+    Object.assign(d, { x: s.camp.x - 3, z: s.camp.z - 3, task: null, path: null });
+    s.kill(d, 'hunger');
+    const b = s.members().find((o) => o !== a && s.age(o) >= 20 && !s.heldBy(o))!;
+    Object.assign(b, { x: d.x, z: d.z, food: 80, warmth: 90, rest: 90, task: setup(s, b, 'bury'), path: null });
+    expect(b.task?.ref).toBe(d.id);
+    for (let i = 0; i < 400 && !d.buried; i++) runTask(s, b);
+    expect(d.buried).toBe(true);
+    expect(Math.hypot(d.x - p.x, d.z - p.z)).toBeGreaterThan(0.3);
   });
 });
 
