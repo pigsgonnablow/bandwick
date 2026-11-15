@@ -21,7 +21,7 @@ const lifeEnd = (p: Person, now: number) => (p.alive ? now : p.death);
 const CAUSE: Record<string, string> = {
   starvation: 'hunger', cold: 'the cold', fever: 'fever', 'old age': 'old age', weakness: 'weakness', childbirth: 'childbirth',
   hunting: 'a hunting wound', infancy: 'infancy', accident: 'an accident', sickness: 'the sickness', drowning: 'drowning',
-  wolves: 'wolves', bear: 'a bear', killed: 'violence',
+  wolves: 'wolves', bear: 'a bear', killed: 'violence', fall: 'a fall', wound: 'a wound gone bad', bite: 'an adder bite',
 };
 /** How a death reads after a name and age: ", of fever", ", drowned", ", killed by wolves". */
 function howDied(p: { cause: string }, byId?: Map<number, Person>, killer?: number) {

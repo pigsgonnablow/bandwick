@@ -289,6 +289,8 @@ function gash(s: Sim, p: Person) {
   p.safety = 0;
   s.remember(p, 'injured', -18, 2, -1, 'Gashed by a charging wild boar.');
   s.event('injury', `${p.name} was gashed by a charging wild boar.`, [p.id], p.x, p.z, 2);
+  s.wound(p);
+  s.maim(p, 'lame', 0.25, 0.3, [18, 48]);
 }
 
 // ------------------------------------------------------------------ foxes
