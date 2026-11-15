@@ -118,8 +118,8 @@ const GRAVE = propId('grave_v0');
 /** Work done with a tool in hand: the tool stays with them until it's done. */
 const TOOL_TASKS: TaskKind[] = ['fell', 'dig', 'bury', 'forage', 'roots', 'fish', 'canoe'];
 
-/** Annual chance of dying of old age, by age in years (piecewise linear). */
-const MORTALITY: number[][] = [[0, 0.03], [2, 0.012], [5, 0.004], [15, 0.003], [35, 0.006], [50, 0.02], [60, 0.05], [70, 0.13], [80, 0.32], [90, 0.7]];
+/** Annual chance of dying of everyday causes (infancy, fevers, accidents, old age), by age in years (piecewise linear), near what foragers have known. */
+const MORTALITY: number[][] = [[0, 0.2], [2, 0.06], [5, 0.02], [15, 0.016], [35, 0.022], [50, 0.035], [60, 0.06], [70, 0.13], [80, 0.32], [90, 0.7]];
 /** How worn a thing looks, in a word or two. */
 export function condition(wear: number) {
   return wear < 0.1 ? 'new' : wear < 0.35 ? 'good' : wear < 0.6 ? 'worn' : wear < 0.85 ? 'well worn' : 'nearly through';
@@ -3237,13 +3237,22 @@ export class Sim {
       if (group.length >= ms.length * 0.45) break;
       if (group.includes(q)) continue;
       const op = this.opinion(q, leader);
-      if (op > 30 || (this.has(q, 'wanderlust') && op > 0)) for (const h of this.household(q)) if (!group.includes(h)) group.push(h);
+      if (!(op > 30 || (this.has(q, 'wanderlust') && op > 0))) continue;
+      // (a household that would take more than half the grown-ups away stays behind, and others may still go)
+      const joining = this.household(q).filter((h) => !group.includes(h));
+      const grownAfter = [...group, ...joining].filter((p) => this.age(p) >= 16).length;
+      if (grownAfter > adults.length * 0.5) continue;
+      group.push(...joining);
     }
     const grown = group.filter((p) => this.age(p) >= 16);
     const stayGrown = adults.length - grown.length;
     if (group.length < (trouble ? 5 : 7) || grown.length < (trouble ? 2 : 3) || ms.length - group.length < (trouble ? 6 : 8) ||
       stayGrown < (trouble ? 4 : 5) || grown.length > adults.length * 0.5) return false;
-    const site = this.chooseSite({ from: c, min: 16, max: 44, avoid: 18, reachFrom: this.tileOf(leader) });
+    // (with the near land taken, they go farther to find their own)
+    let site = this.chooseSite({ from: c, min: 16, max: 44, avoid: 18, reachFrom: this.tileOf(leader) });
+    if (site < 0) site = this.chooseSite({ from: c, min: 16, max: 70, avoid: 18, reachFrom: this.tileOf(leader) });
+    // (and where good land is scarce, they settle closer to their neighbours than they would like)
+    if (site < 0) site = this.chooseSite({ from: c, min: 10, max: 70, avoid: 12, reachFrom: this.tileOf(leader) });
     if (site < 0) return false;
     // they take a fair share of the stores with them
     const share = (group.length / ms.length) * 0.85;
@@ -3479,7 +3488,8 @@ export class Sim {
     const r = this.rLife;
     const live = this.liveCamps().length;
     if (yearOf(this.tick) < 4 && live) return;
-    const chance = live === 0 ? 0.5 : live < 3 ? 0.06 : live < 5 ? 0.02 : 0;
+    // (strangers come to empty or near-empty land: where three bands are living, the land looks taken)
+    const chance = live === 0 ? 0.5 : live === 1 ? 0.05 : live === 2 ? 0.02 : 0;
     if (!r.chance(chance)) return;
     const prev = this.camp;
     const c = this.foundBand(true);
