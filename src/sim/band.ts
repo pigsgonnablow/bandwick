@@ -810,6 +810,8 @@ export interface Person {
   death: number;
   cause: string;
   buried: boolean;
+  /** how much of an unburied body's grave is dug (0..1): whoever comes to it next carries on from there */
+  grave?: number;
   /** how far an unburied body has rotted, in warm days (it hardly changes while frozen); see REMAINS */
   decay?: number;
   /** when an unburied body was down to bare bones (tick) */

@@ -3488,10 +3488,14 @@ export function runTask(s: Sim, p: Person) {
         p.act = ACT.Mourn;
         face(p, body.x, body.z);
         if (--t.timer > 0) return;
-        // far from camp, they are buried where they fell
-        if (hyp(body.x - c.x, body.z - c.z) > FAR_GRAVE) {
+        // a grave already begun (by someone called away before it was deep enough): they carry on with it,
+        // where the body lies beside it
+        if ((body.grave ?? 0) > 0) {
           t.stage = 3;
-          t.timer = s.heldBy(p)?.kind === 'stick' ? 30 : 45;
+          p.thought = `Finishing ${body.name}'s grave.`;
+        } else if (hyp(body.x - c.x, body.z - c.z) > FAR_GRAVE) {
+          // far from camp, they are buried where they fell
+          t.stage = 3;
           p.thought = `Burying ${body.name} where they fell.`;
         } else {
           // lift the body and carry it to the burial ground
@@ -3512,11 +3516,13 @@ export function runTask(s: Sim, p: Person) {
         body.z = p.z;
         if (moving(go(s, p, t))) return;
         t.stage = 3;
-        // a grave dug with bare hands takes half as long again
-        t.timer = s.heldBy(p)?.kind === 'stick' ? 30 : 45;
       }
+      // the digging stays dug: someone called away (to find food in a hungry winter, to sleep, to the fire) leaves
+      // the grave half dug with the body beside it, and the next to come finishes it rather than starting over
+      // (a grave dug with bare hands takes half as long again)
       p.act = ACT.Dig;
-      if (--t.timer > 0) return;
+      body.grave = (body.grave ?? 0) + 1 / (s.heldBy(p)?.kind === 'stick' ? 30 : 45);
+      if (body.grave < 1 - 1e-9) return;
       const tile = s.tileOf(p);
       const g = s.addProp(GRAVE + (r.chance(0.5) ? 1 : 0), p.x - 0.25, s.world.groundY[tile], p.z, r.range(-0.3, 0.3), 1);
       const stick = s.heldBy(p);
@@ -3524,6 +3530,7 @@ export function runTask(s: Sim, p: Person) {
       else s.practise(p, 'grave');
       s.propVal[g] = body.id;
       body.buried = true;
+      delete body.grave;
       body.indoors = true;
       // what they had in hand goes back on the pile with whoever buried them
       const tool = s.heldBy(body);
