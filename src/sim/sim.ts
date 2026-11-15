@@ -1366,7 +1366,9 @@ export class Sim {
     const body = k === 'bury' ? this.byId.get(p.task!.ref) : undefined;
     const graveDug = !!body && p.food >= 10 && (p.task!.stage >= 1 || hyp(body.x - this.camp.x, body.z - this.camp.z) > FAR_GRAVE);
     // (feeding the fire is a moment's work, and a band that lets its fire go out in a hungry winter freezes)
-    if (p.food < starveAt && !eatsFromLoad && !graveDug && k !== 'eat' && k !== 'eatwild' && k !== 'fuel' && (!gathering || foodTotal(this.camp.stock) >= 0.4)) return true;
+    // (nor is a burial broken off to go home to a bare store: in a famine everyone is starving, nothing waits
+    // at home to eat, and a body nobody will see to on an empty stomach is never buried)
+    if (p.food < starveAt && !eatsFromLoad && !graveDug && k !== 'eat' && k !== 'eatwild' && k !== 'fuel' && (!(gathering || k === 'bury') || foodTotal(this.camp.stock) >= 0.4)) return true;
     const woodRun = (k === 'fell' || k === 'haul' || k === 'deadwood') && this.hearth().fuel < 2;
     // (feeding the fire is how they get warm: nobody turns away from it to go and sit by it cold)
     // (someone carrying goods home is already on the way to the fire: dropping the load would not get them there sooner)

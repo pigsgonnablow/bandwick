@@ -216,6 +216,7 @@ describe('monuments', () => {
     p.x = dead.x;
     p.z = dead.z;
     p.task = { ...task(s, 'bury', b, 3, 1), ref: dead.id };
+    dead.grave = 0.99; // the grave all but dug
     const before = s.events.length;
     runTask(s, p);
     expect(dead.buried).toBe(true);
