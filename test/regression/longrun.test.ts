@@ -9,6 +9,8 @@ import { DISCOVERY } from '../../src/sim/know';
 import { START_TICK, TICKS_PER_DAY, TICKS_PER_YEAR, TICKS_PER_HOUR, seasonOf, ageYears, isDark } from '../../src/sim/time';
 import { sim } from '../helpers';
 
+// with cooking and the canoe a band grows to fifty and more in a dozen years, and the run takes
+// longer than the default minute on a busy CI machine
 const YEARS = 12;
 
 describe('a dozen years', () => {
@@ -110,6 +112,6 @@ describe('a dozen years', () => {
       expect(total('gathered.wood')).toBeGreaterThan(0);
       expect(total('burned')).toBeGreaterThan(0);
       expect(s.stats.felled).toBeGreaterThan(0);
-    });
+    }, 180_000);
   }
 });
