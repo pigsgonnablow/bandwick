@@ -172,6 +172,18 @@ describe('rulers', () => {
     expect(nc.leader).toBe(p.id);
   });
 
+  it('a band coming over the hills is led by its founding man, or about a third of the time its founding woman', () => {
+    let women = 0;
+    for (let seed = 1; seed <= 30; seed++) {
+      const s = sim(seed, 64);
+      const lead = s.byId.get(s.camps[0].leader)!;
+      expect(lead.partner).toBeGreaterThanOrEqual(0);
+      if (lead.sex === 0) women++;
+    }
+    expect(women).toBeGreaterThanOrEqual(4);
+    expect(women).toBeLessThanOrEqual(16);
+  });
+
   it('keeps its own odds: a world where nobody ever rules runs as before', () => {
     // (the rulers draw from a stream of their own, so the others are untouched until a ruler changes something)
     const a = runYears(sim(2), 1), b = sim(2);

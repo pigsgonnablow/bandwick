@@ -24,7 +24,7 @@ import { decide, runTask, abandon, sendHome, delivering, foodInHand, afloat, FAR
 import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard, deadfallNight, DEADFALL_RANGE } from './beasts';
 import { updatePigs, pigsDaily, packPigs, pigCard, penOf, pigsOf, pigsWanted, pigToKill, pigFeed, pigMeat, grown, PIG_ID } from './pigs';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets, ELITE } from './know';
-import { Rule, ruleDaily, ruledIdeas, builderBand, rulerOf, ruleSummary, BUILDER_SPLIT, BUILDER_WALLS, BUILDER_RAISE } from './rule';
+import { Rule, WOMAN_LEADS, ruleDaily, ruledIdeas, builderBand, rulerOf, ruleSummary, BUILDER_SPLIT, BUILDER_WALLS, BUILDER_RAISE } from './rule';
 import { RunMap, mapRuns, runsTick, runOn, runExtra, runNear, weirSite, weirRot } from './runs';
 import { canoeSite, canoeRot, freeCanoe, openStock, canoeTarget } from './canoe';
 
@@ -1023,7 +1023,9 @@ export class Sim {
     mk(0, 18);
     this.pair(aMan, aWoman, false);
     this.pair(bWoman, bMan, false);
-    camp.leader = aMan.id;
+    // (who leads them here: the man of the founding couple, or now and then the woman; drawn from the rulers' own
+    // stream, so the rest of the world's luck is untouched)
+    camp.leader = this.rRule.chance(WOMAN_LEADS) ? aWoman.id : aMan.id;
     for (const p of band) {
       p.x = cx + 0.5 + r.range(-2, 2);
       p.z = cz + 0.5 + r.range(-2, 2);

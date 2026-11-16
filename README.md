@@ -28,7 +28,9 @@ their band's colour, buildings take it on, and a wash around each camp, wider th
 there, shows each band's range; a legend lists the bands. The band panel shows the colour, and how
 the band came to be.
 
-**Rulers.** Most bands live loosely: nobody gives orders, and each person decides their own day. Now and
+**Rulers.** Most bands live loosely: nobody gives orders, and each person decides their own day. A band that
+comes over the hills (the first, or strangers) is led there by the man of its founding couple, or about a
+third of the time by the woman. Now and
 then, in spring, someone ambitious whom the band looks up to above nearly everyone (and who is neither
 cruel nor greedy) takes hold of it as a builder. A builder's band works harder, gives more of its spare
 days to its monuments and starts on them sooner, favours stone, planks and daub over poles, thinks of new

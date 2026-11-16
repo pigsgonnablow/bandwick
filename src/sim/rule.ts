@@ -31,6 +31,8 @@ export const RULERS: Record<RuleKind, { label: string; suits: (s: Sim, p: Person
   builder: { label: 'builder', suits: (s, p) => s.has(p, 'ambitious') && !s.has(p, 'cruel') && !s.has(p, 'greedy') },
 };
 
+/** How often a band that comes over the hills (the first, or strangers) is led by a woman rather than a man. */
+export const WOMAN_LEADS = 0.3;
 /** The day of the year (spring) a loose band may come under a ruler. */
 export const RISE_DAY = 8;
 /** The chance a year that someone fit to rule, and looked up to, takes hold. */
