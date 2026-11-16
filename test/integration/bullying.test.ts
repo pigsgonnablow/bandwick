@@ -92,4 +92,14 @@ describe('being mocked', () => {
     expect(s.events.some((e) => e.kind === 'exile')).toBe(true);
     expect(victim.band).not.toBe(bully.band);
   });
+
+  it('does not count a small child\'s spite as bullying', () => {
+    const s = sim(1);
+    const [bully, victim] = pair(s);
+    const child = s.members().find((x) => s.age(x) < 12)!;
+    for (let i = 0; i < RELENTLESS + 2; i++) s.mocked(child, victim);
+    expect(s.mockings(child, victim)).toBe(0);
+    expect(child.shunned).toBeUndefined();
+    expect(bully.band).toBe(victim.band);
+  });
 });

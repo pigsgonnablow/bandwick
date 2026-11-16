@@ -1123,6 +1123,8 @@ export const MONUMENT_MOVE = 0.4;
 export const PICKED_ON = 3;
 /** ...and this many times, it is torment: something has to give (see Sim.mocked). */
 export const RELENTLESS = 4;
+/** Mockery only counts as bullying from this age on (a small child's spite has no consequences). */
+export const BULLY_AGE = 12;
 export const MONUMENT_SPLIT = 0.7;
 /** How far a monument's work can run ahead of the stone brought to it (in stones' worth of work). */
 export const MONUMENT_AHEAD = 1.5;
