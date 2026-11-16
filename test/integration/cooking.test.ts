@@ -332,10 +332,12 @@ describe('the grilling stone', () => {
       const s = band(2, ['garden', 'grain', 'griddle']);
       const c = s.camp;
       if (stone) s.items.push({ id: s.newId(), kind: 'griddle', band: c.id, holder: -1, wear: 0, made: s.tick, maker: -1 });
-      c.stock.grain = 20;
       toHour(s, 10);
+      // (the grain set out only now, so none of it goes to anyone else who ate on the way to the hour)
+      c.stock.grain = 20;
       const p = adult(s);
       p.food = 40;
+      p.path = null;
       p.task = setup(s, p, 'eat');
       p.x = p.task!.gx; p.z = p.task!.gz;
       for (let k = 0; k < 40 && p.task; k++) runTask(s, p);

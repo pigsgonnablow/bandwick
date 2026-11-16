@@ -216,13 +216,15 @@ describe('the band\'s goods', () => {
       const p = adult(s);
       if (kiln) s.buildings.push({ ...s.buildings.find((b) => b.band === s.camp.id && b.kind === 'stockpile')!, id: s.newId(), kind: 'kiln', built: true });
       const made0 = total(s, 'made.bowl'), cracked0 = total(s, 'cracked.bowl');
-      for (let i = 0; i < 600; i++) {
+      // (enough bowls that the share cracked is the true rate, not the luck of the draw)
+      const n = 2000;
+      for (let i = 0; i < n; i++) {
         p.skills[SK.pot] = pot;
         makeOne(s, p, 'bowl');
       }
       const made = total(s, 'made.bowl') - made0, cracked = total(s, 'cracked.bowl') - cracked0;
-      expect(made + cracked).toBe(600);
-      return cracked / 600;
+      expect(made + cracked).toBe(n);
+      return cracked / n;
     };
     expect(rate(0, false)).toBeCloseTo(HEARTH_CRACK, 1);
     expect(rate(18, false)).toBeCloseTo(HEARTH_CRACK * 0.25, 1);

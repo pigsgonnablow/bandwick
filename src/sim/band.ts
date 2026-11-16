@@ -1013,6 +1013,14 @@ export interface Person {
   dog?: number;
   /** a rare constitution: ages far more slowly once old (absent = no) */
   hardy?: boolean;
+  /** a bad leg (a break or a goring): limps, walks slower and isn't sent hunting; until when (-1: for life; absent: sound) */
+  lame?: number;
+  /** blind in one eye: throws wide; until when (-1: for life; absent: sound) */
+  oneEye?: number;
+  /** a crippled hand (cut to the bone or burned): slower at every task and throws badly; until when (-1: for life; absent: sound) */
+  badHand?: number;
+  /** a fresh wound that might go bad: until when the danger lasts (absent: none) */
+  wounded?: number;
   /** who killed them, if someone did */
   killer?: number;
   /** a one-off move to show: count * 4 + FLASH code (looks only; changes nothing) */
@@ -1470,6 +1478,26 @@ export type Food = (typeof FOODS)[number];
 export const foodTotal = (s: Stock) => s.berries + s.meat + s.fish + s.preserved + s.roots + s.nuts + s.eggs + s.honey + s.mushrooms + s.grain + s.greens;
 
 /** The health levels the sim acts on (the info window's health tooltip reads them too). */
+/**
+ * Accidents and lasting hurts. Everyone from five up has this yearly chance of an accident at their work or
+ * about the camp (more for the old, a fall on the ice in winter): a twisted ankle or a broken leg, a hand cut to the
+ * bone at the flint or the carcass, a burn at the fire, a twig or a flake of flint in the eye. A wound is
+ * dangerous for WOUND_DAYS (the everyday chance of dying WOUND_RISK times over, and a death then is a wound gone bad),
+ * and some leave a hurt that lasts months or for life: a lame leg (LAME_SPEED of the pace, no hunting), one eye
+ * (ONE_EYE_AIM on a throw), a crippled hand (BAD_HAND_WORK at any task, BAD_HAND_AIM on a throw). The goring,
+ * kicks, gashes and falling trees of the hunt and the woods can leave the same.
+ */
+export const ACCIDENT_YEARLY = 0.07;
+export type Hurt = 'lame' | 'oneEye' | 'badHand';
+export const HURT_WORDS: Record<Hurt, [string, string]> = { lame: ['lame', 'a bad leg, mending'], oneEye: ['blind in one eye', 'a hurt eye, mending'], badHand: ['a crippled hand', 'a bad hand, mending'] };
+export const WOUND_DAYS = 8;
+export const WOUND_RISK = 4;
+export const LAME_SPEED = 0.7;
+export const LAME_WORK = 0.85;
+export const ONE_EYE_AIM = 0.7;
+export const BAD_HAND_WORK = 0.8;
+export const BAD_HAND_AIM = 0.8;
+
 export const HEALTH = {
   /** must be above this to go swimming */
   swim: 50,

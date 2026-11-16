@@ -14,6 +14,7 @@ import {
   QUALITY_WEAR, GOODS, GOODS_EACH, GOODS_OVER, WOOD_PLENTY, KILN_CRACK, HEARTH_CRACK, SEASONING, SEASONED_HEAT, CHARCOAL_KEPT, CHARCOAL_CRACK, CHARCOAL_FINE, SWIDDEN_SOIL, SWIDDEN_GRASS, CANOE_CATCH,
   LOOMED, KILNED, POTTED, JAR_HOLDS, JAR_KEEP, JARRED, JARS_MAX, LAMP_FAT, FAT_KEPT, SINEW_KEPT, SINEW_SEWN, THREAD_TRY, THREAD_KEPT, FIBER_PER_THREAD, BLANKET_REST,
   STEWED, POT_AT, BOIL_AT, BOIL_GAIN, BOIL_TICKS, OVENED, OVEN_GAIN, OVEN_GLUT, OVEN_TO, OVEN_TICKS, OVEN_WOOD, GRIDDLE_GAIN, COOK_GAIN, STEW_BERRIES, STEW_GAIN, STEW_MASTER, STEW_GREENS, STEW_MEALS, STEW_TICKS, Stew, BROTH_FILL, BROTH_KEEP, BROTH_EACH, BREW_HERBS, BREW_COLD, BREW_KEEP, BREW_HEAL, HERBS_BREW,
+  ACCIDENT_YEARLY, Hurt, HURT_WORDS, WOUND_DAYS, WOUND_RISK,
   RUN_FISH, WEIR_PASS, WEIR_HOLDS, CROP, CROP_NAMES, newPlot, GROW_DAYS, PLOT_YIELD, SEED_PER_PLOT, GREENS_PER_DAY, GREENS_LOAD, LEAN_GARDEN, PLENTY_GARDEN, SOIL_REST, SOIL_FALLOW,
 } from './band';
 import {
@@ -118,8 +119,8 @@ const GRAVE = propId('grave_v0');
 /** Work done with a tool in hand: the tool stays with them until it's done. */
 const TOOL_TASKS: TaskKind[] = ['fell', 'dig', 'bury', 'forage', 'roots', 'fish', 'canoe'];
 
-/** Annual chance of dying of old age, by age in years (piecewise linear). */
-const MORTALITY: number[][] = [[0, 0.03], [2, 0.012], [5, 0.004], [15, 0.003], [35, 0.006], [50, 0.02], [60, 0.05], [70, 0.13], [80, 0.32], [90, 0.7]];
+/** Annual chance of dying of everyday causes (infancy, fevers, accidents, old age), by age in years (piecewise linear), near what foragers have known. */
+const MORTALITY: number[][] = [[0, 0.2], [2, 0.06], [5, 0.02], [15, 0.016], [35, 0.022], [50, 0.035], [60, 0.06], [70, 0.13], [80, 0.32], [90, 0.7]];
 /** How worn a thing looks, in a word or two. */
 export function condition(wear: number) {
   return wear < 0.1 ? 'new' : wear < 0.35 ? 'good' : wear < 0.6 ? 'worn' : wear < 0.85 ? 'well worn' : 'nearly through';
@@ -1206,6 +1207,32 @@ export class Sim {
       p.memories.splice(worst, 1);
     }
   }
+  /** Whether someone has this hurt now (a bad leg, one eye, a crippled hand). */
+  hurt(p: Person, k: Hurt) {
+    const v = p[k];
+    return v !== undefined && (v < 0 || v > this.tick);
+  }
+  /** A fresh wound: dangerous for a few days, in case it goes bad. */
+  wound(p: Person) {
+    p.wounded = this.tick + WOUND_DAYS * TICKS_PER_DAY;
+  }
+  /**
+   * An injury that leaves a hurt: with chance `lasting` at all, then for life with chance `forLife`, or else
+   * mending over `days`. (A hurt for life stays one; a longer mend wins over a shorter.)
+   */
+  maim(p: Person, k: Hurt, lasting: number, forLife: number, days: [number, number]) {
+    const r = this.rLife;
+    if (!r.chance(lasting) || p[k] === -1) return;
+    if (r.chance(forLife)) {
+      p[k] = -1;
+      const how = k === 'lame' ? 'will walk with a limp for the rest of their life' : k === 'oneEye' ? 'has lost the sight of one eye' : 'will never have the full use of that hand again';
+      this.event('injury', `${p.name} ${how}.`, [p.id], p.x, p.z, 2);
+      this.remember(p, 'maimed', -20, 2, -1, k === 'lame' ? 'Left lame for life.' : k === 'oneEye' ? 'Lost the sight of one eye.' : 'Left with a crippled hand.');
+    } else {
+      p[k] = Math.max(p[k] ?? 0, this.tick + Math.round(r.int(days[0], days[1]) * TICKS_PER_DAY));
+    }
+  }
+
   memoryNow(m: Memory) {
     const age = (this.tick - m.tick) / TICKS_PER_YEAR;
     return m.weight * Math.max(0, 1 - age / m.years);
@@ -1527,6 +1554,7 @@ export class Sim {
       starvation: 'starved', cold: 'froze to death', fever: 'died of fever', 'old age': 'died of old age',
       weakness: 'wasted away', childbirth: 'died giving birth', hunting: 'was killed on a hunt', infancy: 'died in infancy',
       accident: 'died in an accident', sickness: 'was taken by the sickness', drowning: 'drowned', wolves: 'was killed by wolves',
+      fall: 'died in a fall', 'wound gone bad': 'died of a wound gone bad', 'adder bite': 'died of an adder bite',
       bear: 'was killed by a bear', killed: `was killed by ${killer?.name ?? 'someone'}`,
     };
     const violent = cause === 'killed' || cause === 'wolves' || cause === 'bear' || cause === 'drowning';
@@ -2931,10 +2959,23 @@ export class Sim {
       let daily = annualMortality(age) / DAYS_PER_YEAR;
       daily *= p.health < HEALTH.weak ? 3 : worn ? 1.5 : 0.6;
       if (p.hardy && age > 50) daily *= 0.3;
+      // (a fresh wound can go bad)
+      const wounded = (p.wounded ?? 0) > this.tick;
+      if (wounded) daily *= WOUND_RISK;
       if (r.next() < daily) {
-        this.kill(p, age < 3 ? 'infancy' : age > 50 ? 'old age' : 'fever');
+        this.kill(p, wounded ? 'wound gone bad' : age < 3 ? 'infancy' : age > 50 ? (r.chance(0.15) ? 'fall' : 'old age') : this.everydayDeath(p, worn));
         continue;
       }
+      // healing: a bad leg, an eye or a hand that was mending has mended
+      for (const k of ['lame', 'oneEye', 'badHand'] as const) {
+        const v = p[k];
+        if (v === undefined || v < 0 || v > this.tick) continue;
+        delete p[k];
+        this.remember(p, 'healed', 6, 0.5, -1, k === 'lame' ? 'Walked without a limp again.' : k === 'oneEye' ? 'Could see clearly again.' : 'Had the use of their hand again.');
+      }
+      if (p.wounded !== undefined && p.wounded <= this.tick) delete p.wounded;
+      // accidents: at work, about the camp, on the ice
+      if (age >= 5 && r.next() < (ACCIDENT_YEARLY * (age >= 60 ? 1.4 : 1) * (freshFrozen(this.tick) ? 1.3 : 1)) / DAYS_PER_YEAR) this.accident(p);
       // a sickness going through the camp takes the youngest and the oldest first
       const nursed = (p.tended ?? 0) > this.tick, brewed = (p.brewed ?? 0) > this.tick;
       if (p.sick > 0 && (this.camp.sickUntil ?? 0) > this.tick && r.next() < (age < 3 || age > 60 ? 0.03 : age < 12 ? 0.01 : 0.005) * (worn ? 2 : 0.6) * (brewed ? 0.45 : nursed ? 0.6 : 1)) {
@@ -3042,6 +3083,60 @@ export class Sim {
       if (this.camp.heardWolves !== undefined && this.tick - this.camp.heardWolves < TICKS_PER_DAY) this.practise(p, 'wolves', 0.25);
     }
     this.teach();
+  }
+
+  /** What an everyday death (not of old age or in infancy) was: fever for the worn-down and the sick, and otherwise as often a fall, an accident or a bite. */
+  private everydayDeath(p: Person, worn: boolean) {
+    const r = this.rLife;
+    if (p.sick > 0 || worn) return 'fever';
+    const x = r.next();
+    return x < 0.4 ? 'fever' : x < 0.65 ? 'fall' : x < 0.85 ? 'accident' : seasonOf(this.tick) === 1 ? 'adder bite' : 'fever';
+  }
+
+  /** An accident that doesn't kill (or not at once): a fall, a cut, a burn, something in the eye. */
+  accident(p: Person) {
+    const r = this.rLife;
+    const age = this.age(p), child = age < 14;
+    const ice = freshFrozen(this.tick);
+    const x = r.next();
+    const hit = (h: number) => { p.health = Math.max(5, p.health - h); };
+    if (x < (child ? 0.45 : 0.35)) {
+      // a fall: out of a tree, on the rocks, on the ice
+      const where = ice ? 'on the ice' : child ? 'out of a tree' : age >= 60 ? 'on the path' : r.chance(0.5) ? 'on the rocks' : 'from a bank';
+      if (r.chance(age >= 60 ? 0.6 : 0.4)) {
+        hit(30);
+        this.wound(p);
+        this.event('injury', `${p.name} fell ${where} and broke a leg.`, [p.id], p.x, p.z, 2);
+        this.remember(p, 'injured', -15, 1, -1, 'Broke a leg in a fall.');
+        this.maim(p, 'lame', 1, child ? 0.15 : age >= 60 ? 0.5 : 0.3, [18, 48]);
+      } else {
+        hit(8);
+        this.event('injury', `${p.name} fell ${where} and twisted an ankle.`, [p.id], p.x, p.z, 1);
+        this.remember(p, 'injured', -4, 0.3, -1, 'Twisted an ankle.');
+        this.maim(p, 'lame', 1, 0, [3, 8]);
+      }
+    } else if (x < 0.65) {
+      // a cut: at the flint, at a carcass, with an axe
+      const at = child ? 'playing with a sharp flake' : r.chance(0.5) ? 'knapping flint' : r.chance(0.5) ? 'at a carcass' : 'with an axe';
+      hit(15);
+      this.wound(p);
+      this.event('injury', `${p.name} cut a hand to the bone ${at}.`, [p.id], p.x, p.z, 2);
+      this.remember(p, 'injured', -8, 0.5, -1, 'Cut a hand to the bone.');
+      this.maim(p, 'badHand', 0.35, 0.4, [12, 36]);
+    } else if (x < 0.85) {
+      // a burn at the fire (the young most of all)
+      hit(child ? 18 : 12);
+      this.wound(p);
+      this.event('injury', `${p.name} was badly burned at the fire.`, [p.id], p.x, p.z, 2);
+      this.remember(p, 'injured', -10, 0.5, -1, 'Burned at the fire.');
+      this.maim(p, 'badHand', 0.25, 0.4, [12, 36]);
+    } else {
+      // something in the eye: a whipping twig, a flying flake of flint
+      hit(6);
+      this.event('injury', `${p.name} was hurt in the eye by ${r.chance(0.5) ? 'a twig' : 'a flying flake of flint'}.`, [p.id], p.x, p.z, 1);
+      this.remember(p, 'injured', -6, 0.5, -1, 'Hurt in the eye.');
+      this.maim(p, 'oneEye', 0.5, 0.7, [6, 20]);
+    }
   }
 
   private birth(mother: Person) {
@@ -3241,13 +3336,22 @@ export class Sim {
       // (anyone being tormented by someone who is staying jumps at the chance to get away)
       const bully = this.tormentor(q);
       const escape = !!bully && !group.includes(bully) && op > 0;
-      if (op > 30 || escape || (this.has(q, 'wanderlust') && op > 0)) for (const h of this.household(q)) if (!group.includes(h)) group.push(h);
+      if (!(op > 30 || escape || (this.has(q, 'wanderlust') && op > 0))) continue;
+      // (a household that would take more than half the grown-ups away stays behind, and others may still go)
+      const joining = this.household(q).filter((h) => !group.includes(h));
+      const grownAfter = [...group, ...joining].filter((p) => this.age(p) >= 16).length;
+      if (grownAfter > adults.length * 0.5) continue;
+      group.push(...joining);
     }
     const grown = group.filter((p) => this.age(p) >= 16);
     const stayGrown = adults.length - grown.length;
     if (group.length < (trouble ? 5 : 7) || grown.length < (trouble ? 2 : 3) || ms.length - group.length < (trouble ? 6 : 8) ||
       stayGrown < (trouble ? 4 : 5) || grown.length > adults.length * 0.5) return false;
-    const site = this.chooseSite({ from: c, min: 16, max: 44, avoid: 18, reachFrom: this.tileOf(leader) });
+    // (with the near land taken, they go farther to find their own)
+    let site = this.chooseSite({ from: c, min: 16, max: 44, avoid: 18, reachFrom: this.tileOf(leader) });
+    if (site < 0) site = this.chooseSite({ from: c, min: 16, max: 70, avoid: 18, reachFrom: this.tileOf(leader) });
+    // (and where good land is scarce, they settle closer to their neighbours than they would like)
+    if (site < 0) site = this.chooseSite({ from: c, min: 10, max: 70, avoid: 12, reachFrom: this.tileOf(leader) });
     if (site < 0) return false;
     // they take a fair share of the stores with them
     const share = (group.length / ms.length) * 0.85;
@@ -3483,7 +3587,8 @@ export class Sim {
     const r = this.rLife;
     const live = this.liveCamps().length;
     if (yearOf(this.tick) < 4 && live) return;
-    const chance = live === 0 ? 0.5 : live < 3 ? 0.06 : live < 5 ? 0.02 : 0;
+    // (strangers come to empty or near-empty land: where three bands are living, the land looks taken)
+    const chance = live === 0 ? 0.5 : live === 1 ? 0.05 : live === 2 ? 0.02 : 0;
     if (!r.chance(chance)) return;
     const prev = this.camp;
     const c = this.foundBand(true);
@@ -5927,6 +6032,8 @@ export class Sim {
       remains: p.alive || p.buried ? null : remainsStage(p, this.tick, TICKS_PER_YEAR),
       needs: { food: p.food, rest: p.rest, warmth: p.warmth, belonging: p.belonging, safety: p.safety },
       health: p.health, mood: p.mood, sick: p.alive && p.sick > 0, pregnant: p.alive && p.pregnantUntil > 0,
+      /** lasting hurts, in words ("lame", "a bad hand, mending") */
+      hurts: p.alive ? (['lame', 'oneEye', 'badHand'] as const).filter((k) => this.hurt(p, k)).map((k) => HURT_WORDS[k][p[k]! < 0 ? 0 : 1]) : [],
       traits: p.traits.slice(),
       skills: Array.from(p.skills),
       /** which skills the card shows (the band's crafts it has no use for yet are left out) */
