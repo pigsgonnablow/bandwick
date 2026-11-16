@@ -159,9 +159,10 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
   const builds = kinds('build');
   const STORY = new Set(['founding', 'discovery', 'famine', 'famine_end', 'winter', 'climate', 'hunt', 'fostering', 'injury', 'stillbirth', 'move',
     'split', 'move_camp', 'merge', 'gone', 'empty', 'exile', 'death_quarrel', 'fight', 'attack', 'epidemic', 'epidemic_end',
-    'murrain', 'blight', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder', 'known',
-    'rule', 'rule_end']);
+    'murrain', 'blight', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder', 'known']);
   const story: Seg[][] = [];
+  // (a ruler taking hold of a band, or the band throwing them off)
+  for (const k of ['rule', 'rule_end']) STORY.add(k);
   for (const e of evs) {
     if (STORY.has(e.kind) || (e.kind === 'build' && e.weight >= 3)) story.push(linkify(e, byId));
   }
@@ -236,9 +237,10 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
     : has('empty') ? 'The year the land fell silent'
     : has('exile') || has('death_quarrel') ? 'The year of the killing'
     : has('epidemic') ? 'The year of the sickness'
+    : has('gone') ? 'The year a camp fell silent'
+    // (a band throwing off its ruler, or coming under one)
     : evs.some((e) => e.kind === 'rule_end' && e.text.includes('no longer')) ? 'The year the band threw off its ruler'
     : evs.some((e) => e.kind === 'rule' && e.text.includes('took hold')) ? 'The year of the builder'
-    : has('gone') ? 'The year a camp fell silent'
     : has('move_camp') ? 'The year of leaving'
     : has('split') ? 'The year of the parting'
     : has('founding') ? 'The year strangers came'
@@ -286,9 +288,10 @@ const LANES = [
   { key: 'death', label: 'Deaths', color: '#e66767', kinds: ['death', 'stillbirth'] },
   { key: 'hard', label: 'Hard times', color: '#3987e5', kinds: ['famine', 'winter', 'climate', 'injury', 'epidemic', 'fight', 'attack', 'murrain', 'blight', 'death_quarrel'] },
   { key: 'works', label: 'Good fortune & works', color: '#c98500', kinds: ['build', 'discovery', 'hunt', 'move', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder'] },
-  { key: 'bands', label: 'Bands', color: '#b3aa96', kinds: ['founding', 'split', 'move_camp', 'merge', 'gone', 'empty', 'exile',
-    'rule', 'rule_end'] },
+  { key: 'bands', label: 'Bands', color: '#b3aa96', kinds: ['founding', 'split', 'move_camp', 'merge', 'gone', 'empty', 'exile'] },
 ];
+// (rulers rising and falling sit with the bands' comings and goings)
+LANES.find((l) => l.key === 'bands')!.kinds.push('rule', 'rule_end');
 
 function Timeline({ c, events, engine, byId }: { c: Chron; events: SimEvent[]; engine: Engine; byId: Map<number, Person> }) {
   const [ref, width] = useWidth();
