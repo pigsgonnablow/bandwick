@@ -4,7 +4,7 @@ import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE, aDish } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
 import { SEASONED_HEAT, CANOE_SPEED, CANOE_CATCH, CANOE_OPEN } from './band';
-import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, STEW_FROM, STEW_TO, GRIDDLE_GAIN, GRIDDLED, RAW_SICK, RAW_WARM, RAW_WARM_AT, COOKED_SICK, STALE_SICK, GUT_DAYS, RAW_RISKY, OVEN_FROM, OVEN_LOAD, OVEN_BELONG, BOIL_TICKS, STEW_CALL, STEW_TICKS, STEW_BELONG, BREW_WARM, BREW_HOURS, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
+import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, LAME_SPEED, LAME_WORK, ONE_EYE_AIM, BAD_HAND_WORK, BAD_HAND_AIM, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, STEW_FROM, STEW_TO, GRIDDLE_GAIN, GRIDDLED, RAW_SICK, RAW_WARM, RAW_WARM_AT, COOKED_SICK, STALE_SICK, GUT_DAYS, RAW_RISKY, OVEN_FROM, OVEN_LOAD, OVEN_BELONG, BOIL_TICKS, STEW_CALL, STEW_TICKS, STEW_BELONG, BREW_WARM, BREW_HOURS, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
   PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, CHARCOAL_CRACK, CLAMP_BURN, CHARCOAL_YIELD, SLEDGE_LOAD, SLEDGE_SNOW, MASTER_FALL, MASTER_WOOD, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
 import { denFor, deadfallSpot } from './beasts';
@@ -137,8 +137,13 @@ function workDrive(s: Sim, p: Person) {
   if (p.pregnantUntil > 0 && p.pregnantUntil - s.tick < 4 * TICKS_PER_DAY) d *= 0.5;
   if (p.sick > 0) d *= 0.3;
   if (p.health < HEALTH.weak) d *= 0.5;
+  // (a lame leg or a crippled hand slows every task)
+  if (s.hurt(p, 'lame')) d *= LAME_WORK;
+  if (s.hurt(p, 'badHand')) d *= BAD_HAND_WORK;
   return d;
 }
+/** How true someone's throw is, with one eye or a crippled hand. */
+const aim = (s: Sim, p: Person) => (s.hurt(p, 'oneEye') ? ONE_EYE_AIM : 1) * (s.hurt(p, 'badHand') ? BAD_HAND_AIM : 1);
 const fit = (p: Person, k: number) => 0.7 + Math.min(20, p.skills[k]) * 0.03;
 
 /** The craft someone is practising at their work right now, which a child watching them picks up (-1: nothing to learn from). */
@@ -332,7 +337,7 @@ export function decide(s: Sim, p: Person) {
   if (age >= 14 && !dark && ((c.stock.trinkets >= 1 && c.stock.fiber >= 1) || s.goodsOf().some((i) => i.kind === 'beads')) && s.tick - (p.gave ?? -1e9) > GIFT_DAYS * TICKS_PER_DAY && giftFor(s, p))
     add('gift', 0.32 + (s.has(p, 'kind') ? 0.1 : 0) + (s.has(p, 'greedy') ? -0.15 : 0));
   // a hot afternoon: the young go down to the water to cool off
-  if (!dark && temp >= 21 && age >= 4 && age < 40 && p.health > HEALTH.swim && hour > 10 && hour < 19)
+  if (!dark && temp >= 21 && age >= 4 && age < 40 && p.health > HEALTH.swim && !s.hurt(p, 'lame') && hour > 10 && hour < 19)
     add('swim', (child ? 0.42 : 0.24) + Math.min(0.3, (temp - 21) * 0.05) + (s.has(p, 'wanderlust') ? 0.05 : 0));
   // far from their own camp (left behind in a move, or newly joined): make for it
   const away = hyp(p.x - c.x, p.z - c.z);
@@ -353,7 +358,7 @@ export function decide(s: Sim, p: Person) {
     const food = (j.food ?? 0.5) * drive * night * (stock < 0.4 && p.food < 35 ? 1 + hunger : 1);
     if (berriesRipe(s.tick)) add('forage', food * fit(p, SK.forage) * (child ? 1.3 : 1) * crowd('forage'));
     // a hunt can mean a day's walk: not for the sick, the weak or the half-starved
-    if (age >= 16 && age < 56 && p.sick === 0 && p.health >= HEALTH.hunt && (p.food >= 50 || stock < 0.4)) {
+    if (age >= 16 && age < 56 && p.sick === 0 && p.health >= HEALTH.hunt && !s.hurt(p, 'lame') && (p.food >= 50 || stock < 0.4)) {
       const nerve = s.has(p, 'brave') ? 1.4 : s.has(p, 'cautious') ? 0.55 : 1;
       // (and one or two of the best hunters out after the piglets for the pen, while it is empty)
       const piglets = (j.piglets ?? 0) > 0 && !dark && s.people.filter((q) => q.alive && q.band === p.band && q.task?.kind === 'hunt' && q.task.alive).length < 2 ? j.piglets * drive * fit(p, SK.hunt) * fit(p, SK.hunt) : 0;
@@ -1399,6 +1404,7 @@ function speed(s: Sim, p: Person) {
   else if (p.carry === CARRY.Mud) v *= 0.78;
   else if (p.carry === CARRY.Log) v *= 0.82;
   if (p.health < HEALTH.weak) v *= 0.7;
+  if (s.hurt(p, 'lame')) v *= LAME_SPEED;
   return v;
 }
 
@@ -3228,6 +3234,8 @@ export function runTask(s: Sim, p: Person) {
           s.remember(p, 'injured', -15, 1, -1, 'Hurt by a falling tree.');
           s.event('injury', `${p.name} was hurt by a falling tree.`, [p.id], p.x, p.z, 2);
           if (p.health <= 0) return s.kill(p, 'accident');
+          s.wound(p);
+          s.maim(p, 'lame', 0.4, 0.3, [18, 48]);
         }
         const carryNow = Math.min(6, wood);
         if (wood > carryNow) {
@@ -3349,13 +3357,15 @@ export function runTask(s: Sim, p: Person) {
           s.remember(p, 'injured', -18, 1, -1, `${hurt[0].toUpperCase()}${hurt.slice(1)}.`);
           s.event('injury', `${p.name} was ${hurt}.`, [p.id], p.x, p.z, 2);
           if (p.health <= 0) return s.kill(p, 'hunting');
+          s.wound(p);
+          s.maim(p, 'lame', isStag(d) ? 0.35 : 0.2, 0.3, [18, 48]);
         }
         // a stag with his antlers locked in another's, or roaring for the rut, makes an easier mark
         const chance = 0.15 + p.skills[SK.hunt] * 0.022 + (s.has(p, 'brave') ? 0.05 : 0) + (d.state === 4 ? 0.1 : d.state === 3 ? 0.04 : 0)
           // a dog holds the deer at bay
           + (s.hasDog(p) ? 0.07 : 0);
         flash(p, FLASH.Thrust);
-        if (r.next() < chance) {
+        if (r.next() < chance * aim(s, p)) {
           d.alive = false;
           p.kills++;
           s.stats.kills++;
@@ -3523,7 +3533,8 @@ export function runTask(s: Sim, p: Person) {
         const chance = 0.42 + p.skills[SK.fish] * 0.028 + stocked * 0.18 - chill + (kind === 'harpoon' ? HARPOON_HIT : kind === 'line' ? LINE_HIT : 0);
         if (kind !== 'line') flash(p, FLASH.Stab);
         // (whole fish only: water fished down below one is a miss)
-        if (r.next() < chance && s.fish[w] >= 1) {
+        // (a spear or harpoon thrown with one eye or a bad hand goes wide; a line hardly minds)
+        if (r.next() < chance * (kind === 'line' ? 1 : aim(s, p)) && s.fish[w] >= 1) {
           // (water fished down, or in a lean year, gives smaller catches: fewer fish, and smaller)
           const got = Math.min(Math.floor(s.fish[w]), Math.max(1, Math.round((3 + Math.floor(p.skills[SK.fish] / 4)) * (0.35 + 0.65 * stocked) * cold * (kind === 'line' ? LINE_CATCH : kind === 'harpoon' ? HARPOON_CATCH : 1))));
           s.fish[w] -= got;
@@ -4165,10 +4176,12 @@ function huntBoar(s: Sim, p: Person, t: Task) {
     s.remember(p, 'injured', -18, 1, -1, 'Gored by a wild boar.');
     s.event('injury', `${p.name} was gored by a wild boar.`, [p.id], p.x, p.z, 2);
     if (p.health <= 0) return s.kill(p, 'hunting');
+    s.wound(p);
+    s.maim(p, 'lame', 0.35, 0.3, [18, 48]);
   }
   const chance = 0.12 + p.skills[SK.hunt] * 0.02 + (s.has(p, 'brave') ? 0.06 : 0) + (dog ? 0.1 : 0) + (b.young ? 0.15 : 0);
   flash(p, FLASH.Thrust);
-  const hit = r.next() < chance;
+  const hit = r.next() < chance * aim(s, p);
   if (hit && t.alive && b.young && s.penOf(c)) {
     // caught, kicking and squealing, and carried home in their arms (the sow may come after them)
     b.alive = false;
