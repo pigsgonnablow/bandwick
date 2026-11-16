@@ -159,7 +159,7 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
   const builds = kinds('build');
   const STORY = new Set(['founding', 'discovery', 'famine', 'famine_end', 'winter', 'climate', 'hunt', 'fostering', 'injury', 'stillbirth', 'move',
     'split', 'move_camp', 'merge', 'gone', 'empty', 'exile', 'death_quarrel', 'fight', 'attack', 'epidemic', 'epidemic_end',
-    'murrain', 'blight', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder', 'known']);
+    'murrain', 'blight', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder', 'known', 'bully_snap', 'bully_shun', 'bully_flee']);
   const story: Seg[][] = [];
   for (const e of evs) {
     if (STORY.has(e.kind) || (e.kind === 'build' && e.weight >= 3)) story.push(linkify(e, byId));
@@ -233,7 +233,8 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
   const firstFounding = evs.find((e) => e.kind === 'founding' && !e.text.startsWith('Strangers'));
   const title = firstFounding ? `The founding of ${c.camp}`
     : has('empty') ? 'The year the land fell silent'
-    : has('exile') || has('death_quarrel') ? 'The year of the killing'
+    : has('death_quarrel') || evs.some((e) => e.kind === 'exile' && !/tormenting/.test(e.text)) ? 'The year of the killing'
+    : has('exile') ? 'The year of the outcast'
     : has('epidemic') ? 'The year of the sickness'
     : has('gone') ? 'The year a camp fell silent'
     : has('move_camp') ? 'The year of leaving'
@@ -281,9 +282,9 @@ function useWidth() {
 const LANES = [
   { key: 'family', label: 'Births & bonds', color: '#199e70', kinds: ['birth', 'twins', 'pairing', 'fostering'] },
   { key: 'death', label: 'Deaths', color: '#e66767', kinds: ['death', 'stillbirth'] },
-  { key: 'hard', label: 'Hard times', color: '#3987e5', kinds: ['famine', 'winter', 'climate', 'injury', 'epidemic', 'fight', 'attack', 'murrain', 'blight', 'death_quarrel'] },
+  { key: 'hard', label: 'Hard times', color: '#3987e5', kinds: ['famine', 'winter', 'climate', 'injury', 'epidemic', 'fight', 'attack', 'murrain', 'blight', 'death_quarrel', 'bully_snap', 'bully_shun'] },
   { key: 'works', label: 'Good fortune & works', color: '#c98500', kinds: ['build', 'discovery', 'hunt', 'move', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder'] },
-  { key: 'bands', label: 'Bands', color: '#b3aa96', kinds: ['founding', 'split', 'move_camp', 'merge', 'gone', 'empty', 'exile'] },
+  { key: 'bands', label: 'Bands', color: '#b3aa96', kinds: ['founding', 'split', 'move_camp', 'merge', 'gone', 'empty', 'exile', 'bully_flee'] },
 ];
 
 function Timeline({ c, events, engine, byId }: { c: Chron; events: SimEvent[]; engine: Engine; byId: Map<number, Person> }) {
