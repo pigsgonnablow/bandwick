@@ -28,6 +28,20 @@ their band's colour, buildings take it on, and a wash around each camp, wider th
 there, shows each band's range; a legend lists the bands. The band panel shows the colour, and how
 the band came to be.
 
+**Rulers.** Most bands live loosely: nobody gives orders, and each person decides their own day. A band that
+comes over the hills (the first, or strangers) is led there by the man of its founding couple, or about a
+third of the time by the woman. Now and
+then, in spring, someone ambitious whom the band looks up to above nearly everyone (and who is neither
+cruel nor greedy) takes hold of it as a builder. A builder's band works harder, gives more of its spare
+days to its monuments and starts on them sooner, favours stone, planks and daub over poles, thinks of new
+ways to build sooner, and splits less often. When the ruler dies or leaves, a grown child may take up the
+rule (always, if of the same mind; half the time otherwise), or someone else fit to rule, or the band goes
+back to its loose ways. A band chafes under a builder when its lazy are driven to work, and on hungry and
+unhappy days; once the strain has built up it may throw its ruler off, and never takes them back. The band
+panel says who rules it and since when, and the person card says who rules. About one band-year in five
+is ruled. `npx tsx tools/ruletrace.ts --seed 1` follows rulers through a run. More kinds of ruler are to
+come.
+
 **Landing.** A new world opens with the first band coming in from the sea in a boat. They land
 on the nearest shore, walk inland to their camp, lay the hearth and mark out the stockpile, and
 then life begins. Time stands still until they are settled. Press Skip (or Esc, or pick a speed)

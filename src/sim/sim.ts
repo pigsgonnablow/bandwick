@@ -25,6 +25,7 @@ import { decide, runTask, abandon, sendHome, delivering, foodInHand, afloat, FAR
 import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard, deadfallNight, DEADFALL_RANGE } from './beasts';
 import { updatePigs, pigsDaily, packPigs, pigCard, penOf, pigsOf, pigsWanted, pigToKill, pigFeed, pigMeat, grown, PIG_ID } from './pigs';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets, ELITE } from './know';
+import { Rule, WOMAN_LEADS, ruleDaily, ruledIdeas, builderBand, rulerOf, ruleSummary, BUILDER_SPLIT, BUILDER_WALLS, BUILDER_RAISE } from './rule';
 import { RunMap, mapRuns, runsTick, runOn, runExtra, runNear, weirSite, weirRot } from './runs';
 import { canoeSite, canoeRot, freeCanoe, openStock, canoeTarget } from './canoe';
 
@@ -216,6 +217,10 @@ export interface Camp {
   parent: number;
   /** who led them here */
   leader: number;
+  /** who rules the band, and how, while someone does (absent: the band lives loosely, as most do) */
+  rule?: Rule;
+  /** rulers the band has thrown off, who won't rule it again */
+  deposed?: number[];
   /** the tick of the last split or move, so a band doesn't break up again at once */
   settled: number;
   /** a sickness going through the band: until when, and how many it has taken (absent in older saves) */
@@ -354,6 +359,8 @@ export class Sim {
   rWolf: Rng;
   rBeast: Rng;
   rPig: Rng;
+  /** rulers rising, succeeding and falling (their own stream, so a world without one runs as it did) */
+  rRule: Rng;
   anomaly = 0;
   private nextId = 1;
   /** A fresh id for a camp, building, person or thing. */
@@ -439,6 +446,7 @@ export class Sim {
     this.rWolf = Rng.stream(seed, 'wolves');
     this.rBeast = Rng.stream(seed, 'beasts');
     this.rPig = Rng.stream(seed, 'pigs');
+    this.rRule = Rng.stream(seed, 'rule');
     this.tongue = new Tongue(Rng.stream(seed, 'tongue'));
     // props
     const cap = world.propCount + 4096;
@@ -546,7 +554,7 @@ export class Sim {
       params: { ...this.world.params },
       worldHash: this.world.hash,
       tick: this.tick, anomaly: this.anomaly, nextId: this.nextId, nextEvent: this.nextEvent, eventHash: this.eventHash,
-      rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState(), wolves: this.rWolf.getState(), beasts: this.rBeast.getState(), pigs: this.rPig.getState() },
+      rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState(), wolves: this.rWolf.getState(), beasts: this.rBeast.getState(), pigs: this.rPig.getState(), rule: this.rRule.getState() },
       props: {
         count: n,
         type: pick(this.propType), x: pick(this.propX), y: pick(this.propY), z: pick(this.propZ), rot: pick(this.propRot),
@@ -616,6 +624,7 @@ export class Sim {
     if (d.rng.wolves) this.rWolf.setState(d.rng.wolves);
     if (d.rng.beasts) this.rBeast.setState(d.rng.beasts);
     if (d.rng.pigs) this.rPig.setState(d.rng.pigs);
+    if (d.rng.rule) this.rRule.setState(d.rng.rule);
     this.tongue.r.setState(d.rng.tongue);
     // props: replace the freshly generated ones with the saved, lived-in set
     const n = d.props.count;
@@ -1015,7 +1024,9 @@ export class Sim {
     mk(0, 18);
     this.pair(aMan, aWoman, false);
     this.pair(bWoman, bMan, false);
-    camp.leader = aMan.id;
+    // (who leads them here: the man of the founding couple, or now and then the woman; drawn from the rulers' own
+    // stream, so the rest of the world's luck is untouched)
+    camp.leader = this.rRule.chance(WOMAN_LEADS) ? aWoman.id : aMan.id;
     for (const p of band) {
       p.x = cx + 0.5 + r.range(-2, 2);
       p.z = cz + 0.5 + r.range(-2, 2);
@@ -2478,6 +2489,7 @@ export class Sim {
       let chance = ((w * amount) / d.odds) * (1 + past / 2);
       if (this.has(p, 'curious')) chance *= 2;
       if (this.has(p, 'industrious')) chance *= 1.3;
+      chance *= ruledIdeas(c, what);
       if (this.rAi.next() < chance) this.discover(c, d, p);
     }
   }
@@ -2582,6 +2594,7 @@ export class Sim {
     }
     this.bands(dayOfYear);
     this.fortune(dayOfYear);
+    ruleDaily(this, dayOfYear);
     for (const c of this.liveCamps()) {
       this.camp = c;
       this.plan();
@@ -3219,6 +3232,8 @@ export class Sim {
         if (this.tick - c.settled < TICKS_PER_YEAR * 2) continue;
         if (this.considerMerge(c)) continue;
         if (this.considerMove(c)) continue;
+        // (a builder holds the band together to work on what it is raising)
+        if (builderBand(c) && !this.rRule.chance(BUILDER_SPLIT)) continue;
         this.considerSplit(c);
       }
     }
@@ -3317,7 +3332,7 @@ export class Sim {
     let leader: Person | null = null, best = -1e9;
     for (const p of adults) {
       const age = this.age(p);
-      if (age < 20 || age > 50 || p.health < HEALTH.lead || p.id === c.leader) continue;
+      if (age < 20 || age > 50 || p.health < HEALTH.lead || p.id === c.leader || p.id === c.rule?.ruler) continue;
       let warmth = 0;
       for (const q of adults) if (q !== p) warmth += this.opinion(p, q);
       warmth /= Math.max(1, adults.length - 1);
@@ -3437,7 +3452,7 @@ export class Sim {
     const site = this.chooseSite({ from: c, min: 12, max: lean ? 60 : 40, avoid: 18, reachFrom: c.tile, fish: lean });
     if (site < 0) return false;
     const adults = ms.filter((p) => this.age(p) >= 16).sort((a, b) => a.birth - b.birth || a.id - b.id);
-    const lead = this.byId.get(c.leader)?.alive && this.byId.get(c.leader)!.band === c.id ? this.byId.get(c.leader)! : adults[0] ?? ms[0];
+    const lead = rulerOf(this, c) ?? (this.byId.get(c.leader)?.alive && this.byId.get(c.leader)!.band === c.id ? this.byId.get(c.leader)! : adults[0] ?? ms[0]);
     // wood and food set aside for a job (or carried in) go back to the stores before they are packed up
     for (const p of ms) abandon(this, p);
     // the pigs can't be driven so far: they are killed and go with the stores
@@ -3448,6 +3463,9 @@ export class Sim {
     nc.knows = c.knows.slice();
     nc.learning = c.learning?.slice();
     nc.learned = c.learned?.slice();
+    // (and the same ruler, if they have one)
+    if (c.rule) nc.rule = { ...c.rule };
+    if (c.deposed) nc.deposed = c.deposed.slice();
     // (the same people: a full store at the new camp is not news to them)
     nc.providedOnce = c.providedOnce;
     // the gardens are left behind, but the seed goes with them
@@ -4063,7 +4081,9 @@ export class Sim {
     // charcoal for the kiln, burned in the clamp while the band has wood to spare and is not short of it
     const charcoal = this.knows('charcoal', c) && c.stock.charcoal < CHARCOAL_KEPT && !woodShort && c.stock.wood >= fuelNeed * 0.5 + RECIPES.charcoal.uses.wood! && this.canCraft('charcoal', c);
     const make = this.toolToMake(c);
-    const raise = monument && goodsFree ? (provided ? 0.34 : 0.26) : 0;
+    // (a builder's band gives more of its days to its monument, and starts on them before it is quite comfortable)
+    const builder = builderBand(c);
+    const raise = monument && (goodsFree || (builder && !c.rationing && !woodShort && foodP < 0.95)) ? (provided ? 0.34 : 0.26) * (builder ? BUILDER_RAISE : 1) : 0;
     // the band's pigs, and whether one is for the stores today
     const herd = pigsOf(this, c), killPig = !!pigToKill(this, c);
     const pigletsOut = this.knows('boar', c) && pigsWanted(this, c) && this.beasts.some((b) => b.alive && b.young && b.kind === BEAST.Boar && hyp(b.x - c.x, b.z - c.z) < PIGLET_RANGE);
@@ -4492,7 +4512,9 @@ export class Sim {
     // the hurry is to have a roof before the snow, or for the very young
     const rush = hurry || (s >= 2.2 && s < 3) ? 1 : s >= 3 ? 0.7 : 0.15;
     const last = this.bandBuildings(c).filter((q) => q.built && (q.kind === 'hut' || q.kind === 'storehouse')).sort((a, q) => q.finished - a.finished)[0];
-    const lead = this.byId.get(c.leader);
+    // (the band's ruler has the say, where it has one)
+    const ruler = rulerOf(this, c);
+    const lead = ruler ?? this.byId.get(c.leader);
     const base = specOf({ kind: b.kind });
     let best: Walls = 'wood', bestS = -Infinity;
     const scores: Partial<Record<Walls, number>> = {};
@@ -4520,12 +4542,15 @@ export class Sim {
       if (last && (last.walls ?? 'wood') === wall) sc += lead && this.has(lead, 'cautious') ? 0.15 : 0.08;
       if (lead && this.has(lead, 'ambitious') && wall === 'stone') sc += 0.2;
       if (lead && this.has(lead, 'lazy') && wall === 'wood') sc += 0.15;
+      // (a builder wants walls that will stand)
+      if (ruler && builderBand(c)) sc += BUILDER_WALLS[wall] ?? 0;
       scores[wall] = sc;
       if (sc > bestS) { bestS = sc; best = wall; }
     }
     b.walls = best;
     this.buildingsVersion++;
     if (best === 'wood') return '';
+    if (ruler && builderBand(c) && bestS - (scores.wood ?? -Infinity) < 0.45) return `${ruler.name} would have it built to last`;
     if (trees < 16) return 'the woods are thin here';
     if (cold > 0.5) return 'the winters are hard here';
     if (best === 'stone' && settled > 0.5) return 'they mean to stay';
@@ -5382,6 +5407,8 @@ export class Sim {
       parent: this.campById(c.parent)?.name ?? null,
       first: c === this.camps[0],
       leader: this.byId.get(c.leader) ? { id: c.leader, name: this.byId.get(c.leader)!.name, alive: this.byId.get(c.leader)!.alive } : null,
+      /** who rules the band, while someone does */
+      rule: ruleSummary(this, c),
       /** every band, living ones first */
       bands: [...this.camps].sort((a, b) => (a.gone ? 1 : 0) - (b.gone ? 1 : 0) || a.founded - b.founded).map((b) => ({
         id: b.id, name: b.name, pop: this.members(b).length, gone: b.gone, x: b.x, z: b.z, founded: b.founded,
@@ -6097,6 +6124,11 @@ export class Sim {
       campDist: hyp(p.x - this.campOf(p).x, p.z - this.campOf(p).z),
       band: p.band,
       bandName: this.campOf(p).name,
+      /** the band they rule, and as what */
+      rules: (() => {
+        const r = p.alive ? ruleSummary(this, this.campOf(p)) : null;
+        return r && r.ruler.id === p.id ? `rules ${this.campOf(p).name} as its ${r.label}` : null;
+      })(),
       knows: rels.length,
       descendants: this.descendants(p.id),
       x: p.x,
@@ -6185,7 +6217,7 @@ export interface SaveData {
   nextEvent: number;
   eventHash: number;
   /** (saves from before the wolves have no `wolves` stream; it starts afresh) */
-  rng: { life: number[]; ai: number[]; wild: number[]; tongue: number[]; wolves: number[]; beasts: number[]; pigs: number[] };
+  rng: { life: number[]; ai: number[]; wild: number[]; tongue: number[]; wolves: number[]; beasts: number[]; pigs: number[]; rule: number[] };
   props: { count: number; type: string; x: string; y: string; z: string; rot: string; scale: string; alive: string; val: string; tile: string };
   propNote: Entries<number, string>;
   reserved: Entries<number, number>;

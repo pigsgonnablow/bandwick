@@ -293,6 +293,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
     <>
       <div class="win-sub sub">
         {p.alive ? `${age}, ${ageWord} of ${p.bandName}` : `Died ${when(p.death)}, aged ${age} (${p.cause})`}
+        {p.rules && ` · ${p.rules}`}
         {p.remains !== null && ` · ${REMAINS_WORDS[p.remains] ?? ''}`}
         {p.pregnant && ' · with child'}
         {p.sick && ' · feverish'}
