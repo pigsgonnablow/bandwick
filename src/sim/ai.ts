@@ -131,6 +131,8 @@ function workDrive(s: Sim, p: Person) {
   if (s.has(p, 'industrious')) d *= 1.28;
   if (s.has(p, 'lazy')) d *= 0.72;
   d *= 0.72 + p.mood / 360;
+  // (a builder drives the band, and themself most)
+  d *= ruledDrive(s, p);
   if (age < 9) return 0;
   if (age < 14) d *= 0.45;
   else if (age >= 60) d *= 0.55;
@@ -138,8 +140,6 @@ function workDrive(s: Sim, p: Person) {
   if (p.pregnantUntil > 0 && p.pregnantUntil - s.tick < 4 * TICKS_PER_DAY) d *= 0.5;
   if (p.sick > 0) d *= 0.3;
   if (p.health < HEALTH.weak) d *= 0.5;
-  // (a builder drives the band, and themself most)
-  d *= ruledDrive(s, p);
   return d;
 }
 const fit = (p: Person, k: number) => 0.7 + Math.min(20, p.skills[k]) * 0.03;
