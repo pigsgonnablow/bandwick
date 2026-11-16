@@ -4094,7 +4094,9 @@ export class Sim {
     c.jobs = {
       food: foodP,
       wood: woodP + (logsLying > 0 ? 0.1 : 0),
-      build: sites.length ? 0.85 : 0,
+      // (a site left standing half-built for a year comes first: a small band busy keeping itself fed otherwise never
+      // gets back to it)
+      build: sites.length ? 0.85 + (sites.some((b) => this.tick - b.started > TICKS_PER_YEAR) ? 0.4 : 0) : 0,
       fuel: this.hearth().fuel < 5 ? 0.9 : 0.15,
       // (the run's catch above all: fresh fish keeps only days, dried it keeps the winter through)
       preserve: this.knows('preserving') && mine.some((b) => b.kind === 'rack' && b.built) && c.stock.meat + c.stock.fish > 6 ? (run && c.stock.fish > 6 ? 0.85 : 0.7) : 0,
