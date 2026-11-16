@@ -388,21 +388,34 @@ export function omenHourly(s: Sim) {
   }
 }
 
-/** Someone has died: a death nobody can account for, or a second on the same day, is a sign. (Called after the death is told.) */
-export function deathSign(s: Sim, p: Person, cause: string, before: number | undefined) {
+/**
+ * Someone has died: noted on their band, so that the next morning a death nobody can account for, or two on one
+ * day, is taken for a sign (after the deaths have been told of and mourned).
+ */
+export function deathSign(s: Sim, p: Person, cause: string) {
   const c = s.campById(p.band);
   if (!c || c.gone) return;
   const age = s.age(p);
+  const day = dayOf(s.tick);
+  const d = c.deaths?.day === day ? c.deaths : (c.deaths = { day, n: 0 });
+  if (age >= 2) d.n++;
+  if ((cause === 'weakness' && age < 50) || (cause === 'fever' && age >= 16 && age < 45)) d.strange ??= p.id;
+}
+
+/** Yesterday's deaths, if they were strange: a sign. (In a famine or a sickness, deaths come together and nobody wonders at it.) */
+function deathsSeen(s: Sim, c: Camp) {
+  const d = c.deaths;
+  if (!d || d.day >= dayOf(s.tick)) return;
+  delete c.deaths;
+  if (c.famine || (c.sickUntil ?? 0) > s.tick) return;
   const ms = s.members(c).filter((q) => s.age(q) >= 4);
   if (!ms.length) return;
-  const hard = c.famine || (c.sickUntil ?? 0) > s.tick;
-  // (in a famine or a sickness, deaths come together and nobody wonders at it)
-  if (!hard && ((cause === 'weakness' && age < 50) || (cause === 'fever' && age >= 16 && age < 45))) {
-    s.event('omen', `Nobody could say what took ${p.name}, who had been well only days before.`, [p.id], p.x, p.z, 2);
+  const dead = d.strange !== undefined ? s.byId.get(d.strange) : undefined;
+  if (dead) {
+    s.event('omen', `Nobody could say what took ${dead.name}, who had been well only days before.`, [dead.id], c.x, c.z, 2);
     sight(s, c, 'strange_death', ms);
-  } else if (!hard && age >= 2 && before !== undefined && dayOf(before) === dayOf(s.tick) && c.twoDeaths !== dayOf(s.tick)) {
-    c.twoDeaths = dayOf(s.tick);
-    s.event('omen', `Two of ${c.name} died on the same day.`, [p.id], p.x, p.z, 2);
+  } else if (d.n >= 2) {
+    s.event('omen', `Two of ${c.name} died on the same day.`, [], c.x, c.z, 2);
     sight(s, c, 'two_deaths', ms);
   }
 }
@@ -588,6 +601,7 @@ export function omenDaily(s: Sim, dayOfYear: number) {
   for (const c of s.liveCamps()) {
     if (c.omen && c.omen.until < s.tick) delete c.omen;
     if (c.shelter && c.shelter.until <= s.tick) delete c.shelter;
+    deathsSeen(s, c);
     upkeep(s, c, dayOfYear);
     for (const k of c.customs ?? []) {
       if (k.kind === 'rest_day' && k.day === dayOfYear) {

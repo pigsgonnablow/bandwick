@@ -229,9 +229,10 @@ export interface Camp {
   omen?: Omen;
   /** a spell when believers (or, on a day of custom, everyone) leave their work and keep to the fire */
   shelter?: { until: number; why: string; all?: boolean; sign?: SignKind };
-  /** the white deer the band has seen, and the last day two of it died on the same day */
+  /** the white deer the band has seen */
   whiteSeen?: number[];
-  twoDeaths?: number;
+  /** today's deaths (past infancy), and the first of them nobody could account for, to wonder at in the morning */
+  deaths?: { day: number; n: number; strange?: number };
   /** the omen told of at the fire tonight (Lore.key), for the listeners */
   tale?: { key: string; day: number };
   /** the tick of the last split or move, so a band doesn't break up again at once */
@@ -1544,7 +1545,6 @@ export class Sim {
     if (!p.alive) return;
     if (killer) p.killer = killer.id;
     const band = this.campById(p.band);
-    const lastDeath = band?.lastDeath;
     if (band) band.lastDeath = this.tick;
     p.alive = false;
     p.death = this.tick;
@@ -1594,7 +1594,7 @@ export class Sim {
     const violent = cause === 'killed' || cause === 'wolves' || cause === 'bear' || cause === 'drowning';
     this.event('death', `${p.name}, ${age}, ${causeText[cause] ?? 'died'}.`, [p.id, ...(killer ? [killer.id] : [])], p.x, p.z, age < 2 ? 2 : violent ? 4 : 3);
     // a death nobody can account for, or a second the same day, is taken for a sign
-    deathSign(this, p, cause, lastDeath);
+    deathSign(this, p, cause);
     // the infant of a mother who dies may not survive either: handled by the fostering rule
   }
 
