@@ -26,6 +26,7 @@ import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard
 import { updatePigs, pigsDaily, packPigs, pigCard, penOf, pigsOf, pigsWanted, pigToKill, pigFeed, pigMeat, grown, PIG_ID } from './pigs';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets, ELITE } from './know';
 import { Rule, WOMAN_LEADS, ruleDaily, ruledIdeas, builderBand, rulerOf, ruleSummary, BUILDER_SPLIT, BUILDER_WALLS, BUILDER_RAISE } from './rule';
+import { Lore, Custom, Omen, Sky, SignKind, omenDaily, omenHourly, omenOutcome, deathSign, noPairing, midwinterOffering, carryCustoms, loreSummary, beliefsOf, skyNow, OMEN_KINDS } from './omen';
 import { RunMap, mapRuns, runsTick, runOn, runExtra, runNear, weirSite, weirRot } from './runs';
 import { canoeSite, canoeRot, freeCanoe, openStock, canoeTarget } from './canoe';
 
@@ -221,6 +222,19 @@ export interface Camp {
   rule?: Rule;
   /** rulers the band has thrown off, who won't rule it again */
   deposed?: number[];
+  /** what the band's people believe the signs foretell (absent: nothing yet), and the customs those beliefs have hardened into */
+  lore?: Lore[];
+  customs?: Custom[];
+  /** a sign the band has seen, while it waits to see what follows */
+  omen?: Omen;
+  /** a spell when believers (or, on a day of custom, everyone) leave their work and keep to the fire */
+  shelter?: { until: number; why: string; all?: boolean; sign?: SignKind };
+  /** the white deer the band has seen */
+  whiteSeen?: number[];
+  /** today's deaths (past infancy), and the first of them nobody could account for, to wonder at in the morning */
+  deaths?: { day: number; n: number; strange?: number };
+  /** the omen told of at the fire tonight (Lore.key), for the listeners */
+  tale?: { key: string; day: number };
   /** the tick of the last split or move, so a band doesn't break up again at once */
   settled: number;
   /** a sickness going through the band: until when, and how many it has taken (absent in older saves) */
@@ -361,6 +375,9 @@ export class Sim {
   rPig: Rng;
   /** rulers rising, succeeding and falling (their own stream, so a world without one runs as it did) */
   rRule: Rng;
+  rOmen: Rng;
+  /** a sight in the sky that every band sees: coming, or under way (absent: none) */
+  sky?: Sky;
   anomaly = 0;
   private nextId = 1;
   /** A fresh id for a camp, building, person or thing. */
@@ -447,6 +464,7 @@ export class Sim {
     this.rBeast = Rng.stream(seed, 'beasts');
     this.rPig = Rng.stream(seed, 'pigs');
     this.rRule = Rng.stream(seed, 'rule');
+    this.rOmen = Rng.stream(seed, 'omen');
     this.tongue = new Tongue(Rng.stream(seed, 'tongue'));
     // props
     const cap = world.propCount + 4096;
@@ -554,7 +572,7 @@ export class Sim {
       params: { ...this.world.params },
       worldHash: this.world.hash,
       tick: this.tick, anomaly: this.anomaly, nextId: this.nextId, nextEvent: this.nextEvent, eventHash: this.eventHash,
-      rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState(), wolves: this.rWolf.getState(), beasts: this.rBeast.getState(), pigs: this.rPig.getState(), rule: this.rRule.getState() },
+      rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState(), wolves: this.rWolf.getState(), beasts: this.rBeast.getState(), pigs: this.rPig.getState(), rule: this.rRule.getState(), omen: this.rOmen.getState() },
       props: {
         count: n,
         type: pick(this.propType), x: pick(this.propX), y: pick(this.propY), z: pick(this.propZ), rot: pick(this.propRot),
@@ -575,13 +593,14 @@ export class Sim {
       game: b64(this.game),
       stats: { ...this.stats },
       fortune: { plentyYear: this.plentyYear, blightYear: this.blightYear },
+      ...(this.sky ? { sky: { ...this.sky } } : {}),
       history: this.history.map((h) => ({ ...h })),
       camps: structuredCloneSafe(this.camps),
       camp: structuredCloneSafe(this.camp),
       events: this.events.map((e) => ({ ...e, people: e.people.slice() })),
       people: this.people.map((p) => ({
         ...p, skills: Array.from(p.skills), rel: rel(p.rel), path: p.path ? b64(p.path) : null,
-        task: p.task ? { ...p.task, ref: propRef(p.task), ...(p.task.route ? { route: p.task.route.slice() } : {}) } : null, traits: p.traits.slice(), ...(p.titles ? { titles: p.titles.slice() } : {}), memories: p.memories.map((m) => ({ ...m })), children: p.children.slice(),
+        task: p.task ? { ...p.task, ref: propRef(p.task), ...(p.task.route ? { route: p.task.route.slice() } : {}) } : null, traits: p.traits.slice(), ...(p.titles ? { titles: p.titles.slice() } : {}), memories: p.memories.map((m) => ({ ...m })), children: p.children.slice(), ...(p.beliefs ? { beliefs: p.beliefs.slice() } : {}),
       })),
       buildings: this.buildings.map((b) => ({ ...b, builders: b.builders.slice() })),
       items: this.items.map((i) => ({ ...i })),
@@ -625,6 +644,8 @@ export class Sim {
     if (d.rng.beasts) this.rBeast.setState(d.rng.beasts);
     if (d.rng.pigs) this.rPig.setState(d.rng.pigs);
     if (d.rng.rule) this.rRule.setState(d.rng.rule);
+    if (d.rng.omen) this.rOmen.setState(d.rng.omen);
+    this.sky = d.sky ? { ...d.sky } : undefined;
     this.tongue.r.setState(d.rng.tongue);
     // props: replace the freshly generated ones with the saved, lived-in set
     const n = d.props.count;
@@ -1254,6 +1275,8 @@ export class Sim {
     let h = this.eventHash;
     for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
     this.eventHash = Math.imul(h ^ this.tick, 0x01000193);
+    // (a band watching for what a sign meant may take this for it)
+    if (!OMEN_KINDS.has(kind)) omenOutcome(this, kind, people);
   }
   private eventHash = 0x811c9dc5;
 
@@ -1570,6 +1593,8 @@ export class Sim {
     };
     const violent = cause === 'killed' || cause === 'wolves' || cause === 'bear' || cause === 'drowning';
     this.event('death', `${p.name}, ${age}, ${causeText[cause] ?? 'died'}.`, [p.id, ...(killer ? [killer.id] : [])], p.x, p.z, age < 2 ? 2 : violent ? 4 : 3);
+    // a death nobody can account for, or a second the same day, is taken for a sign
+    deathSign(this, p, cause);
     // the infant of a mother who dies may not survive either: handled by the fostering rule
   }
 
@@ -1598,6 +1623,7 @@ export class Sim {
     for (const c of this.liveCamps()) this.stewHour(c);
     this.clamps();
     this.rot();
+    omenHourly(this);
     // the evening of the feast: the call goes round, and whoever has turned in early gets up again
     if (Math.round(hourOf(this.tick)) === 17)
       for (const c of this.liveCamps()) if (c.feastDay === dayOf(this.tick)) for (const p of this.members(c)) if (p.task?.kind !== 'feast' && !delivering(p)) p.nextThink = this.tick;
@@ -2553,7 +2579,7 @@ export class Sim {
     const dayOfYear = day % DAYS_PER_YEAR;
     const r = this.rLife;
     // midwinter: a feast, if the stores will bear it
-    if (dayOfYear === MIDWINTER) for (const c of this.liveCamps()) this.midwinter(c);
+    if (dayOfYear === MIDWINTER) for (const c of this.liveCamps()) { this.midwinter(c); midwinterOffering(this, c); }
     // a new year: new climate
     const here = this.liveCamps()[0] ?? this.camp;
     if (dayOfYear === 0) {
@@ -2595,6 +2621,7 @@ export class Sim {
     this.bands(dayOfYear);
     this.fortune(dayOfYear);
     ruleDaily(this, dayOfYear);
+    omenDaily(this, dayOfYear);
     for (const c of this.liveCamps()) {
       this.camp = c;
       this.plan();
@@ -3040,7 +3067,8 @@ export class Sim {
       }
     }
     // pairing (only among those still alive: some may have died above, this very morning)
-    const single = living.filter((p) => p.alive && p.partner < 0 && this.age(p) >= 16);
+    // (not in a season the band's customs keep for no partnering)
+    const single = noPairing(this, this.camp) ? [] : living.filter((p) => p.alive && p.partner < 0 && this.age(p) >= 16);
     for (const p of single) {
       if (p.partner >= 0) continue;
       let best: Person | null = null, bestOp = 28;
@@ -3465,6 +3493,7 @@ export class Sim {
     nc.learned = c.learned?.slice();
     // (and the same ruler, if they have one)
     if (c.rule) nc.rule = { ...c.rule };
+    carryCustoms(c, nc);
     if (c.deposed) nc.deposed = c.deposed.slice();
     // (the same people: a full store at the new camp is not news to them)
     nc.providedOnce = c.providedOnce;
@@ -5272,7 +5301,7 @@ export class Sim {
       out[o + 2] = d.z;
       out[o + 3] = d.fx;
       out[o + 4] = d.fz;
-      out[o + 5] = d.state + (d.fawn ? 10 : 0);
+      out[o + 5] = d.state + (d.fawn ? 10 : 0) + (d.white ? 20 : 0);
     });
     return out;
   }
@@ -5411,6 +5440,10 @@ export class Sim {
       leader: this.byId.get(c.leader) ? { id: c.leader, name: this.byId.get(c.leader)!.name, alive: this.byId.get(c.leader)!.alive } : null,
       /** who rules the band, while someone does */
       rule: ruleSummary(this, c),
+      /** what the band believes the signs foretell, and its customs */
+      lore: loreSummary(this, c),
+      /** the sight in the sky just now, for the renderer */
+      sky: skyNow(this),
       /** every band, living ones first */
       bands: [...this.camps].sort((a, b) => (a.gone ? 1 : 0) - (b.gone ? 1 : 0) || a.founded - b.founded).map((b) => ({
         id: b.id, name: b.name, pop: this.members(b).length, gone: b.gone, x: b.x, z: b.z, founded: b.founded,
@@ -5476,8 +5509,8 @@ export class Sim {
       ];
       if (hunter) lines.push(L('Hunted by', hunter.name, pref(hunter.id)));
       return {
-        ref, title: d.fawn ? 'Red deer fawn' : isStag(d) ? 'Red deer stag' : 'Red deer doe', subtitle: d.alive ? 'Wild deer' : 'Killed',
-        lines, notes: [`Hunters have brought down ${this.stats.kills} deer so far. Herds breed each spring, stags fight over the does in the autumn rut, and in winter the herds shelter in the woods.`],
+        ref, title: `${d.white ? 'White' : 'Red'} deer ${d.fawn ? 'fawn' : isStag(d) ? 'stag' : 'doe'}`, subtitle: d.alive ? (d.white ? 'A white deer, born once in a long while' : 'Wild deer') : 'Killed',
+        lines, notes: [...(d.white ? ['Whoever sees a white deer may take it for a sign, and a band that believes in it will not hunt it.'] : []), `Hunters have brought down ${this.stats.kills} deer so far. Herds breed each spring, stags fight over the does in the autumn rut, and in winter the herds shelter in the woods.`],
         x: d.x, z: d.z, gone: !d.alive,
       };
     }
@@ -6126,6 +6159,8 @@ export class Sim {
       campDist: hyp(p.x - this.campOf(p).x, p.z - this.campOf(p).z),
       band: p.band,
       bandName: this.campOf(p).name,
+      /** what they believe the signs foretell */
+      beliefs: beliefsOf(this, p),
       /** the band they rule, and as what */
       rules: (() => {
         const r = p.alive ? ruleSummary(this, this.campOf(p)) : null;
@@ -6219,7 +6254,7 @@ export interface SaveData {
   nextEvent: number;
   eventHash: number;
   /** (saves from before the wolves have no `wolves` stream; it starts afresh) */
-  rng: { life: number[]; ai: number[]; wild: number[]; tongue: number[]; wolves: number[]; beasts: number[]; pigs: number[]; rule: number[] };
+  rng: { life: number[]; ai: number[]; wild: number[]; tongue: number[]; wolves: number[]; beasts: number[]; pigs: number[]; rule: number[]; omen: number[] };
   props: { count: number; type: string; x: string; y: string; z: string; rot: string; scale: string; alive: string; val: string; tile: string };
   propNote: Entries<number, string>;
   reserved: Entries<number, number>;
@@ -6239,6 +6274,7 @@ export interface SaveData {
   /** absent in saves from before there could be several bands */
   camps?: Camp[];
   fortune?: { plentyYear: number; blightYear: number };
+  sky?: Sky;
   camp: Camp;
   events: SimEvent[];
   people: SavedPerson[];

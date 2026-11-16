@@ -225,7 +225,64 @@ export class WorldView {
   /**
    * @param minuteOfDay 0..1440, @param season 0..4, @param dayAmp 1 = full cycle
    */
-  render(dt: number, timeSec: number, minuteOfDay: number, season: number, dayAmp: number, wind: number, frameDt = dt) {
+  /** how far each sight in the sky has come on (0..1), eased in and out so it never snaps */
+  private skyK: Record<string, number> = { eclipse: 0, blood_moon: 0, comet: 0, lights: 0 };
+
+  /**
+   * A sight in the sky (see sim/omen.ts): the sun going dark at midday, a red moon, a tailed star, green lights in
+   * the north. It shades the light over the land and paints the sky behind it.
+   */
+  private skySight(e: EnvState, sky: string | null, dt: number, timeSec: number) {
+    for (const k in this.skyK) this.skyK[k] += ((k === sky ? 1 : 0) - this.skyK[k]) * (1 - Math.exp(-dt * 0.8));
+    const { eclipse, blood_moon: red, lights } = this.skyK;
+    const layers: string[] = [];
+    if (eclipse > 0.002) {
+      // midday dusk: the light drains away and the whole horizon glows like a sunset
+      const k = eclipse * (1 - e.night);
+      e.lightIntensity *= 1 - 0.85 * k;
+      e.sunIntensity *= 1 - 0.85 * k;
+      e.hemiIntensity *= 1 - 0.6 * k;
+      e.zenith.lerp(new THREE.Color('#141c38'), 0.85 * k);
+      e.horizon.lerp(new THREE.Color('#d9906a'), 0.6 * k);
+      e.skyColor.lerp(new THREE.Color('#4a4f78'), 0.6 * k);
+      // the dark sun, ringed with light
+      layers.push(`radial-gradient(circle at 62% 16%, #0b0f1c 0, #0b0f1c 1.6%, rgba(255,240,210,${(0.9 * k).toFixed(3)}) 1.9%, rgba(255,230,190,${(0.25 * k).toFixed(3)}) 3.2%, transparent 6%)`);
+    }
+    if (red > 0.002) {
+      const k = red * e.night;
+      // (the land under it lit a dull red, a little brighter than an ordinary moon)
+      e.lightColor.lerp(new THREE.Color(1.0, 0.32, 0.22), 0.9 * k);
+      e.lightIntensity *= 1 + 0.5 * k;
+      e.skyColor.lerp(new THREE.Color('#7a2a26'), 0.75 * k);
+      e.zenith.lerp(new THREE.Color('#1e0a10'), 0.6 * k);
+      e.horizon.lerp(new THREE.Color('#4a1a1a'), 0.6 * k);
+      layers.push(`radial-gradient(circle at 30% 20%, rgba(190,60,40,${(0.95 * k).toFixed(3)}) 0, rgba(170,50,35,${(0.9 * k).toFixed(3)}) 1.8%, rgba(150,40,30,${(0.25 * k).toFixed(3)}) 3%, transparent 7%)`);
+    }
+    if (lights > 0.002) {
+      const k = lights * e.night;
+      const ripple = 0.75 + 0.25 * Math.sin(timeSec * 0.7);
+      // (the land under them washed in a shifting green)
+      e.skyColor.lerp(new THREE.Color('#2fa070'), 0.7 * k * ripple);
+      e.lightColor.lerp(new THREE.Color(0.4, 1.0, 0.6), 0.75 * k);
+      e.lightIntensity *= 1 + 0.6 * k * ripple;
+      e.hemiIntensity *= 1 + 0.3 * k;
+      layers.push(`radial-gradient(ellipse 90% 26% at 45% 12%, rgba(90,255,170,${(0.32 * k * ripple).toFixed(3)}) 0, rgba(60,220,160,${(0.16 * k).toFixed(3)}) 45%, transparent 75%)`);
+      layers.push(`radial-gradient(ellipse 60% 14% at 65% 24%, rgba(140,120,255,${(0.18 * k * (1.6 - ripple)).toFixed(3)}) 0, transparent 70%)`);
+    }
+    const comet = this.skyK.comet * e.night;
+    if (comet > 0.002) {
+      // (a night a little brighter, and paler, than it should be)
+      e.lightColor.lerp(new THREE.Color(0.85, 0.92, 1.0), 0.5 * comet);
+      e.lightIntensity *= 1 + 0.35 * comet;
+      // a bright head with its tail streaming away from where the sun went down
+      layers.push(`radial-gradient(circle at 74% 15%, rgba(255,255,245,${comet.toFixed(3)}) 0, rgba(220,235,255,${(0.6 * comet).toFixed(3)}) 0.35%, transparent 0.9%)`);
+      layers.push(`radial-gradient(ellipse 9% 0.9% at 68% 15.6%, rgba(210,225,255,${(0.55 * comet).toFixed(3)}) 0, transparent 100%)`);
+      layers.push(`radial-gradient(ellipse 16% 2.2% at 64% 16%, rgba(190,210,255,${(0.22 * comet).toFixed(3)}) 0, transparent 100%)`);
+    }
+    return layers;
+  }
+
+  render(dt: number, timeSec: number, minuteOfDay: number, season: number, dayAmp: number, wind: number, frameDt = dt, sky: string | null = null) {
     const w = this.world;
     const el = this.renderer.domElement;
     const aspect = el.clientWidth / Math.max(1, el.clientHeight);
@@ -234,6 +291,7 @@ export class WorldView {
     // environment
     this.env = computeEnv(minuteOfDay, season, dayAmp, this.env);
     const e = this.env;
+    const skyLayers = this.skySight(e, sky, frameDt, timeSec);
     applySeason(season);
     U.uTime.value = timeSec;
     U.uWind.value = wind;
@@ -249,7 +307,7 @@ export class WorldView {
     this.hemi.groundColor.copy(e.groundColor);
     this.hemi.intensity = e.hemiIntensity;
     const z = '#' + e.zenith.getHexString(), h = '#' + e.horizon.getHexString();
-    this.skyEl.style.background = `radial-gradient(ellipse 120% 90% at 50% 100%, ${h} 0%, ${h} 18%, ${z} 100%)`;
+    this.skyEl.style.background = [...skyLayers, `radial-gradient(ellipse 120% 90% at 50% 100%, ${h} 0%, ${h} 18%, ${z} 100%)`].join(', ');
 
     // shadows follow the view
     const tgt = this.cam.target;

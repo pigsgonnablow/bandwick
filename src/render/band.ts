@@ -78,7 +78,7 @@ interface DeerShown {
   yf: number; yb: number; y: number; pitch: number;
   angle: number; want: number;
   phase: number; gait: number; moving: number;
-  seen: number; state: number; fawn: boolean;
+  seen: number; state: number; fawn: boolean; white?: boolean;
   /** distance walked since the last print in the snow, and which foot comes next */
   trail: number; foot: number;
   /** the last roar it steamed a breath for, and the last clash of antlers it threw up snow or dirt for */
@@ -313,7 +313,7 @@ export class BandLayer {
   debugAct = new Map<number, number>();
   /** screen-space lookups for picking and labels */
   visible: { id: number; x: number; y: number; z: number; child: boolean }[] = [];
-  visibleDeer: { id: number; x: number; y: number; z: number; fawn: boolean; state: number }[] = [];
+  visibleDeer: { id: number; x: number; y: number; z: number; fawn: boolean; state: number; white?: boolean }[] = [];
   /** a ring marking whatever non-person thing is selected */
   marker: THREE.Mesh;
   markerAt: { x: number; y: number; z: number; r: number } | null = null;
@@ -755,7 +755,7 @@ export class BandLayer {
             if (aPart > 7.5 && roar < 0.5) Rp = mat3(0.0);
             // antlers are worn by stags only (iAnim.z), a dappled coat by fawns only (iAnim.w)
             if (aPart > 5.5 && aPart < 6.5 && iAnim.z < 0.5) Rp = mat3(0.0);
-            if (aPart > 6.5 && aPart < 7.5 && iAnim.w < 0.5) Rp = mat3(0.0);
+            if (aPart > 6.5 && aPart < 7.5 && mod(iAnim.w, 2.0) < 0.5) Rp = mat3(0.0);
             R = Rp;
             T.y += bob + bell * 0.004;
             // the pair heave to and fro together, and both rock back before each crash
@@ -768,7 +768,13 @@ export class BandLayer {
           #ifdef USE_TANGENT
             vec3 objectTangent = vec3(tangent.xyz);
           #endif`)
-        .replace('#include <begin_vertex>', `vec3 transformed = poseR * vec3(position) + poseT;`);
+        .replace('#include <begin_vertex>', `vec3 transformed = poseR * vec3(position) + poseT;`)
+        // a white deer (iAnim.w of 2 and up): its coat pale all over, though its eyes, nose and hooves stay dark
+        .replace('#include <color_vertex>', `#include <color_vertex>
+          if (iAnim.w > 1.5) {
+            float lum = dot(vColor.rgb, vec3(0.3, 0.59, 0.11));
+            vColor.rgb = mix(vColor.rgb, vec3(0.92, 0.91, 0.87) * (0.75 + 0.25 * lum / 0.35), smoothstep(0.08, 0.16, lum));
+          }`);
     };
     const m = new THREE.InstancedMesh(geo, mat, cap);
     m.count = 0;
@@ -1032,7 +1038,8 @@ export class BandLayer {
       const fx = D[o + 3] - nx, fz = D[o + 4] - nz;
       if (fx * fx + fz * fz > 1e-4) d.want = Math.atan2(fx, fz);
       d.state = D[o + 5] % 10;
-      d.fawn = D[o + 5] >= 10;
+      d.fawn = D[o + 5] % 20 >= 10;
+      d.white = D[o + 5] >= 20;
       d.seen = seen;
     }
     for (const [id, d] of this.deer) if (d.seen !== seen) this.deer.delete(id);
@@ -1606,10 +1613,10 @@ export class BandLayer {
       scl.setScalar(size);
       m4.compose(pos, q, scl);
       this.deerMesh.setMatrixAt(dn, m4);
-      dAnim.setXYZW(dn, d.state, d.state === 4 ? yields : (id % 97) * 0.61, !d.fawn && id % 2 ? 1 : 0, d.fawn ? 1 : 0);
+      dAnim.setXYZW(dn, d.state, d.state === 4 ? yields : (id % 97) * 0.61, !d.fawn && id % 2 ? 1 : 0, (d.fawn ? 1 : 0) + (d.white ? 2 : 0));
       dAnim2.setXYZW(dn, d.phase, d.gait, d.moving, leap);
       dn++;
-      this.visibleDeer.push({ id, x, y: d.y + 0.2, z, fawn: d.fawn, state: d.state });
+      this.visibleDeer.push({ id, x, y: d.y + 0.2, z, fawn: d.fawn, state: d.state, white: d.white });
       if (this.markerAt && this.markerAt.r < 0 && -this.markerAt.r === id) this.markerAt = { x, y: d.y, z, r: -id };
     }
     this.deerMesh.count = dn;

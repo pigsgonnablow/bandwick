@@ -1037,7 +1037,7 @@ export class Engine {
           if (d) this.view.band.markerAt = { x: d.x, y: d.y - 0.12, z: d.z, r: -d.id };
         }
         this.view.setHover(s.sel?.kind === 'tile' ? s.sel.id : s.hover);
-        this.view.render(dt, (now - t0) / 1000, minuteOfDay, season, this.dayAmp, wind, rawDt);
+        this.view.render(dt, (now - t0) / 1000, minuteOfDay, season, this.dayAmp, wind, rawDt, s.summary?.sky ?? null);
         // name labels when close in, and always for the selected person
         if (now - lastLabels > 50) {
           lastLabels = now;
