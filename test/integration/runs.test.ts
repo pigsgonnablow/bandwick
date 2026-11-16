@@ -226,7 +226,7 @@ describe('the fish weir', () => {
     const p = s.members().filter((q) => s.age(q) >= 18 && s.age(q) <= 50)[0];
     p.task = null;
     p.carry = CARRY.None;
-    // (well fed, so they don't eat any of it on the way home)
+    // (fed, so they carry the whole load home rather than eat some of it on the way)
     p.food = 100;
     p.task = setup(s, p, 'weir');
     expect(p.task?.kind).toBe('weir');
