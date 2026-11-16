@@ -163,8 +163,10 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
   const story: Seg[][] = [];
   // (a ruler taking hold of a band, or the band throwing them off)
   for (const k of ['rule', 'rule_end']) STORY.add(k);
+  // (signs seen, and the beliefs and customs that came of them)
+  for (const k of ['omen', 'omen_belief', 'omen_true', 'omen_held', 'omen_fade', 'custom']) STORY.add(k);
   for (const e of evs) {
-    if (STORY.has(e.kind) || (e.kind === 'build' && e.weight >= 3)) story.push(linkify(e, byId));
+    if (STORY.has(e.kind) || (e.kind === 'build' && e.weight >= 3) || (e.kind === 'omen_habit' && e.weight >= 2)) story.push(linkify(e, byId));
   }
   const minor = builds.filter((e) => e.weight < 3).length;
   const major = builds.length - minor;
@@ -245,6 +247,10 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
     : has('move_camp') ? 'The year of leaving'
     : has('split') ? 'The year of the parting'
     : has('founding') ? 'The year strangers came'
+    : has('custom') ? 'The year a custom was made'
+    : evs.some((e) => e.kind === 'omen' && e.text.startsWith('The sun went dark')) ? 'The year the sun went dark'
+    : evs.some((e) => e.kind === 'omen' && e.text.includes('long tail')) ? 'The year of the tailed star'
+    : evs.some((e) => e.kind === 'omen' && /white (deer|fawn)/.test(e.text)) ? 'The year of the white deer'
     : has('blight') && nDeath >= 2 ? 'The year the berries failed'
     : has('plenty') ? 'The year of plenty'
     : has('great_hunt') ? 'The great hunt'
@@ -291,6 +297,8 @@ const LANES = [
   { key: 'works', label: 'Good fortune & works', color: '#c98500', kinds: ['build', 'discovery', 'hunt', 'move', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder'] },
   { key: 'bands', label: 'Bands', color: '#b3aa96', kinds: ['founding', 'split', 'move_camp', 'merge', 'gone', 'empty', 'exile', 'bully_flee'] },
 ];
+// (signs seen, and the beliefs and customs that came of them)
+LANES.push({ key: 'signs', label: 'Signs & beliefs', color: '#8f6fd1', kinds: ['omen', 'omen_belief', 'omen_true', 'omen_held', 'omen_fade', 'custom'] });
 // (rulers rising and falling sit with the bands' comings and goings)
 LANES.find((l) => l.key === 'bands')!.kinds.push('rule', 'rule_end');
 

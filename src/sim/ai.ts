@@ -1,5 +1,6 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
+import { SHELTER_PULL, sheltering, sparesWhite, shunned, whiteKilled, omenTale, heardTale, taleOf } from './omen';
 import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE, aDish } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
@@ -314,6 +315,8 @@ export function decide(s: Sim, p: Person) {
   if (temp < 11 && p.warmth < 62) add('warm', (((62 - p.warmth) / 62) * 1.7 + (dark ? 0.15 : 0)) * (deadFire && !dark ? 0.5 : 1));
   add('socialize', p.belonging < 62 ? ((62 - p.belonging) / 62) * 0.95 + (hour > 17 && !dark ? 0.15 : 0) : 0);
   add('idle', 0.16 + (hour > 18 && !dark ? 0.15 : 0) + (s.has(p, 'lazy') ? 0.1 : 0));
+  // a sign they believe in (or the band's day of rest): they leave their work and keep close to the fire
+  if (age >= 3 && sheltering(s, p)) add('idle', SHELTER_PULL);
   if (child && age >= 2 && !dark) add('play', 0.5 + (age < 9 ? 0.2 : 0));
   // a child old enough to follow the work goes to watch a grown-up at it, a parent first, and picks it up
   // (not out in the cold, though: in a hard frost the children keep to the fire)
@@ -556,7 +559,7 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
     }
     case 'idle': {
       const st = seat(s, p, 1.3);
-      p.thought = s.hearthLit() ? 'Sitting by the fire.' : 'Resting near camp.';
+      p.thought = sheltering(s, p) ?? (s.hearthLit() ? 'Sitting by the fire.' : 'Resting near camp.');
       return newTask(s, kind, ti(st.x, st.z), st.x, st.z);
     }
     case 'watch': {
@@ -574,6 +577,10 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z);
       t.amount = told.length ? told[s.rAi.int(0, told.length)].id : -1;
       p.thought = `Telling ${storyOf(s, t.amount, p)}.`;
+      // (or, if they believe in a sign, the tale of what it foretold)
+      const tale = omenTale(s, p);
+      c.tale = tale ? { key: tale.key, day: dayOf(s.tick) } : undefined;
+      if (tale) p.thought = `Telling ${taleOf(tale)}.`;
       return t;
     }
     case 'listen': {
@@ -581,6 +588,12 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       if (!teller) return null;
       const st = seat(s, p, 1.5);
       p.thought = `Listening to ${teller.name} tell ${storyOf(s, teller.task!.amount, teller)}.`;
+      // a tale of a sign: they may come to believe it
+      const tale = c.tale?.day === dayOf(s.tick) ? c.lore?.find((l) => l.key === c.tale!.key) : undefined;
+      if (tale) {
+        p.thought = `Listening to ${teller.name} tell ${taleOf(tale)}.`;
+        heardTale(s, p, tale.key);
+      }
       return newTask(s, kind, ti(st.x, st.z), st.x, st.z, teller.id);
     }
     case 'play': {
@@ -926,7 +939,8 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       const maxStage = tool.kind === 'axe' ? 3 : 1;
       // the nearest good timber first; as the woods around camp thin out, go further or take younger trees
       const score = (k: number, d: number) => treeStage(s.propType[k]) * 3 - d - hyp(s.propX[k] - p.x, s.propZ[k] - p.z) * 0.4 + (s.chopped.has(k) ? 8 : 0);
-      const tree = (min: number) => (k: number) => isTreeType(s.propType[k]) && treeStage(s.propType[k]) >= min && treeStage(s.propType[k]) <= maxStage;
+      // (never by a tree the lightning struck, for those who hold it for a sign, or where the band's custom forbids it)
+      const tree = (min: number) => (k: number) => isTreeType(s.propType[k]) && treeStage(s.propType[k]) >= min && treeStage(s.propType[k]) <= maxStage && !shunned(s, p, s.propX[k], s.propZ[k]);
       // a dying fire in the cold: the nearest usable wood, young trees included, beats a long walk
       const desperate = s.hearth().fuel < 2 && s.tempAt(p) < 9 && c.stock.wood < 3;
       let k = desperate ? s.nearestProp(c.x, c.z, 18, tree(1), (k, d) => -d + (s.chopped.has(k) ? 6 : 0) + treeStage(s.propType[k])) : -1;
@@ -944,7 +958,7 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       return t;
     }
     case 'deadwood': {
-      const k = s.nearestProp(c.x, c.z, 26, (k) => isTreeType(s.propType[k]) && treeStage(s.propType[k]) >= 1 && !s.deadwoodTaken.has(k),
+      const k = s.nearestProp(c.x, c.z, 26, (k) => isTreeType(s.propType[k]) && treeStage(s.propType[k]) >= 1 && !s.deadwoodTaken.has(k) && !shunned(s, p, s.propX[k], s.propZ[k]),
         (k, d) => DEADWOOD_BY_STAGE[treeStage(s.propType[k])] * 4 - d - hyp(s.propX[k] - p.x, s.propZ[k] - p.z) * 0.3);
       if (k < 0) return null;
       s.reserved.set(k, p.id);
@@ -979,8 +993,10 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       // a hunt still on the trail at nightfall is given up: a herd too far to have reached and stalked by dark
       // is left for another day (a hunt that ends in a kill covers about a tile for every 3 ticks out, walk and stalk together)
       const reach = isDark(s.tick) ? 0 : Math.max(0, (daylight(s.tick).sunset + 0.4 - hourOf(s.tick)) * TICKS_PER_HOUR) / 3;
+      // (a white deer is let be by those who hold it for a sign, and where the band's custom forbids it)
+      const spareWhite = sparesWhite(s, p);
       s.deer.forEach((d, i) => {
-        if (!d.alive || (spare && (herds.get(d.herd) ?? 0) < 4)) return;
+        if (!d.alive || (spare && (herds.get(d.herd) ?? 0) < 4) || (d.white && spareWhite)) return;
         if (hyp(d.x - p.x, d.z - p.z) > reach) return;
         const dist = hyp(d.x - c.x, d.z - c.z);
         if (dist < bestD && !s.people.some((q) => q !== p && q.alive && q.task?.kind === 'hunt' && q.task.ref === d.id)) {
@@ -3375,9 +3391,10 @@ export function runTask(s: Sim, p: Person) {
           d.alive = false;
           p.kills++;
           s.stats.kills++;
+          if (d.white) whiteKilled(s, p);
           // once in a long while the whole herd is driven into the hunters' hands
           if (r.chance(0.02)) {
-            const more = s.deer.filter((q) => q.alive && q.herd === d.herd && hyp(q.x - d.x, q.z - d.z) < 4).slice(0, 2);
+            const more = s.deer.filter((q) => q.alive && !q.white && q.herd === d.herd && hyp(q.x - d.x, q.z - d.z) < 4).slice(0, 2);
             // the other hunters close by each shoulder a carcass; any nobody can carry is left to the land
             const bearers = s.people.filter((q) => q !== p && q.alive && q.band === p.band && q.task?.kind === 'hunt' && q.task.stage === 0 && hyp(q.x - d.x, q.z - d.z) < 8);
             for (const q of more) {

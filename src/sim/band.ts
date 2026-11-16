@@ -1050,6 +1050,8 @@ export interface Person {
   rebuked?: number;
   /** when their band last turned against them for tormenting someone (absent: never) */
   shunned?: number;
+  /** what they believe the signs foretell (keys of their band's lore: "white_deer:bad"; absent: nothing) */
+  beliefs?: string[];
 }
 
 export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe'] as const;
@@ -1271,6 +1273,8 @@ export interface Deer {
   /** the stag it has locked antlers with, while sparring */
   foe?: number;
   alive: boolean;
+  /** a white deer: born once in a long while, and taken for a sign by those who see it */
+  white?: boolean;
   /** brought down by wolves rather than by hunters */
   byWolves?: boolean;
   fawn: boolean;

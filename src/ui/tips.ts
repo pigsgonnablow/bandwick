@@ -64,6 +64,7 @@ export const WARMTH_TIP = 'All they wear together. It cuts how fast the cold dra
 
 /** Rows on a person's Now and Family tabs. */
 export const PERSON_ROW_TIPS: Record<string, string> = {
+  Believes: 'Believes: the signs they have come to trust, and what they foretell. They took one for a sign themselves, heard it told at the fire, or grew up with it; when the sign comes again they act on it.',
   Doing: 'Doing: what they are busy with right now. The band decides each day what needs doing, and each person picks work that suits their skills and needs.',
   Where: 'Where: how far they are from their camp\'s fire.',
   Wearing: 'Wearing: their clothes and ornaments. See the Gear tab for how much cold they keep off.',
@@ -90,6 +91,8 @@ export const BAND_TIPS: Record<string, string> = {
   Tools: 'Tools: what the band owns. Anyone can take a tool from the stockpile for the work it suits; tools wear out with use.',
   Goods: 'Goods: the bowls, beads and sashes the band has made in its spare hours, lying at the stockpile. They are given as gifts, set out at the midwinter feast and buried with the dead; fine ones count for more.',
   Clothes: 'Clothes: what people are wearing. Warm clothes slow how fast the cold drains them.',
+  Believes: 'Believes: what the people of this band take the rare things they have seen for signs of. A belief starts with one person, spreads at story nights and from parents to children, and once most of the grown-ups hold it, the whole band acts on it when the sign comes again. Beliefs nothing proves for a generation fade.',
+  Customs: 'Customs: beliefs the band has held so long, and seen come true so often, that they have hardened into the way things are done. A custom holds whether or not the sign is seen, and a band that splits off keeps it.',
   Knows: 'Knows: what this band has found out for itself or learned from others, beyond the old ways. The planner only uses what the band knows.',
 };
 

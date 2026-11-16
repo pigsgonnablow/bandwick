@@ -387,6 +387,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
               <dd>{p.birth > 0 ? when(p.birth) : 'Before the band came here'}</dd>
               {!p.alive && (<><dt>Died</dt><dd>{when(p.death)}, {p.cause}</dd></>)}
               {p.dish && (<><dt data-tip={PERSON_ROW_TIPS['Best meal']}>Best meal</dt><dd>{p.dish[0].toUpperCase()}{p.dish.slice(1)}</dd></>)}
+              {p.beliefs.length > 0 && (<><dt data-tip={PERSON_ROW_TIPS.Believes}>Believes</dt><dd>{p.beliefs.map((b) => <div key={b}>{b}</div>)}</dd></>)}
             </dl>
             {p.memories.length > 0 ? (
               <ul class="memories">
