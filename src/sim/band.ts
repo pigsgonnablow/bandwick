@@ -1013,6 +1013,14 @@ export interface Person {
   dog?: number;
   /** a rare constitution: ages far more slowly once old (absent = no) */
   hardy?: boolean;
+  /** a bad leg (a break or a goring): limps, walks slower and isn't sent hunting; until when (-1: for life; absent: sound) */
+  lame?: number;
+  /** blind in one eye: throws wide; until when (-1: for life; absent: sound) */
+  oneEye?: number;
+  /** a crippled hand (cut to the bone or burned): slower at every task and throws badly; until when (-1: for life; absent: sound) */
+  badHand?: number;
+  /** a fresh wound that might go bad: until when the danger lasts (absent: none) */
+  wounded?: number;
   /** who killed them, if someone did */
   killer?: number;
   /** a one-off move to show: count * 4 + FLASH code (looks only; changes nothing) */
@@ -1034,6 +1042,14 @@ export interface Person {
   dish?: string;
   /** when they last gave someone an ornament (absent: never); the one they wear is an item worn at the neck */
   gave?: number;
+  /** who has mocked them in the last year, and when ([mocker id, tick]; absent: no one) */
+  mocked?: [number, number][];
+  /** mockers who have been made to leave them be, and until when ([mocker id, until tick]) */
+  spared?: [number, number][];
+  /** when someone last stood up to them for tormenting someone (absent: never) */
+  rebuked?: number;
+  /** when their band last turned against them for tormenting someone (absent: never) */
+  shunned?: number;
 }
 
 export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe'] as const;
@@ -1103,6 +1119,10 @@ export const MONUMENTS: readonly BuildKind[] = ['barrow', 'stones'];
 export const isMonument = (kind: BuildKind) => kind === 'barrow' || kind === 'stones';
 /** How much each monument a band has raised holds it where it is: the chance it moves away, or splits, scaled. */
 export const MONUMENT_MOVE = 0.4;
+/** Mocked this many times in a year by the same person, someone is being picked on, and the band starts to notice. */
+export const PICKED_ON = 3;
+/** ...and this many times, it is torment: something has to give (see Sim.mocked). */
+export const RELENTLESS = 4;
 export const MONUMENT_SPLIT = 0.7;
 /** How far a monument's work can run ahead of the stone brought to it (in stones' worth of work). */
 export const MONUMENT_AHEAD = 1.5;
@@ -1458,6 +1478,26 @@ export type Food = (typeof FOODS)[number];
 export const foodTotal = (s: Stock) => s.berries + s.meat + s.fish + s.preserved + s.roots + s.nuts + s.eggs + s.honey + s.mushrooms + s.grain + s.greens;
 
 /** The health levels the sim acts on (the info window's health tooltip reads them too). */
+/**
+ * Accidents and lasting hurts. Everyone from five up has this yearly chance of an accident at their work or
+ * about the camp (more for the old, a fall on the ice in winter): a twisted ankle or a broken leg, a hand cut to the
+ * bone at the flint or the carcass, a burn at the fire, a twig or a flake of flint in the eye. A wound is
+ * dangerous for WOUND_DAYS (the everyday chance of dying WOUND_RISK times over, and a death then is a wound gone bad),
+ * and some leave a hurt that lasts months or for life: a lame leg (LAME_SPEED of the pace, no hunting), one eye
+ * (ONE_EYE_AIM on a throw), a crippled hand (BAD_HAND_WORK at any task, BAD_HAND_AIM on a throw). The goring,
+ * kicks, gashes and falling trees of the hunt and the woods can leave the same.
+ */
+export const ACCIDENT_YEARLY = 0.07;
+export type Hurt = 'lame' | 'oneEye' | 'badHand';
+export const HURT_WORDS: Record<Hurt, [string, string]> = { lame: ['lame', 'a bad leg, mending'], oneEye: ['blind in one eye', 'a hurt eye, mending'], badHand: ['a crippled hand', 'a bad hand, mending'] };
+export const WOUND_DAYS = 8;
+export const WOUND_RISK = 4;
+export const LAME_SPEED = 0.7;
+export const LAME_WORK = 0.85;
+export const ONE_EYE_AIM = 0.7;
+export const BAD_HAND_WORK = 0.8;
+export const BAD_HAND_AIM = 0.8;
+
 export const HEALTH = {
   /** must be above this to go swimming */
   swim: 50,

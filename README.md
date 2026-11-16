@@ -387,9 +387,18 @@ short rations and sometimes lose people; the first band is spared a lean year in
 summers. A band whose fire is dying in winter with no wood left goes to live at a neighbour's fire
 rather than freeze. Fished-down water gives smaller catches, and wolves only raise cubs where there
 are deer to feed them. `npx tsx tools/longrun.ts --seed N` records a world year by year, and
-`npx tsx tools/longrun-report.ts dir` sums many of them up. Over sixty
-years some worlds hold one small band hanging on and some hold four thriving ones; now and then the
-land is left empty until strangers come.
+`npx tsx tools/longrun-report.ts dir` sums many of them up. Life is as fragile as foragers have
+known it: about one baby in six dies before it can walk, and fevers and accidents take a grown
+person now and then, so a band grows slowly, a little over one in a hundred a year, rather than
+filling the land in a generation. Accidents happen at work and about the camp: a fall from a tree or
+on the ice, a hand cut to the bone at the flint or the carcass, a burn at the fire, a twig in the eye.
+A fresh wound can go bad, and some leave a hurt that lasts months or a lifetime: a lame leg (slower,
+and no more hunting), one blind eye (the spear goes wide) or a crippled hand (slower at every task).
+The goring and kicks of the hunt and a falling tree can leave the same. The person card shows it.
+A band past twenty or so splits, going farther afield, or settling
+closer to its neighbours, when the near land is taken; strangers come only while the land holds
+fewer than three bands. Over forty years most worlds hold two to four bands of fifteen to twenty;
+now and then the land is left empty until strangers come.
 
 ## Open it
 Run `npm run build`, then double-click `dist/index.html`. It is one self-contained file and runs offline from disk in

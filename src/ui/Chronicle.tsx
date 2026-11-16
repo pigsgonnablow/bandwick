@@ -21,7 +21,7 @@ const lifeEnd = (p: Person, now: number) => (p.alive ? now : p.death);
 const CAUSE: Record<string, string> = {
   starvation: 'hunger', cold: 'the cold', fever: 'fever', 'old age': 'old age', weakness: 'weakness', childbirth: 'childbirth',
   hunting: 'a hunting wound', infancy: 'infancy', accident: 'an accident', sickness: 'the sickness', drowning: 'drowning',
-  wolves: 'wolves', bear: 'a bear', killed: 'violence',
+  wolves: 'wolves', bear: 'a bear', killed: 'violence', fall: 'a fall', 'wound gone bad': 'a wound gone bad', 'adder bite': 'an adder bite',
 };
 /** How a death reads after a name and age: ", of fever", ", drowned", ", killed by wolves". */
 function howDied(p: { cause: string }, byId?: Map<number, Person>, killer?: number) {
@@ -159,7 +159,7 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
   const builds = kinds('build');
   const STORY = new Set(['founding', 'discovery', 'famine', 'famine_end', 'winter', 'climate', 'hunt', 'fostering', 'injury', 'stillbirth', 'move',
     'split', 'move_camp', 'merge', 'gone', 'empty', 'exile', 'death_quarrel', 'fight', 'attack', 'epidemic', 'epidemic_end',
-    'murrain', 'blight', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder', 'known']);
+    'murrain', 'blight', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder', 'known', 'bully_snap', 'bully_shun', 'bully_flee']);
   const story: Seg[][] = [];
   // (a ruler taking hold of a band, or the band throwing them off)
   for (const k of ['rule', 'rule_end']) STORY.add(k);
@@ -235,7 +235,8 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
   const firstFounding = evs.find((e) => e.kind === 'founding' && !e.text.startsWith('Strangers'));
   const title = firstFounding ? `The founding of ${c.camp}`
     : has('empty') ? 'The year the land fell silent'
-    : has('exile') || has('death_quarrel') ? 'The year of the killing'
+    : has('death_quarrel') || evs.some((e) => e.kind === 'exile' && !/tormenting/.test(e.text)) ? 'The year of the killing'
+    : has('exile') ? 'The year of the outcast'
     : has('epidemic') ? 'The year of the sickness'
     : has('gone') ? 'The year a camp fell silent'
     // (a band throwing off its ruler, or coming under one)
@@ -286,9 +287,9 @@ function useWidth() {
 const LANES = [
   { key: 'family', label: 'Births & bonds', color: '#199e70', kinds: ['birth', 'twins', 'pairing', 'fostering'] },
   { key: 'death', label: 'Deaths', color: '#e66767', kinds: ['death', 'stillbirth'] },
-  { key: 'hard', label: 'Hard times', color: '#3987e5', kinds: ['famine', 'winter', 'climate', 'injury', 'epidemic', 'fight', 'attack', 'murrain', 'blight', 'death_quarrel'] },
+  { key: 'hard', label: 'Hard times', color: '#3987e5', kinds: ['famine', 'winter', 'climate', 'injury', 'epidemic', 'fight', 'attack', 'murrain', 'blight', 'death_quarrel', 'bully_snap', 'bully_shun'] },
   { key: 'works', label: 'Good fortune & works', color: '#c98500', kinds: ['build', 'discovery', 'hunt', 'move', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder'] },
-  { key: 'bands', label: 'Bands', color: '#b3aa96', kinds: ['founding', 'split', 'move_camp', 'merge', 'gone', 'empty', 'exile'] },
+  { key: 'bands', label: 'Bands', color: '#b3aa96', kinds: ['founding', 'split', 'move_camp', 'merge', 'gone', 'empty', 'exile', 'bully_flee'] },
 ];
 // (rulers rising and falling sit with the bands' comings and goings)
 LANES.find((l) => l.key === 'bands')!.kinds.push('rule', 'rule_end');

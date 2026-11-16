@@ -34,6 +34,11 @@ function healthTip(p: PersonDetail) {
   if (h < HEALTH.weak) effects.push('too weak to do much work, slow on their feet, and more likely to die of fever or old age');
   if (h < HEALTH.hunt) effects.push('too hurt to hunt');
   if (h <= HEALTH.swim) effects.push(h < HEALTH.lead ? 'not up to swimming or leading others away' : 'not up to swimming');
+  for (const w of p.hurts) {
+    if (w.startsWith('lame') || w.startsWith('a bad leg')) effects.push('limping: slower on their feet and at work, and no use on a hunt');
+    else if (w.includes('eye')) effects.push('one-eyed: their spear goes wide more often');
+    else effects.push('a bad hand: slower at every task, and a poor throw');
+  }
   const harm = [food < HEALTH.starving && 'starving', warmth < HEALTH.cold && 'cold', p.sick && 'sick'].filter(Boolean);
   const trend = harm.length ? `Getting worse (${harm.join(', ')}).`
     : h >= 99.5 ? ''
@@ -292,6 +297,7 @@ function PersonBody({ p, w, s, engine }: { p: PersonDetail; w: InfoWin; s: Snaps
         {p.remains !== null && ` · ${REMAINS_WORDS[p.remains] ?? ''}`}
         {p.pregnant && ' · with child'}
         {p.sick && ' · feverish'}
+        {p.hurts.map((h) => ` · ${h}`).join('')}
         {p.home ? ` · lives in a ${p.home.toLowerCase()}` : p.alive && p.age >= 2 ? ' · no home yet' : ''}
       </div>
       <div class="tabs" role="tablist">
