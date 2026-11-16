@@ -149,6 +149,11 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
           {sum.leader ? <> {sum.parent ? 'with' : 'led by'} <button class={`link${sum.leader.alive ? '' : ' gone'}`} onClick={() => engine.select(sum.leader!.id)}>{sum.leader.name}</button></> : null}
         </div>
       )}
+      {sum.rule && !sum.gone && (
+        <div class="small muted origin">
+          Ruled by <button class="link" onClick={() => engine.select(sum.rule!.ruler.id)}>{sum.rule.ruler.name}</button>, a {sum.rule.label}, since year {sum.rule.since}
+        </div>
+      )}
       {sum.gone ? (
         <p class="hint" style={{ margin: '8px 0 4px' }}>
           No one lives here now. {live.length ? `${sum.worldPop} people live on in ${live.length === 1 ? 'one other band' : `${live.length} other bands`}.` : 'The land is empty of people.'}
@@ -362,6 +367,7 @@ const KIND_MARK: Record<string, string> = {
   injury: '#d98a6a', fostering: '#9fd07a', climate: '#cfe3f2', age: '#b3aa96', burial: '#b3aa96',
   split: '#e3ab4e', move_camp: '#e3ab4e', merge: '#b3aa96', gone: '#8a8070', empty: '#8a8070', exile: '#d98a6a',
   epidemic: '#d98a6a', epidemic_end: '#9fd07a', fight: '#d98a6a', death_quarrel: '#d98a6a', attack: '#d98a6a',
+  rule: '#e3ab4e', rule_end: '#b3aa96',
   murrain: '#e0a24a', blight: '#e0a24a', plenty: '#9fd07a', provided: '#9fd07a', great_hunt: '#c9a46a', quiet: '#9fd07a', elder: '#cfe3f2',
 };
 

@@ -13,6 +13,7 @@ import { freeCanoe, canoeTarget, openReach } from './canoe';
 import { addPig, gateOf, feedPigs, pigToKill, killPig, pigsHungry, pigsOf, grown } from './pigs';
 import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, daylight, yearOf, TICKS_PER_DAY, TICKS_PER_HOUR } from './time';
 import { WATER, DIRS4, treeId } from './types';
+import { ruledDrive, monumentRaised } from './rule';
 
 const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 /** A full load of something gathered: more with a hide bag over the shoulder. */
@@ -137,6 +138,8 @@ function workDrive(s: Sim, p: Person) {
   if (p.pregnantUntil > 0 && p.pregnantUntil - s.tick < 4 * TICKS_PER_DAY) d *= 0.5;
   if (p.sick > 0) d *= 0.3;
   if (p.health < HEALTH.weak) d *= 0.5;
+  // (a builder drives the band, and themself most)
+  d *= ruledDrive(s, p);
   return d;
 }
 const fit = (p: Person, k: number) => 0.7 + Math.min(20, p.skills[k]) * 0.03;
@@ -4079,6 +4082,7 @@ export function completeBuilding(s: Sim, b: Building, p: Person) {
       s.remember(q, 'monument', built ? 16 : 8, 6, b.id, built ? `Helped raise ${what} at ${s.camp.name}.` : `Saw ${what} finished at ${s.camp.name}.`);
       q.belonging = clamp(q.belonging + (built ? 20 : 10));
     }
+    monumentRaised(s, s.camp);
   } else if (b.kind === 'plot' || b.kind === 'fence') {
     // (a field of plots is dug one after another: only the first is news)
     if (first) s.event('build', b.kind === 'plot' ? `${p.name} and the others dug the first garden plot at ${s.camp.name}.` : `${p.name} and the others put up the first fence round a garden plot at ${s.camp.name}.`, [p.id], b.x + 0.5, b.z + 0.5, 2);
