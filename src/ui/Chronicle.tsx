@@ -161,6 +161,8 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
     'split', 'move_camp', 'merge', 'gone', 'empty', 'exile', 'death_quarrel', 'fight', 'attack', 'epidemic', 'epidemic_end',
     'murrain', 'blight', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder', 'known', 'bully_snap', 'bully_shun', 'bully_flee']);
   const story: Seg[][] = [];
+  // (a ruler taking hold of a band, or the band throwing them off)
+  for (const k of ['rule', 'rule_end']) STORY.add(k);
   for (const e of evs) {
     if (STORY.has(e.kind) || (e.kind === 'build' && e.weight >= 3)) story.push(linkify(e, byId));
   }
@@ -237,6 +239,9 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
     : has('exile') ? 'The year of the outcast'
     : has('epidemic') ? 'The year of the sickness'
     : has('gone') ? 'The year a camp fell silent'
+    // (a band throwing off its ruler, or coming under one)
+    : evs.some((e) => e.kind === 'rule_end' && e.text.includes('no longer')) ? 'The year the band threw off its ruler'
+    : evs.some((e) => e.kind === 'rule' && e.text.includes('took hold')) ? 'The year of the builder'
     : has('move_camp') ? 'The year of leaving'
     : has('split') ? 'The year of the parting'
     : has('founding') ? 'The year strangers came'
@@ -286,6 +291,8 @@ const LANES = [
   { key: 'works', label: 'Good fortune & works', color: '#c98500', kinds: ['build', 'discovery', 'hunt', 'move', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder'] },
   { key: 'bands', label: 'Bands', color: '#b3aa96', kinds: ['founding', 'split', 'move_camp', 'merge', 'gone', 'empty', 'exile', 'bully_flee'] },
 ];
+// (rulers rising and falling sit with the bands' comings and goings)
+LANES.find((l) => l.key === 'bands')!.kinds.push('rule', 'rule_end');
 
 function Timeline({ c, events, engine, byId }: { c: Chron; events: SimEvent[]; engine: Engine; byId: Map<number, Person> }) {
   const [ref, width] = useWidth();
