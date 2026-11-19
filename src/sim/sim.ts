@@ -2,6 +2,7 @@
 // (seeded random streams, stable iteration order, no browser-dependent math).
 import { Rng, hash3 } from './rng';
 import { Grid } from './path';
+import { Trails, TRAIL_EVERY } from './trails';
 import { Tongue } from './names';
 import {
   WorldData, WorldParams, WATER, T, SEA, SPECIES, STAGES, TREE_VARIANTS, smallPropId, propId, DIRS4, PROP_NAMES,
@@ -346,6 +347,8 @@ class IdIndex<T extends { id: number }> {
 export class Sim {
   tick = START_TICK;
   grid: Grid;
+  /** footpaths worn in where people walk often */
+  trails: Trails;
   N: number;
   people: Person[] = [];
   byId = new Map<number, Person>();
@@ -456,6 +459,7 @@ export class Sim {
   constructor(public world: WorldData, save?: SaveData) {
     this.N = world.size;
     this.grid = new Grid(world);
+    this.trails = new Trails(world, this.grid);
     const seed = world.params.seed;
     this.rLife = Rng.stream(seed, 'life');
     this.rAi = Rng.stream(seed, 'ai');
@@ -591,6 +595,7 @@ export class Sim {
       mushroomsTaken: remap(this.mushroomsTaken),
       fish: b64(this.fish),
       game: b64(this.game),
+      trails: { wear: b64(this.trails.wear), level: b64(this.trails.level) },
       stats: { ...this.stats },
       fortune: { plentyYear: this.plentyYear, blightYear: this.blightYear },
       ...(this.sky ? { sky: { ...this.sky } } : {}),
@@ -680,6 +685,12 @@ export class Sim {
     this.fish.set(new Float32Array(unb64(d.fish).buffer as ArrayBuffer));
     // (saves from before trapping: the land is full of hares)
     if (d.game) this.game.set(new Float32Array(unb64(d.game).buffer as ArrayBuffer));
+    // (saves from before footpaths: the grass is untrodden)
+    if (d.trails) {
+      this.trails.wear.set(new Float32Array(unb64(d.trails.wear).buffer as ArrayBuffer));
+      this.trails.level.set(unb64(d.trails.level));
+      this.trails.apply();
+    }
     this.stats = { ...this.stats, ...d.stats };
     this.history = d.history ?? [];
     this.plentyYear = d.fortune?.plentyYear ?? 0;
@@ -1368,6 +1379,7 @@ export class Sim {
     const t = this.tick;
     if (t % TICKS_PER_DAY === 6 * TICKS_PER_HOUR) this.daily();
     if (t % TICKS_PER_HOUR === 0) this.hourly();
+    if (t % TRAIL_EVERY === 0) this.trails.update(t);
     const ppl = this.people;
     for (let i = 0; i < ppl.length; i++) {
       const p = ppl[i];
@@ -6268,6 +6280,8 @@ export interface SaveData {
   mushroomsTaken?: Entries<number, number>;
   fish: string;
   game?: string;
+  /** absent in saves from before footpaths */
+  trails?: { wear: string; level: string };
   stats: Sim['stats'];
   /** absent in saves from before the chronicle */
   history?: HistorySample[];

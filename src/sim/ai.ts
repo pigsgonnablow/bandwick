@@ -1401,6 +1401,7 @@ function go(s: Sim, p: Person, t: Task, running = false): GoResult {
     p.x = tx;
     p.z = tz;
     if (last) return 'arrived';
+    s.trails.tread(path[p.pathIdx]);
     p.pathIdx++;
     if (p.pathIdx >= path.length && t.near) return 'arrived';
   } else {
@@ -1415,7 +1416,9 @@ function go(s: Sim, p: Person, t: Task, running = false): GoResult {
 
 function speed(s: Sim, p: Person) {
   const age = s.age(p);
-  const cost = s.grid.cost[s.tileOf(p)] || 10;
+  const here = s.tileOf(p);
+  // (a worn path makes for easier going through the woods and over rough ground)
+  const cost = (s.grid.cost[here] || 10) - s.grid.traffic[here];
   let v = 0.42 * Math.min(1, Math.max(0.35, 12 / cost));
   if (age < 8) v *= 0.8;
   else if (age >= 60) v *= 0.75;
