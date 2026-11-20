@@ -43,6 +43,8 @@ export interface Frame {
   game?: Uint8Array;
   /** how full each water tile is of fish (see Sim.packFish), when that has changed */
   fish?: Uint8Array;
+  /** how worn each tile is by people's feet (see Trails.level), when that has changed */
+  trails?: Uint8Array;
   /** one answer per open info window, in the order asked */
   looks?: Look[];
   skipping: boolean;
@@ -79,6 +81,7 @@ export class Runner {
   private buildingsVersion = -1;
   private gameVersion = -1;
   private fishVersion = -1;
+  private trailsVersion = -1;
   private eventCursor = 0;
   private targets: Ref[] = [];
   private focusBand = -1;
@@ -110,7 +113,7 @@ export class Runner {
     this.crashed = false;
     this.skipTo = -1;
     this.post({ type: 'world', world, tick: sim.tick });
-    this.propsVersion = this.buildingsVersion = this.gameVersion = this.fishVersion = -1;
+    this.propsVersion = this.buildingsVersion = this.gameVersion = this.fishVersion = this.trailsVersion = -1;
     this.eventCursor = 0;
     this.owed = 0;
     this.last = this.now();
@@ -237,6 +240,10 @@ export class Runner {
       this.fishVersion = sim.fishVersion;
       f.fish = sim.packFish();
     }
+    if (force || sim.trails.version !== this.trailsVersion) {
+      this.trailsVersion = sim.trails.version;
+      f.trails = sim.trails.level.slice();
+    }
     // prop changes are batched: a felled tree can wait half a second to vanish
     if (sim.propsVersion !== this.propsVersion && (force || t - this.lastProps > 450)) {
       this.propsVersion = sim.propsVersion;
@@ -258,6 +265,7 @@ export class Runner {
     const transfer: Transferable[] = [f.people.buffer as ArrayBuffer, f.deer.buffer as ArrayBuffer, f.wolves.buffer as ArrayBuffer, f.beasts.buffer as ArrayBuffer, f.dens.buffer as ArrayBuffer];
     if (f.game) transfer.push(f.game.buffer as ArrayBuffer);
     if (f.fish) transfer.push(f.fish.buffer as ArrayBuffer);
+    if (f.trails) transfer.push(f.trails.buffer as ArrayBuffer);
     if (f.props) for (const k of ['type', 'x', 'y', 'z', 'rot', 'scale', 'alive', 'val'] as const) transfer.push(f.props[k].buffer as ArrayBuffer);
     this.post(f, transfer);
   }

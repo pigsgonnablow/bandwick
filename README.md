@@ -400,6 +400,15 @@ closer to its neighbours, when the near land is taken; strangers come only while
 fewer than three bands. Over forty years most worlds hold two to four bands of fifteen to twenty;
 now and then the land is left empty until strangers come.
 
+**Footpaths.** The ground remembers where people walk. Every step treads the grass a little, and the
+ways walked every day wear in: first the grass lies flat and pale, then the earth shows between the
+blades, and the middle of the camp and the busiest ways out of it are beaten bare. Flowers don't come
+up on a path, and in winter the paths stay as grey, trodden snow. Grass grows back over a path nobody
+uses, quickly in spring and summer and hardly at all over winter, so an abandoned camp's paths are
+gone within the year. For now the paths are only drawn; they go where people already walk.
+`npx tsx tools/trails.ts [seed] [years]` prints how much ground is worn, season by season, and a map
+of the paths round the camp.
+
 ## Open it
 Run `npm run build`, then double-click `dist/index.html`. It is one self-contained file and runs offline from disk in
 current Chrome, Edge, Firefox (114+) or Safari (15+) on Windows, macOS or Linux. A desktop or laptop
@@ -512,7 +521,7 @@ If the simulation ever hits a bug it stops and says so, with the seed and tick, 
 
 ## Layout
 - `src/sim/` — world generation and the band simulation (deterministic: seeded PRNG, no browser-dependent math)
-  - `sim.ts` people, life and death, the camp planner, deer; `beasts.ts` wild boar, foxes and beavers; `ai.ts` decisions and tasks; `know.ts` the discoveries; `path.ts` pathfinding
+  - `sim.ts` people, life and death, the camp planner, deer; `beasts.ts` wild boar, foxes and beavers; `ai.ts` decisions and tasks; `know.ts` the discoveries; `path.ts` pathfinding; `trails.ts` footpaths worn in by people walking
 - `src/render/` — three.js renderer: terrain, water shader, instanced props, lighting, seasons, camera
 - `src/ui/` — Preact interface (`InfoWindows.tsx` is the floating inspector, `Chronicle.tsx` the history browser)
 - `src/saves.ts` — save storage (IndexedDB, gzip, export/import)

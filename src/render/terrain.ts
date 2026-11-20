@@ -107,11 +107,17 @@ export function createTerrainMaterials(world: WorldData) {
   maskTex.needsUpdate = true;
 
   const grassTex = makeGrassTexture();
+  // footpaths: how worn each tile is by people's feet (one texel a tile), filled in as the simulation reports it
+  const N = world.size;
+  const trailTex = new THREE.DataTexture(new Uint8Array(N * N), N, N, THREE.RedFormat, THREE.UnsignedByteType);
+  trailTex.magFilter = THREE.LinearFilter;
+  trailTex.minFilter = THREE.LinearFilter;
+  trailTex.needsUpdate = true;
 
   const top = new THREE.MeshLambertMaterial({ map: colorTex });
   top.customProgramCacheKey = () => 'terrain-top';
   top.onBeforeCompile = (shader) => {
-    addCommon(shader, { uMask: { value: maskTex }, uMapSize: { value: world.size }, uGrass: { value: grassTex } });
+    addCommon(shader, { uMask: { value: maskTex }, uMapSize: { value: world.size }, uGrass: { value: grassTex }, uTrail: { value: trailTex } });
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       `#include <map_fragment>
@@ -126,6 +132,8 @@ export function createTerrainMaterials(world: WorldData) {
         // bare rock gets coarser grain and darker seams than turf
         float rocky = 1.0 - smoothstep(0.2, 0.6, veg);
         col *= mix(0.9 + 0.2 * g, 0.78 + 0.22 * g + 0.14 * smoothstep(0.45, 0.7, g2), rocky);
+        // how trodden this spot is by people's feet (worn into footpaths, see below)
+        float trod = 0.0;
         // turf up close: blades and tufts, clumps of lusher and drier grass, and bare earth where it wears thin
         {
           vec2 wp = vWorld.xz;
@@ -140,13 +148,27 @@ export function createTerrainMaterials(world: WorldData) {
           vec3 blade = col * (0.58 + 0.85 * gt.r);
           blade = mix(blade, blade * vec3(1.18, 1.05, 0.72), dry * smoothstep(0.55, 0.9, gt.r) * 0.55);
           blade *= 0.93 + 0.16 * clump;
+          // footpaths: first the grass is trampled flat and pale, then the earth shows through where the
+          // blades are thinnest, then it is a beaten path of packed earth (with ragged edges, never a tile's square)
+          // (four taps a little apart round off the tiles' corners)
+          vec2 tuv = wp / uMapSize, td = vec2(0.3, 0.12) / uMapSize;
+          float tw = 0.25 * (texture2D(uTrail, tuv + td).r + texture2D(uTrail, tuv - td).r
+            + texture2D(uTrail, tuv + vec2(-td.y, td.x)).r + texture2D(uTrail, tuv + vec2(td.y, -td.x)).r);
+          tw += (texture2D(uNoise, wp * 0.8 + 2.3).r - 0.5) * 0.3 + (gt.g - 0.5) * 0.08;
+          trod = tw;
+          blade = mix(blade, blade * vec3(1.12, 1.07, 0.76), smoothstep(0.06, 0.4, tw) * 0.8);
           // bare earth: patches where the noise runs high, more of it in drier and thinner turf
           float dn = texture2D(uNoise, wp * 0.31 + 1.7).g * 0.75 + texture2D(uNoise, wp * 1.3 + 5.1).r * 0.25;
           float bare = smoothstep(0.62, 0.665, dn + dry * 0.05 + (1.0 - veg) * 0.4 + wood * 0.05);
           bare *= 1.0 - gt.b * 0.7 * (1.0 - smoothstep(0.63, 0.69, dn));
+          // the earth shows first in the gaps between the blades, and last under the tufts
+          float worn = smoothstep(0.32, 0.72, tw + (1.0 - gt.b) * 0.25 - 0.1);
+          bare = max(bare, worn);
           vec3 soil = mix(vec3(0.2, 0.12, 0.05), vec3(0.38, 0.27, 0.14), gt.g) * (0.8 + 0.4 * g);
+          // packed path earth is paler and smoother than a bare patch
+          soil = mix(soil, mix(vec3(0.34, 0.23, 0.12), vec3(0.46, 0.34, 0.19), gt.g) * (0.88 + 0.24 * g), worn * 0.6);
           vec3 litter = mix(vec3(0.24, 0.13, 0.05), vec3(0.36, 0.24, 0.09), gt.g);
-          soil = mix(soil, litter, wood * 0.7);
+          soil = mix(soil, litter, wood * 0.7 * (1.0 - worn * 0.6));
           vec3 turfCol = mix(blade, soil, bare);
           turfCol = mix(turfCol, turfCol * vec3(1.06, 0.92, 0.8), wood * (1.0 - gt.b) * 0.6);
           col = mix(col, turfCol, turf);
@@ -154,14 +176,18 @@ export function createTerrainMaterials(world: WorldData) {
         // spring flowers
         float pick = texture2D(uNoise, vWorld.xz * 3.1).r;
         vec3 flower = pick > 0.55 ? vec3(0.95, 0.85, 0.25) : (pick > 0.45 ? vec3(0.95, 0.95, 0.92) : vec3(0.85, 0.45, 0.62));
-        col = mix(col, flower, m.b * uBloom * 0.7);
+        col = mix(col, flower, m.b * uBloom * 0.7 * (1.0 - smoothstep(0.1, 0.4, trod)));
         // snow: threshold in the mask, permanent where it is zero
         float th = m.g;
         float s = smoothstep(th - 0.04, th + 0.04, uSnow) * step(0.001, uSnow);
         float drift = texture2D(uNoise, vWorld.xz * 0.35).g;
         s *= smoothstep(0.15, 0.35, drift + uSnow * 0.6);
         if (th < 0.004) s = 1.0;
-        col = mix(col, vec3(0.92, 0.94, 0.97), s);
+        // paths stay open through the snow, trodden down and grey where it is thin
+        float packed = smoothstep(0.25, 0.85, trod + (drift - 0.5) * 0.2);
+        vec3 snowCol = mix(vec3(0.92, 0.94, 0.97), vec3(0.74, 0.76, 0.79), packed * 0.8);
+        if (th >= 0.004) s *= 1.0 - packed * 0.35;
+        col = mix(col, snowCol, s);
         diffuseColor.rgb = col;
       }`,
     );
@@ -169,7 +195,12 @@ export function createTerrainMaterials(world: WorldData) {
   const side = new THREE.MeshLambertMaterial({ vertexColors: true });
   side.onBeforeCompile = (shader) => addCommon(shader);
   side.customProgramCacheKey = () => 'terrain-side';
-  return { top, side, colorTex, maskTex };
+  /** The simulation's latest footpaths (Trails.level). */
+  const setTrails = (level: Uint8Array) => {
+    (trailTex.image.data as Uint8Array).set(level);
+    trailTex.needsUpdate = true;
+  };
+  return { top, side, colorTex, maskTex, trailTex, setTrails };
 }
 
 /** Builds one mesh pair (tops + sides) per 32x32 chunk. */

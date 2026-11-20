@@ -49,6 +49,7 @@ export class WorldView {
 
   band?: BandLayer;
   private worldTextures: THREE.Texture[] = [];
+  private setTrails?: (level: Uint8Array) => void;
 
   constructor(private host: HTMLElement, sky: HTMLElement, geoms: Map<string, THREE.BufferGeometry>, private bandGeoms: Map<string, THREE.BufferGeometry>) {
     this.skyEl = sky;
@@ -98,7 +99,8 @@ export class WorldView {
     this.world = world;
     this.hoverDrawn = -2;
     const terrainMats = createTerrainMaterials(world);
-    this.worldTextures = [terrainMats.colorTex, terrainMats.maskTex];
+    this.worldTextures = [terrainMats.colorTex, terrainMats.maskTex, terrainMats.trailTex];
+    this.setTrails = terrainMats.setTrails;
     const terrain = buildTerrain(world, terrainMats);
     const water = buildWater(world);
     this.props = new PropLayer(world.size, this.geoms);
@@ -134,6 +136,7 @@ export class WorldView {
     if (f.buildings) this.band?.setBuildings(f.buildings);
     if (f.piles) this.band?.setPiles(f.piles);
     if (f.traps) this.band?.setTraps(f.traps);
+    if (f.trails && f.trails.length === (this.world?.size ?? 0) ** 2) this.setTrails?.(f.trails);
     this.band?.onFrame(f, tps, performance.now());
   }
 
