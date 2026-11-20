@@ -294,6 +294,65 @@ describe('the last few of a band', () => {
   });
 });
 
+describe('a small band starving', () => {
+  /** A neighbouring band of several grown-ups, starving with its stores bare, and the home band with food to share. */
+  const starving = () => {
+    const s = sim(1);
+    const home = s.camp;
+    const near = neighbour(s);
+    s.camp = near;
+    const ms = grow(s, 4);
+    s.camp = home;
+    for (const k of Object.keys(near.stock) as (keyof Stock)[]) near.stock[k] = 0;
+    near.famine = true;
+    return { s, home, near, ms };
+  };
+  const odds = (s: Sim, yes: boolean) => { (s as any).rLife.chance = () => yes; };
+
+  it('asks a neighbour with food to share to take it in, and goes to live there when it does', () => {
+    const { s, home, near, ms } = starving();
+    home.stock.preserved += 500;
+    odds(s, true);
+    expect((s as any).askTakenIn(near)).toBe(true);
+    expect(near.gone).toBe(s.tick);
+    for (const p of ms) expect(p.band).toBe(home.id);
+    expect(s.events.some((e) => e.kind === 'merge' && /starving/.test(e.text))).toBe(true);
+  });
+
+  it('may be turned away, and then goes home hungry and waits a few days before asking again', () => {
+    const { s, home, near, ms } = starving();
+    home.stock.preserved += 500;
+    odds(s, false);
+    expect((s as any).askTakenIn(near)).toBe(false);
+    expect(near.gone).toBe(0);
+    for (const p of ms) expect(p.band).toBe(near.id);
+    expect(s.events.at(-1)!.kind).toBe('turned_away');
+    // (the next morning, too soon to ask again)
+    s.tick += TICKS_PER_DAY;
+    const n = s.events.length;
+    (s as any).bands(20);
+    expect(s.events.slice(n).some((e) => e.kind === 'turned_away')).toBe(false);
+  });
+
+  it('is never taken in by a band starving too, and seldom by one with little to share', () => {
+    const { s, home, near } = starving();
+    home.famine = true;
+    const real = (s as any).rLife.chance;
+    odds(s, true);
+    expect((s as any).askTakenIn(near)).toBe(false);
+    (s as any).rLife.chance = real;
+    home.famine = false;
+    for (const k of Object.keys(home.stock) as (keyof Stock)[]) home.stock[k] = 0;
+    // (with nothing at all to share, only kin would have them, and these are not)
+    let taken = 0;
+    for (let i = 0; i < 50; i++) {
+      near.askedIn = undefined;
+      if ((s as any).askTakenIn(near)) { taken++; break; }
+    }
+    expect(taken).toBe(0);
+  });
+});
+
 describe('a band hungry winter after winter', () => {
   it('looks for land by water with more fish in it', () => {
     let better = 0;

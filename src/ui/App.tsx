@@ -372,7 +372,7 @@ const KIND_MARK: Record<string, string> = {
   discovery: '#7fc4e8', build: '#e3ab4e', pairing: '#e7a0c0', founding: '#e3ab4e', hunt: '#c9a46a', winter: '#cfe3f2',
   injury: '#d98a6a', fostering: '#9fd07a', climate: '#cfe3f2', age: '#b3aa96', burial: '#b3aa96',
   split: '#e3ab4e', move_camp: '#e3ab4e', merge: '#b3aa96', gone: '#8a8070', empty: '#8a8070', exile: '#d98a6a',
-  epidemic: '#d98a6a', epidemic_end: '#9fd07a', fight: '#d98a6a', death_quarrel: '#d98a6a', attack: '#d98a6a',
+  epidemic: '#d98a6a', epidemic_end: '#9fd07a', fight: '#d98a6a', death_quarrel: '#d98a6a', attack: '#d98a6a', turned_away: '#d98a6a',
   bully_defend: '#b3aa96', bully_snap: '#d98a6a', bully_shun: '#d98a6a', bully_flee: '#e3ab4e',
   murrain: '#e0a24a', blight: '#e0a24a', plenty: '#9fd07a', provided: '#9fd07a', great_hunt: '#c9a46a', quiet: '#9fd07a', elder: '#cfe3f2',
   rule: '#e3ab4e', rule_end: '#b3aa96',

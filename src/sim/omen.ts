@@ -299,11 +299,13 @@ export function sight(s: Sim, c: Camp, sign: SignKind, seen: Person[], at?: numb
   c.omen = { sign, tick: s.tick, until: s.tick + OMEN_DAYS * TICKS_PER_DAY, seen: seen.map((p) => p.id), ...(at !== undefined ? { at } : {}) };
   const known = c.lore?.filter((l) => l.sign === sign) ?? [];
   if (!known.length) return;
-  const l = known[0];
+  // (where the band has two notions of the same sign, the one it holds as the band's)
+  const l = known.find((x) => x.held) ?? known[0];
   const { grown, hold } = holders(s, c, l.key);
   if (spec.habit === 'shelter' && hold.length) {
     const sh = { until: s.tick + (spec.hours ?? 2) * TICKS_PER_HOUR, why: `Keeping close to the fire: ${loreText(l)}.`, sign };
-    c.shelter = sh;
+    // (on the band's day of rest everyone is at the fire already: the believers' spell must not send the rest back to work)
+    if (!(c.shelter?.all && c.shelter.until > s.tick)) c.shelter = sh;
     for (const p of hold) p.nextThink = s.tick;
     if (l.held) s.event('omen_habit', `At ${c.name}, ${hold.length >= grown.length * 0.8 ? 'everyone' : 'most of the band'} left their work and kept close to the fire, for ${loreText(l)}.`, [], c.x, c.z, 2);
   } else if (spec.habit === 'offer' && l.held) {

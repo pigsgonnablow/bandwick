@@ -159,7 +159,7 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
   const builds = kinds('build');
   const STORY = new Set(['founding', 'discovery', 'famine', 'famine_end', 'winter', 'climate', 'hunt', 'fostering', 'injury', 'stillbirth', 'move',
     'split', 'move_camp', 'merge', 'gone', 'empty', 'exile', 'death_quarrel', 'fight', 'attack', 'epidemic', 'epidemic_end',
-    'murrain', 'blight', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder', 'known', 'bully_snap', 'bully_shun', 'bully_flee']);
+    'murrain', 'blight', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder', 'known', 'bully_snap', 'bully_shun', 'bully_flee', 'turned_away']);
   const story: Seg[][] = [];
   // (a ruler taking hold of a band, or the band throwing them off)
   for (const k of ['rule', 'rule_end']) STORY.add(k);
@@ -293,7 +293,7 @@ function useWidth() {
 const LANES = [
   { key: 'family', label: 'Births & bonds', color: '#199e70', kinds: ['birth', 'twins', 'pairing', 'fostering'] },
   { key: 'death', label: 'Deaths', color: '#e66767', kinds: ['death', 'stillbirth'] },
-  { key: 'hard', label: 'Hard times', color: '#3987e5', kinds: ['famine', 'winter', 'climate', 'injury', 'epidemic', 'fight', 'attack', 'murrain', 'blight', 'death_quarrel', 'bully_snap', 'bully_shun'] },
+  { key: 'hard', label: 'Hard times', color: '#3987e5', kinds: ['famine', 'winter', 'climate', 'injury', 'epidemic', 'fight', 'attack', 'murrain', 'blight', 'death_quarrel', 'bully_snap', 'bully_shun', 'turned_away'] },
   { key: 'works', label: 'Good fortune & works', color: '#c98500', kinds: ['build', 'discovery', 'hunt', 'move', 'plenty', 'provided', 'great_hunt', 'quiet', 'elder'] },
   { key: 'bands', label: 'Bands', color: '#b3aa96', kinds: ['founding', 'split', 'move_camp', 'merge', 'gone', 'empty', 'exile', 'bully_flee'] },
 ];

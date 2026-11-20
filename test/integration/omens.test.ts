@@ -198,10 +198,32 @@ describe('omens', () => {
     s.tick = (dayOf(s.tick) - (dayOf(s.tick) % DAYS_PER_YEAR) + DAYS_PER_YEAR + day) * TICKS_PER_DAY + 6 * TICKS_PER_HOUR;
     omenDaily(s, day);
     expect(sheltering(s, p)).toMatch(/custom/);
+    // a believers' sign seen on the day of rest doesn't send everyone else back to work
+    const believer = s.members().find((q) => q !== p)!;
+    believer.beliefs = [l.key];
+    sight(s, s.camp, 'eclipse', s.members());
+    expect(sheltering(s, p)).toMatch(/custom/);
+    expect(sheltering(s, believer)).toMatch(/custom/);
     // a custom stays, even once nobody believes the omen any more
     for (const q of s.members()) delete q.beliefs;
     upkeep(s);
     expect(s.camp.customs).toHaveLength(1);
+  });
+
+  it('where a band has two notions of one sign, it acts on the one it holds', () => {
+    const s = band();
+    const bad = believeIn(s, 'comet');
+    // a few think the comet foretells a death; most of the band holds that it foretells a great hunt
+    const good: Lore = { ...bad, key: 'comet:good', good: true, of: 'a great hunt', held: s.tick };
+    delete bad.held;
+    s.camp.lore = [bad, good];
+    const g = grown(s);
+    g[0].beliefs = [bad.key];
+    for (const q of g.slice(1)) q.beliefs = [good.key];
+    s.camp.stock.preserved += 20;
+    const before = foodTotal(s.camp.stock);
+    sight(s, s.camp, 'comet', s.members());
+    expect(foodTotal(s.camp.stock)).toBeLessThan(before);
   });
 
   it('other customs: no partnering in a season, food at midwinter, a white deer never hunted', () => {
