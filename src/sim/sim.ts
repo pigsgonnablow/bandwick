@@ -97,6 +97,17 @@ export const PROVIDED_FOOD = 0.12;
 export const PROVIDED_UNTIL = 0.8;
 /** winters in a row a band has had to ration before it thinks of finding better land */
 export const LEAN_WINTERS_TO_MOVE = 3;
+/**
+ * A small band (this many or fewer) starving with its stores bare tries to go and live with a neighbour, every
+ * few days (FAMINE_ASK_DAYS) while the hunger lasts. The neighbour may turn them away: it takes them in at best
+ * with FAMINE_TAKE_IN, less when it has under FAMINE_SPARE food a head to share with them, and never in a famine
+ * of its own or from farther than FAMINE_REACH.
+ */
+export const FAMINE_MERGE_MAX = 14;
+export const FAMINE_ASK_DAYS = 4;
+export const FAMINE_TAKE_IN = 0.7;
+export const FAMINE_SPARE = 12;
+export const FAMINE_REACH = 60;
 export const WARM_RADIUS_SHELTERED = 3.2;
 /** 'a' or 'an' for a word. */
 export const art = (w: string) => (/^[aeiou]/i.test(w) ? 'an' : 'a');
@@ -247,6 +258,8 @@ export interface Camp {
   ledger?: Ledger;
   /** when the band last went hungry, and last saw a fight (absent until it happens) */
   lastFamine?: number;
+  /** when the band, starving, last asked a neighbour to take it in (absent: never) */
+  askedIn?: number;
   lastFight?: number;
   /** the band's colour (hue in degrees, saturation and lightness 0..1); absent in older saves */
   color?: BandColor;
@@ -3251,6 +3264,11 @@ export class Sim {
         this.camp = c;
         if (this.considerMerge(c, true)) continue;
       }
+      // a small band starving with its stores bare tries a neighbour with food to share, every few days
+      if (c.famine && ms.length <= FAMINE_MERGE_MAX && foodTotal(c.stock) < ms.length && this.tick - (c.askedIn ?? -1e9) >= FAMINE_ASK_DAYS * TICKS_PER_DAY) {
+        this.camp = c;
+        if (this.askTakenIn(c)) continue;
+      }
     }
     const season = seasonOf(this.tick);
     // setting out is for spring and summer: there has to be time to build and lay in wood before winter
@@ -3530,12 +3548,35 @@ export class Sim {
     this.pigs = this.pigs.filter((g) => g.band !== c.id);
   }
 
-  private considerMerge(c: Camp, cold = false) {
+  /**
+   * A small band starving with its stores bare asks the nearest neighbour not starving itself to take it in. The
+   * neighbour may: the more food it has to share, and the more of its people are kin to them, the likelier. If
+   * it won't, they go home hungry, and may try again in a few days. Whether they were taken in.
+   */
+  private askTakenIn(c: Camp) {
+    c.askedIn = this.tick;
+    const ms = this.members(c);
+    const to = this.liveCamps().filter((o) => o !== c && !o.famine && this.members(o).length && hyp(o.x - c.x, o.z - c.z) < FAMINE_REACH)
+      .sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
+    if (!to || !ms.length) return false;
+    const theirs = this.members(to);
+    const spare = foodTotal(to.stock) / (theirs.length + ms.length);
+    const kin = ms.some((p) => theirs.some((q) => this.isKin(p, q)));
+    const chance = FAMINE_TAKE_IN * Math.min(1, spare / FAMINE_SPARE) + (kin ? 0.15 : 0);
+    if (this.rLife.chance(Math.min(0.9, chance))) return this.considerMerge(c, false, to);
+    for (const p of ms) if (this.age(p) >= 14) this.remember(p, 'turned_away', -10, 2, -1, `Went to ${to.name}, starving, and was turned away.`);
+    this.event('turned_away', `The hungry people of ${c.name} went to ${to.name} to ask to live there, but ${to.name} ${spare < FAMINE_SPARE / 2 ? 'had too little to share' : 'would not take them in'}, and they went home.`,
+      ms.slice(0, 4).map((p) => p.id), c.x, c.z, 3);
+    return false;
+  }
+
+  private considerMerge(c: Camp, cold = false, famineTo?: Camp) {
     const ms = this.members(c);
     const adults = ms.filter((p) => this.age(p) >= 16);
-    if (!cold && adults.length >= 2 && ms.length > 3) return false;
-    // (a band whose fire has gone cold goes only to a neighbour with a fire and the wood to keep it)
-    const to = this.liveCamps().filter((o) => o !== c && (!cold || (o.stock.wood >= 30 && hyp(o.x - c.x, o.z - c.z) < 60))).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
+    if (!cold && !famineTo && adults.length >= 2 && ms.length > 3) return false;
+    // (a band whose fire has gone cold goes only to a neighbour with a fire and the wood to keep it; a starving one, to
+    // whoever agreed to take it in)
+    const to = famineTo ?? this.liveCamps().filter((o) => o !== c && (!cold || (o.stock.wood >= 30 && hyp(o.x - c.x, o.z - c.z) < 60))).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
     if (!to || !ms.length) return false;
     this.join(ms, to);
     // their pigs can't be driven to another band's pen: they are killed, and the meat goes with the stores
@@ -3554,8 +3595,10 @@ export class Sim {
     c.gone = this.tick;
     this.dropSites(c);
     this.hearth(c).fuel = 0;
-    for (const p of ms) this.remember(p, 'moved_camp', -8, 2, -1, cold ? `Left ${c.name} in the dead of winter, with no wood for the fire, for the fire at ${to.name}.` : `Left ${c.name}, too few to go on, for ${to.name}.`);
-    if (cold) this.event('merge', `The people of ${c.name}, their wood gone and their fire cold, went through the snow to live at ${to.name}.`, ms.map((p) => p.id), c.x, c.z, 4);
+    for (const p of ms) this.remember(p, 'moved_camp', -8, 2, -1, cold ? `Left ${c.name} in the dead of winter, with no wood for the fire, for the fire at ${to.name}.`
+      : famineTo ? `Left ${c.name}, starving, for ${to.name}, who took them in.` : `Left ${c.name}, too few to go on, for ${to.name}.`);
+    if (famineTo) this.event('merge', `The people of ${c.name}, starving, went to ${to.name} and were taken in.`, ms.map((p) => p.id), c.x, c.z, 4);
+    else if (cold) this.event('merge', `The people of ${c.name}, their wood gone and their fire cold, went through the snow to live at ${to.name}.`, ms.map((p) => p.id), c.x, c.z, 4);
     else this.event('merge', `${ms.length === 1 ? `${ms[0].name}, the last of the people of ${c.name},` : `The last ${num(ms.length)} of the people of ${c.name}`} went to live at ${to.name}.`,
       ms.map((p) => p.id), c.x, c.z, 4);
     if (learned.length) {
