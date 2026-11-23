@@ -4,7 +4,7 @@ import { SHELTER_PULL, sheltering, sparesWhite, shunned, whiteKilled, omenTale, 
 import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE, aDish } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
-import { SEASONED_HEAT, CANOE_SPEED, CANOE_CATCH, CANOE_OPEN } from './band';
+import { SEASONED_HEAT, CANOE_SPEED, CANOE_CATCH, CANOE_OPEN, HIDEWORK, FRAME_SPEED } from './band';
 import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, LAME_SPEED, LAME_WORK, ONE_EYE_AIM, BAD_HAND_WORK, BAD_HAND_AIM, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, STEW_FROM, STEW_TO, GRIDDLE_GAIN, GRIDDLED, RAW_SICK, RAW_WARM, RAW_WARM_AT, COOKED_SICK, STALE_SICK, GUT_DAYS, RAW_RISKY, OVEN_FROM, OVEN_LOAD, OVEN_BELONG, BOIL_TICKS, STEW_CALL, STEW_TICKS, STEW_BELONG, BREW_WARM, BREW_HOURS, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
   PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, CHARCOAL_CRACK, CLAMP_BURN, CHARCOAL_YIELD, SLEDGE_LOAD, SLEDGE_SNOW, MASTER_FALL, MASTER_WOOD, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
@@ -903,7 +903,7 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       const key = recipe ?? craftFor(s, p)?.key;
       if (!key || !s.canCraft(key)) return null;
       const rc = RECIPES[key];
-      // a potter with a kiln works beside it, a weaver of cloth at the loom; everything else is made by the fire
+      // a potter with a kiln works beside it, a weaver of cloth at the loom, a hideworker at the frame; everything else is made by the fire
       const shop = s.workshopFor(key);
       const st = shop ? s.kilnSeat(shop, p) : seat(s, p, 1.45);
       const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, RECIPE_KEYS.indexOf(key));
@@ -3128,10 +3128,14 @@ export function runTask(s: Sim, p: Person) {
         t.timer = Math.max(Math.round(rc.work * 0.42), Math.round(rc.work * (1.2 - p.skills[rc.skill] * 0.025)));
         // a bone needle and awl from the pile make short work of the sewing
         if (SEWN.includes(key) && s.toolsOf(c, 'needle').length) t.timer = Math.round(t.timer * NEEDLE_SPEED);
-        if (s.hearthLit()) p.thought = rc.thought.replace(/\.$/, ' by the fire.');
+        // and a hide laced in the frame is scraped standing, quicker than over the knee
+        const frame = HIDEWORK.includes(key) && !!s.frameOf();
+        if (frame) t.timer = Math.round(t.timer * FRAME_SPEED);
+        if (frame) p.thought = rc.thought.replace(/\.$/, ' at the frame.');
+        else if (s.hearthLit()) p.thought = rc.thought.replace(/\.$/, ' by the fire.');
       }
-      // (stacking a charcoal clamp is work on one's feet; everything else is sat at)
-      p.act = key === 'charcoal' ? ACT.Tend : ACT.Sit;
+      // (stacking a charcoal clamp and scraping a hide in the frame are work on one's feet; everything else is sat at)
+      p.act = key === 'charcoal' ? ACT.Tend : HIDEWORK.includes(key) && s.workshopFor(key) ? ACT.Scrape : ACT.Sit;
       // after dark, a lamp lit beside them to see the work by
       if (isDark(s.tick) && (t.timer % 10 === 0 || s.heldBy(p)?.kind !== 'lamp') && s.lightLamp(p)) p.thought = rc.thought.replace(/\.$/, ' by lamplight.');
       const at = s.workshopFor(key);
