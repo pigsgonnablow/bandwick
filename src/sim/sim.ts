@@ -16,6 +16,7 @@ import {
   LOOMED, HIDEWORK, FRAME_FINE, FRAME_SPEED, KILNED, POTTED, JAR_HOLDS, JAR_KEEP, JARRED, JARS_MAX, LAMP_FAT, FAT_KEPT, SINEW_KEPT, SINEW_SEWN, THREAD_TRY, THREAD_KEPT, FIBER_PER_THREAD, BLANKET_REST,
   STEWED, POT_AT, BOIL_AT, BOIL_GAIN, BOIL_TICKS, OVENED, OVEN_GAIN, OVEN_GLUT, OVEN_TO, OVEN_TICKS, OVEN_WOOD, GRIDDLE_GAIN, COOK_GAIN, STEW_BERRIES, STEW_GAIN, STEW_MASTER, STEW_GREENS, STEW_MEALS, STEW_TICKS, Stew, BROTH_FILL, BROTH_KEEP, BROTH_EACH, BREW_HERBS, BREW_COLD, BREW_KEEP, BREW_HEAL, HERBS_BREW,
   ACCIDENT_YEARLY, Hurt, HURT_WORDS, WOUND_DAYS, WOUND_RISK,
+  SWEAT_DAYS, SWEAT_WARD, SWEAT_HOLDS, SWEAT_BREAK,
   RUN_FISH, WEIR_PASS, WEIR_HOLDS, CROP, CROP_NAMES, newPlot, GROW_DAYS, PLOT_YIELD, SEED_PER_PLOT, GREENS_PER_DAY, GREENS_LOAD, LEAN_GARDEN, PLENTY_GARDEN, SOIL_REST, SOIL_FALLOW,
 } from './band';
 import {
@@ -1493,7 +1494,7 @@ export class Sim {
     const woodRun = (k === 'fell' || k === 'haul' || k === 'deadwood') && this.hearth().fuel < 2;
     // (feeding the fire is how they get warm: nobody turns away from it to go and sit by it cold)
     // (someone carrying goods home is already on the way to the fire: dropping the load would not get them there sooner)
-    if (p.warmth < (woodRun ? 5 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel' && !delivering(p)) return true;
+    if (p.warmth < (woodRun ? 5 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel' && k !== 'sweat' && !delivering(p)) return true;
     // the fire keeper wakes in the night when the fire will not last till morning
     if (k === 'sleep' && isDark(this.tick) && this.fireShort() && !this.fuelOnHand(this.camp) && this.fireKeeper() === p) return true;
     // worn out on the way home with a load: the bed is at camp, where they're going anyway
@@ -1503,7 +1504,7 @@ export class Sim {
     // except wood runs in the cold when the store is low: coming home empty-handed means a cold night
     const emergency = (k === 'fell' || k === 'haul' || k === 'deadwood') && (this.hearth().fuel < 2 || this.camp.stock.wood < 20) && this.tempAt(p) < 12;
     // (a burial, once begun, is seen through: a body far out on the land is not left another night)
-    if (k && !emergency && p.task!.stage === 0 && isDark(this.tick) && !['sleep', 'warm', 'eat', 'fuel', 'socialize', 'idle', 'bury', 'craft', 'tell', 'listen', 'gift', 'feast', 'mend'].includes(k)) return true;
+    if (k && !emergency && p.task!.stage === 0 && isDark(this.tick) && !['sleep', 'warm', 'eat', 'fuel', 'socialize', 'idle', 'bury', 'craft', 'tell', 'listen', 'gift', 'feast', 'mend', 'sweat'].includes(k)) return true;
     return false;
   }
 
@@ -2441,6 +2442,18 @@ export class Sim {
   clampOf(c = this.camp) {
     return this.buildings.find((b) => b.band === c.id && b.kind === 'clamp' && b.built);
   }
+  /** The band's built sweat lodge, if it has one. */
+  sweatOf(c = this.camp) {
+    return this.buildings.find((b) => b.band === c.id && b.kind === 'sweat' && b.built);
+  }
+  /** Whether a sweat lodge's stones are hot just now. */
+  lodgeHot(b: Building) {
+    return (b.hot ?? -1) > this.tick;
+  }
+  /** Whether someone sat in the sweat lodge lately enough that a fever is slower to take hold of them. */
+  sweatWarded(p: Person) {
+    return p.sweat !== undefined && this.tick - p.sweat < SWEAT_DAYS * TICKS_PER_DAY;
+  }
   /** The band's built loom shed, if it has one. */
   loomOf(c = this.camp) {
     return this.buildings.find((b) => b.band === c.id && b.kind === 'loom' && b.built);
@@ -3083,6 +3096,8 @@ export class Sim {
         if (p.warmth < 35) chance *= 3;
         if (p.food < 30) chance *= 2.5;
         if (seasonOf(this.tick) === 3) chance *= 1.6;
+        // (sweated in the lodge these last days: a fever is slower to take hold)
+        if (this.sweatWarded(p)) chance *= SWEAT_WARD;
         if (r.next() < chance) {
           p.sick = r.int(3, 9);
           this.remember(p, 'sick', -12, 0.5, -1, 'Fell ill with a fever.');
@@ -4501,6 +4516,16 @@ export class Sim {
         c.plan.push('Dig an earth oven by the fire');
       }
     }
+    // a sweat lodge a little way from the fire, once someone has thought of it (covered with what hides the band has
+    // put by when it is finished, and bark where it is short)
+    if (this.knows('sweat', c) && !this.bandBuildings(c).some((b) => b.kind === 'sweat')) {
+      const tile = this.siteFor('sweat', null);
+      if (tile >= 0) {
+        this.clearTile(tile);
+        this.newBuilding('sweat', tile, -1);
+        c.plan.push('Build a sweat lodge, and cover it with hides');
+      }
+    }
     // a loom shed, once someone has thought of the loom
     if (this.knows('loom', c) && !this.bandBuildings(c).some((b) => b.kind === 'loom')) {
       const tile = this.siteFor('loom', null);
@@ -4892,7 +4917,7 @@ export class Sim {
         // (a charcoal clamp goes by the kiln it feeds, a little way off for the smoke)
         const kiln = kind === 'clamp' ? this.kilnOf() : undefined;
         const d = byGraves ? hyp(x - (this.camp.graveyard % N), z - Math.floor(this.camp.graveyard / N)) : kiln ? hyp(x - kiln.x, z - kiln.z) : hyp(dx, dz);
-        const want = byGraves ? 1.6 : kiln ? 2.2 : kind === 'clamp' ? 4.5 : kind === 'oven' ? 2.4 : kind === 'barrow' ? 7.5 : kind === 'stones' ? 8 : kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'loom' ? 3.6 : kind === 'frame' ? 3.3 : kind === 'pen' ? 4.8 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
+        const want = byGraves ? 1.6 : kiln ? 2.2 : kind === 'clamp' ? 4.5 : kind === 'oven' ? 2.4 : kind === 'barrow' ? 7.5 : kind === 'stones' ? 8 : kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'loom' ? 3.6 : kind === 'sweat' ? 4.2 : kind === 'frame' ? 3.3 : kind === 'pen' ? 4.8 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
         let sc = -Math.abs(d - want) * 1.6;
         if (w.level[i] !== w.level[this.camp.tile]) sc -= 2.5;
         sc -= this.treesOnTile[i] * 1.2;
@@ -5476,6 +5501,8 @@ export class Sim {
       ...(b.kind === 'hearth' ? this.hearthLook(b) : {}),
       // a canoe out on the water leaves only its rollers and the scrape in the mud
       ...(b.kind === 'canoe' && b.built && b.out !== undefined ? { look: 'canoeOut' } : {}),
+      // a sweat lodge with its stones hot and people inside: the door flap down, steam leaking out
+      ...(b.kind === 'sweat' && b.built && this.lodgeHot(b) ? { look: 'sweatHot' } : {}),
       // a charcoal clamp stacked and covered, smouldering
       ...(b.kind === 'clamp' && b.built && b.burnUntil !== undefined ? { look: 'clampLit' } : {}),
       ...(b.kind === 'oven' ? this.ovenLook(b) : {}),
@@ -5946,6 +5973,16 @@ export class Sim {
         const goods = this.goodsOf(this.campById(b.band) ?? this.camp);
         lines.push(L('The band\'s goods', goods.length ? `${goods.length}: ${goods.filter((i) => i.quality === 2).length} fine, ${goods.filter((i) => i.quality === 1).length} good` : 'None yet'));
         notes.push(`A dome of clay over a firing pit. Pots and bowls fired in it crack ${Math.round(KILN_CRACK * 100)} times in a hundred, where the open embers crack a beginner's ${Math.round(HEARTH_CRACK * 100)}; the even heat makes them finer.`);
+      }
+      if (b.kind === 'sweat' && b.built) {
+        const owner = this.campById(b.band) ?? this.camp;
+        const inside = this.people.filter((p) => p.alive && p.band === b.band && p.task?.kind === 'sweat' && p.task.ref === b.id && p.indoors);
+        for (const p of inside) lines.push(L('Inside', p.name, pref(p.id)));
+        const heating = this.people.find((p) => p.alive && p.band === b.band && p.task?.kind === 'sweat' && p.task.ref === b.id && p.task.stage >= 5);
+        lines.push(L('Stones', this.lodgeHot(b) ? 'Hot in the pit, steaming' : heating ? `Heating in the fire: ${heating.name}` : 'Cold'));
+        const ms = this.members(owner).filter((p) => this.age(p) >= 12);
+        lines.push(L('Sweated lately', `${ms.filter((p) => this.sweatWarded(p)).length} of ${ms.length}`));
+        notes.push(`A low dome of bent withies covered in hides. On cold evenings stones heated in the fire are carried into the pit inside, and up to ${SWEAT_HOLDS} sit round them in the dark while water is poured over. They come out warmed through; for ${SWEAT_DAYS} days after, a fever takes hold ${Math.round((1 - SWEAT_WARD) * 100)}% less often, and a fever sweated out breaks ${SWEAT_BREAK} days sooner. In the dark of the lodge, people tell what they believe the signs foretell.`);
       }
       if (b.kind === 'loom' && b.built) {
         const at = this.people.filter((p) => p.alive && p.band === b.band && p.task?.kind === 'craft' && p.task.amount > 0 && LOOMED.includes(RECIPE_KEYS[p.task.ref]));

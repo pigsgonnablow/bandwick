@@ -125,7 +125,7 @@ export class InvariantChecker {
       if (p.home >= 0 && !sim.buildings.some((b) => b.id === p.home)) flag('home missing', `${at} ${p.name}`);
       if (p.carer >= 0 && sim.age(p) < 2 && !sim.byId.get(p.carer)?.alive && !sim.byId.get(p.mother)?.alive && !sim.byId.get(p.father)?.alive) flag('infant with nobody caring for them', `${at} ${p.name}`);
       if (sim.age(p) < 2 && sim.carerOf(p)?.alive && sim.carerOf(p)!.band !== p.band) flag('infant carried by someone of another band', `${at} ${p.name} by ${sim.carerOf(p)!.name}`);
-      if (p.indoors && p.task?.kind !== 'sleep' && p.task?.kind !== 'warm' && sim.age(p) >= 2) flag('indoors without reason', `${at} ${p.name} ${p.task?.kind}`);
+      if (p.indoors && p.task?.kind !== 'sleep' && p.task?.kind !== 'warm' && p.task?.kind !== 'sweat' && sim.age(p) >= 2) flag('indoors without reason', `${at} ${p.name} ${p.task?.kind}`);
       if (p.carry === CARRY.Body && p.task?.kind !== 'bury') flag('carrying a body outside a burial', `${at} ${p.name} task ${p.task?.kind}`);
       // village life: a cloak is worn by one person and knows who; a necklace was given by someone real
       for (const [slot, id] of Object.entries(p.worn ?? {})) {

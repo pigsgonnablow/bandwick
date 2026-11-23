@@ -121,14 +121,14 @@ export type TaskKind =
   | 'eat' | 'eatwild' | 'sleep' | 'warm' | 'socialize' | 'play' | 'idle' | 'mourn'
   | 'forage' | 'fell' | 'haul' | 'hunt' | 'fish' | 'build' | 'supply' | 'fuel' | 'preserve' | 'bury' | 'explore'
   | 'deadwood' | 'swim' | 'migrate' | 'reap' | 'craft' | 'dig' | 'quarry' | 'trap' | 'watch' | 'tell' | 'listen' | 'bed' | 'roots' | 'nuts' | 'herbs' | 'nurse' | 'gift' | 'feast' | 'eggs' | 'honey' | 'mushrooms' | 'mend'
-  | 'sow' | 'tend' | 'harvest' | 'pigs' | 'raise' | 'weir' | 'cook' | 'canoe';
+  | 'sow' | 'tend' | 'harvest' | 'pigs' | 'raise' | 'weir' | 'cook' | 'canoe' | 'sweat';
 
 /** Task kinds in a fixed order, so the renderer can be told what each person is doing. */
 export const TASK_KINDS: TaskKind[] = [
   'eat', 'eatwild', 'sleep', 'warm', 'socialize', 'play', 'idle', 'mourn',
   'forage', 'fell', 'haul', 'hunt', 'fish', 'build', 'supply', 'fuel', 'preserve', 'bury', 'explore',
   'deadwood', 'swim', 'migrate', 'reap', 'craft', 'dig', 'quarry', 'trap', 'watch', 'tell', 'listen', 'bed', 'roots', 'nuts', 'herbs', 'nurse', 'gift', 'feast', 'eggs', 'honey', 'mushrooms', 'mend',
-  'sow', 'tend', 'harvest', 'pigs', 'raise', 'weir', 'cook', 'canoe',
+  'sow', 'tend', 'harvest', 'pigs', 'raise', 'weir', 'cook', 'canoe', 'sweat',
 ];
 
 /** Things a band makes and keeps: tools, traps, baskets, pots and cloaks. */
@@ -477,6 +477,31 @@ export const BREW_COLD = 5;
 export const BREW_WARM = 12;
 export const BREW_HOURS = 8;
 export const BREW_KEEP = 0.75;
+/**
+ * The sweat lodge. On cold evenings someone heats stones in the fire and carries them into the lodge, and up to
+ * SWEAT_HOLDS people sit in the dark round them while water is poured over: SWEAT_TICKS of it. They come out warmed
+ * through (SWEAT_WARM, and the cold bites less for SWEAT_HOURS after, as after a hot brew); for SWEAT_DAYS a fever
+ * comes on SWEAT_WARD as often, and a fever sweated out breaks SWEAT_BREAK days sooner. Each heating of the stones
+ * takes SWEAT_WOOD from the stores and keeps them hot for SWEAT_HOT ticks; nobody sweats again within SWEAT_EVERY
+ * days. The dome is covered in up to SWEAT_HIDES hides, taken from the stores when it is finished.
+ */
+export const SWEAT_HOLDS = 6;
+export const SWEAT_TICKS = 18;
+export const SWEAT_HEATING = 12;
+export const SWEAT_HOT = 40;
+export const SWEAT_WOOD = 2;
+export const SWEAT_WARM = 40;
+export const SWEAT_HOURS = 10;
+export const SWEAT_DAYS = 4;
+export const SWEAT_WARD = 0.45;
+export const SWEAT_BREAK = 2;
+export const SWEAT_EVERY = 2;
+export const SWEAT_HIDES = 4;
+/** How much closer those who sweat together grow, and how much more they feel they belong. */
+export const SWEAT_BOND = 1.2;
+export const SWEAT_BELONG = 8;
+/** How much more someone wants to sweat while the stones are hot (or being heated) than to heat them themselves. */
+export const SWEAT_CALL = 0.75;
 /** Herbs the band keeps by once it brews (the hot drinks in winter want more than the fevers). */
 export const HERBS_BREW = 12;
 /**
@@ -1049,6 +1074,8 @@ export interface Person {
   brewed?: number;
   /** warmed through by a hot herb brew with the evening meal: until when the cold bites less (absent: never) */
   warmed?: number;
+  /** when they last sat in the band's sweat lodge (absent: never) */
+  sweat?: number;
   /** the dish they remember as the best they ever ate ("Ada's fish stew"; absent: none yet) */
   dish?: string;
   /** when they last gave someone an ornament (absent: never); the one they wear is an item worn at the neck */
@@ -1065,7 +1092,7 @@ export interface Person {
   beliefs?: string[];
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe', 'frame'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe', 'frame', 'sweat'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -1129,6 +1156,9 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   // a hide-scraping frame: four poles lashed into a square and stood up between two forked posts, a deer hide laced
   // into it with cord through holes cut round its edge, the scrapers and a pegged-out hide on the ground before it
   frame: spec({ wood: 5, cordage: 3, work: 35, label: 'Hide frame' }),
+  // a sweat lodge: a low dome of bent withies lashed where they cross, covered over with hides (up to SWEAT_HIDES from
+  // the stores when it is finished, bark where the band is short of them), a pit for the hot stones inside
+  sweat: spec({ wood: 6, cordage: 3, stone: 4, work: 50, label: 'Sweat lodge' }),
 };
 /** The buildings a band raises for its own sake, in its spare hours over years, and never as a job of work. */
 export const MONUMENTS: readonly BuildKind[] = ['barrow', 'stones'];
@@ -1208,6 +1238,8 @@ export interface Building {
   /** a charcoal clamp: the tick it will have burned through, and the charcoal it will give then (absent: cold) */
   burnUntil?: number;
   charge?: number;
+  /** a sweat lodge: until when the stones in its pit are hot (absent: cold) */
+  hot?: number;
   /** a dugout canoe: who has it out on the water (absent: drawn up on the bank) */
   out?: number;
   work: number; // done

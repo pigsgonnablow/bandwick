@@ -48,6 +48,8 @@ Conventions (read by src/render/band.ts):
   bld__{canoe,canoeOut}                                           the band's dugout drawn up on its rollers on the bank, bow to the water (-Y), and
       the rollers alone while it is out.
   item__wedges                                                    wedges and a maul for splitting oak into planks.
+  bld__{sweat,sweatHot}                                           a sweat lodge, a low dome of withies under hides, its door to -Y: cold, the flap
+      rolled up and stones heaped by the door; hot, the flap let down and the hides darkened with steam.
 Models face -Y in Blender (= +Z in the game). 1 unit = one 6 m tile; an adult is 0.4 tall.
 """
 import math
@@ -4694,6 +4696,154 @@ for k in range(2):
     q.cyl(8, 0.018, 0.018, (at[0] - 0.045, at[1], at[2]), (at[0] + 0.045, at[1] + 0.01, at[2]), HIDE if k else HIDE_SCRAPED, rnd, 0.06)
     q.cyl(5, 0.019, 0.019, (at[0] - 0.006, at[1] + 0.001, at[2]), (at[0] + 0.006, at[1] + 0.002, at[2]), SINEW_C, rnd, 0.04)  # tied round
 q.finish("bld__frame")
+
+
+# ---------------------------------------------------------------- the sweat lodge
+# A sweat lodge: a low dome of willow withies bent over and lashed where they cross, covered with hides laid over it
+# like shingles, each a little different in colour, the edges overlapping, the hem weighted down with stones all
+# round. The door is low, at the front (-y), for crawling in. bld__sweat is it cold: the door flap rolled up over
+# the doorway so the dark inside shows, the stone pit just inside, a heap of round stones by the door waiting to be
+# heated, the forked stick for carrying them, and a water skin with a bark dipper. bld__sweatHot is it with the
+# stones in and people inside: the flap let down and pegged, the hides darkened with damp, the heap gone into the
+# pit, the forked stick dropped by the door; the game draws the steam leaking out at the top and round the flap.
+SR, SH = 0.2, 0.17
+SWEAT_HIDES_C = [(176, 140, 102), (146, 108, 74), (196, 164, 124), (128, 94, 62), (160, 120, 84), (112, 84, 58)]
+HIDE_WET = 0.82
+WITHY = (138, 112, 78)
+SWEAT_DOOR = -math.pi / 2  # -Y
+
+
+def sweat_lodge(hot, seed):
+    q = Part()
+    rnd = random.Random(seed)
+    n, ribs = 28, 7
+    off = lambda a: abs(math.atan2(math.sin(a - SWEAT_DOOR), math.cos(a - SWEAT_DOOR)))
+    # which hide covers each part of the dome: the dome in four tiers, each tier in overlapping hides
+    tiers = [(0, 3, 6), (3, 5, 5), (5, 7, 4), (7, 9, 2)]
+    hide_of = {}
+    for t, (i0, i1, m) in enumerate(tiers):
+        shift = rnd.uniform(0, 1)
+        for i in range(i0, i1):
+            for k in range(n):
+                hide_of[(i, k)] = (t, int((k / n + shift) * m) % m)
+    shade = {key: jit(rnd.choice(SWEAT_HIDES_C), rnd, 0.06) for key in set(hide_of.values())}
+    door_w = 0.55   # half the angle the doorway takes up, at the foot
+    rings = []
+    prof = [(1.0, 0.0), (1.0, 0.03), (0.97, 0.06), (0.91, 0.09), (0.81, 0.115), (0.67, 0.137), (0.5, 0.153), (0.31, 0.164), (0.14, 0.169), (0.0, 0.17)]
+    for i, (rf, zf) in enumerate(prof[:-1]):
+        ring = []
+        for k in range(n):
+            a = k / n * math.tau
+            # the hide sags a little between the withies under it
+            sag = 1 - 0.06 * (0.5 - 0.5 * math.cos((a * ribs) % math.tau)) * math.sin(math.pi * min(1.0, zf / SH * 1.4))
+            r = SR * rf * sag * (1 + rnd.uniform(-0.012, 0.012))
+            z = zf * (SH / 0.17)
+            # each tier's lower edge stands proud of the hide under it, where it overlaps
+            if i in (3, 5, 7):
+                r *= 1.03
+            ring.append(polar(r, a, z))
+        rings.append(ring)
+
+    def col(i, k):
+        a = (k + 0.5) / n * math.tau
+        # the doorway: the lower rings across the front are the dark inside, under the flap
+        if off(a) < door_w and i <= 3:
+            if hot:
+                return jit(HIDE_DK, rnd, 0.05)  # the flap let down
+            return (34, 28, 24) if i <= 2 else jit(HIDE_DK, rnd, 0.04)  # dark, the flap rolled up above it
+        c = shade[hide_of[(i, k)]]
+        # the seams where one hide laps over the next show darker; the damp darkens them all while it steams
+        if hide_of.get((i, (k + 1) % n)) != hide_of[(i, k)] or i in (2, 4, 6):
+            c = tuple(v * 0.78 for v in c)
+        if hot:
+            c = tuple(v * HIDE_WET for v in c)
+        return c
+
+    top = ring_loft(q, rings, col, rnd, 0.04)[-1]
+    apex = q.bm.verts.new((0, 0, SH))
+    q.paint([q.bm.faces.new((top[k], top[(k + 1) % n], apex)) for k in range(n)], shade[hide_of[(7, 0)]] if not hot else tuple(v * HIDE_WET for v in shade[hide_of[(7, 0)]]), rnd, 0.04)
+    # the withy ends where they go into the ground, showing below the hides here and there, and their tops
+    # lashed where they cross over the crown (a bundle of ends and a twist of cord poking up)
+    for j in range(ribs * 2):
+        a = j / (ribs * 2) * math.tau + 0.11
+        if off(a) < door_w + 0.1:
+            continue
+        q.cyl(4, 0.005, 0.005, polar(SR * 1.01, a, -0.01), polar(SR * 1.0, a, 0.025), WITHY, rnd, 0.06)
+    for k in range(4):
+        a = k / 4 * math.tau + 0.4
+        q.cyl(4, 0.004, 0.002, (0, 0, SH - 0.004), polar(0.025, a, SH + 0.016), WITHY, rnd, 0.06)
+    q.blob((0, 0, SH + 0.002), (0.014, 0.014, 0.008), SINEW_C, rnd, 0.06)
+    # the hem: the hides' edge weighted down with stones all round, and a little earth banked against it
+    for k in range(20):
+        a = k / 20 * math.tau + rnd.uniform(-0.06, 0.06)
+        if off(a) < door_w - 0.05:
+            continue
+        q.blob(polar(SR * 1.06, a, 0.01), (0.022, 0.017, 0.014), rnd.choice(STONES), rnd, 0.06, noise=0.2)
+    # cords thrown over the dome and pegged, to hold the hides down in the wind
+    for a0 in (0.35, 1.25):
+        segs = 14
+        prev = None
+        for m in range(segs + 1):
+            u = m / segs
+            # over the dome from one side to the other, along the great circle through angle a0
+            th = math.pi * u
+            x, z = math.cos(th) * SR * 1.012, math.sin(th) * SH * 1.04
+            p = (math.cos(a0) * x, math.sin(a0) * x, z)
+            if prev is not None:
+                q.cyl(3, 0.0022, 0.0022, prev, p, ROPE_TIE, rnd, 0.04, cap=False)
+            prev = p
+        for s in (1, -1):
+            q.cyl(4, 0.004, 0.003, (math.cos(a0) * s * SR * 1.1, math.sin(a0) * s * SR * 1.1, -0.01), (math.cos(a0) * s * SR * 1.08, math.sin(a0) * s * SR * 1.08, 0.028), POLE, rnd, 0.05)
+    # the door flap: a hide over the doorway, rolled up and tied above it, or let down and its foot pegged
+    if hot:
+        # (hung from a pole over the doorway, hair side out, hanging to the ground, its foot ragged)
+        # (a thin solid, so it shows from either side and its faces turn outward)
+        def flap_at(f):
+            return [[polar(SR * (1.07 if zz < 0.09 else 1.0) * f * (1 + 0.025 * math.sin(m * 1.7)), SWEAT_DOOR + (m / 5 - 0.5) * door_w * 2.0, zz) for m in range(6)]
+                    for zz in (0.0, 0.035, 0.07, 0.1)]
+        flap_col = lambda i, m: jit((92, 68, 46) if (i + m) % 3 else (104, 78, 52), rnd, 0.06)
+        shell(q, flap_at(1.0), flap_at(0.975), flap_col, lambda i, m: (70, 52, 36), (80, 60, 40), rnd, 0.05)
+        q.cyl(5, 0.007, 0.007, polar(SR * 1.0, SWEAT_DOOR - door_w * 1.15, 0.1), polar(SR * 1.0, SWEAT_DOOR + door_w * 1.15, 0.1), POLE, rnd, 0.05)
+        for s in (-1, 1):
+            q.cyl(4, 0.004, 0.003, polar(SR * 1.12, SWEAT_DOOR + s * door_w, -0.01), polar(SR * 1.1, SWEAT_DOOR + s * door_w, 0.022), POLE, rnd, 0.05)
+    else:
+        a0, a1 = SWEAT_DOOR - door_w * 1.05, SWEAT_DOOR + door_w * 1.05
+        q.cyl(8, 0.017, 0.017, polar(SR * 0.95, a0, 0.095), polar(SR * 0.95, a1, 0.095), (150, 114, 80), rnd, 0.06)
+        for a in (a0 + 0.15, a1 - 0.15):
+            q.cyl(5, 0.019, 0.019, polar(SR * 0.95, a - 0.04, 0.095), polar(SR * 0.95, a + 0.04, 0.095), SINEW_C, rnd, 0.04)
+        # inside, just visible through the door: the pit for the stones, a dark hollow edged with stones
+        for k in range(6):
+            q.blob((math.cos(k / 6 * math.tau) * 0.035, -0.02 + math.sin(k / 6 * math.tau) * 0.035, 0.006), (0.012, 0.01, 0.008), rnd.choice(STONES), rnd, 0.06, noise=0.2)
+        # a heap of round river stones beside the door, waiting to be heated
+        for k in range(11):
+            a, d = rnd.uniform(0, math.tau), rnd.uniform(0, 0.045)
+            q.blob((0.15 + math.cos(a) * d, -SR - 0.07 + math.sin(a) * d, 0.012 + (0.016 if k > 7 else 0)), (0.019, 0.017, 0.014), jit(OVEN_STONE, rnd, 0.12), rnd, 0.06, noise=0.2)
+        # the forked stick for carrying hot stones, leaning against the heap
+        q.cyl(5, 0.005, 0.004, (0.23, -SR - 0.1, 0.0), (0.18, -SR - 0.06, 0.04), POLE, rnd, 0.05)
+        for s in (-1, 1):
+            q.cyl(4, 0.004, 0.003, (0.18, -SR - 0.06, 0.04), (0.17 + s * 0.01, -SR - 0.05, 0.055), POLE, rnd, 0.05)
+    if hot:
+        # the forked stick dropped by the door, and a few stones that cracked in the heat thrown out
+        q.cyl(5, 0.005, 0.004, (0.1, -SR - 0.13, 0.004), (0.2, -SR - 0.07, 0.006), POLE, rnd, 0.05)
+        for k in range(3):
+            q.blob((0.16 + rnd.uniform(-0.03, 0.03), -SR - 0.06 + rnd.uniform(-0.02, 0.02), 0.008), (0.014, 0.011, 0.008), (84, 76, 70), rnd, 0.06, noise=0.3)
+    # the water skin by the door, its neck tied, and a bark dipper lying on it
+    q.blob((-0.15, -SR - 0.06, 0.022), (0.035, 0.028, 0.022), HIDE_DK if not hot else (110, 82, 56), rnd, 0.05, noise=0.08, subdiv=2)
+    q.cyl(6, 0.009, 0.007, (-0.15, -SR - 0.06 - 0.025, 0.03), (-0.15, -SR - 0.06 - 0.045, 0.04), HIDE_DK, rnd, 0.05)
+    q.box((-0.11, -SR - 0.1, 0.006), (0.04, 0.022, 0.006), (150, 112, 70), rnd, 0.05, rot=Matrix.Rotation(0.5, 3, "Z"))
+    # a stack of split wood at the side, and the bundle of fresh cedar or juniper boughs to strew on the floor
+    for j in range(2):
+        for k in range(3 - j):
+            y = 0.04 + k * 0.03 + j * 0.015
+            q.cyl(5, 0.011, 0.011, (SR + 0.06, y, 0.012 + j * 0.02), (SR + 0.21, y + rnd.uniform(-0.01, 0.01), 0.012 + j * 0.02), (128, 98, 66) if (j + k) % 2 else (110, 84, 58), rnd, 0.06)
+    for k in range(5):
+        q.box((-SR - 0.07 + rnd.uniform(-0.015, 0.015), 0.05 + k * 0.012, 0.006 + k * 0.002), (0.07, 0.022, 0.004), LEAF_DK if k % 2 else (70, 96, 58), rnd, 0.08,
+              rot=Matrix.Rotation(rnd.uniform(-0.3, 0.3), 3, "Z"))
+    q.finish("bld__sweatHot" if hot else "bld__sweat")
+
+
+sweat_lodge(False, 97)
+sweat_lodge(True, 97)
 
 
 # ---------------------------------------------------------------- the pig pen

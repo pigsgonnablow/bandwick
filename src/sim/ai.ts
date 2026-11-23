@@ -1,10 +1,10 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
-import { SHELTER_PULL, sheltering, sparesWhite, shunned, whiteKilled, omenTale, heardTale, taleOf } from './omen';
+import { SHELTER_PULL, sheltering, sparesWhite, shunned, whiteKilled, omenTale, heardTale, taleOf, lodgeTales } from './omen';
 import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE, aDish } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
-import { SEASONED_HEAT, CANOE_SPEED, CANOE_CATCH, CANOE_OPEN, HIDEWORK, FRAME_SPEED } from './band';
+import { SEASONED_HEAT, CANOE_SPEED, CANOE_CATCH, CANOE_OPEN, SWEAT_HOLDS, SWEAT_TICKS, SWEAT_HEATING, SWEAT_HOT, SWEAT_WOOD, SWEAT_WARM, SWEAT_HOURS, SWEAT_BREAK, SWEAT_EVERY, SWEAT_HIDES, SWEAT_BOND, SWEAT_BELONG, SWEAT_CALL, HIDEWORK, FRAME_SPEED } from './band';
 import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, LAME_SPEED, LAME_WORK, ONE_EYE_AIM, BAD_HAND_WORK, BAD_HAND_AIM, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, STEW_FROM, STEW_TO, GRIDDLE_GAIN, GRIDDLED, RAW_SICK, RAW_WARM, RAW_WARM_AT, COOKED_SICK, STALE_SICK, GUT_DAYS, RAW_RISKY, OVEN_FROM, OVEN_LOAD, OVEN_BELONG, BOIL_TICKS, STEW_CALL, STEW_TICKS, STEW_BELONG, BREW_WARM, BREW_HOURS, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
   PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, CHARCOAL_CRACK, CLAMP_BURN, CHARCOAL_YIELD, SLEDGE_LOAD, SLEDGE_SNOW, MASTER_FALL, MASTER_WOOD, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
@@ -272,6 +272,23 @@ function busyWith(s: Sim, kind: TaskKind) {
   return n;
 }
 
+/** Everyone of the band going to (or in) this sweat lodge, and those of them inside it now. */
+function atLodge(s: Sim, b: Building) {
+  return s.people.filter((q) => q.alive && q.task?.kind === 'sweat' && q.task.ref === b.id);
+}
+function inLodge(s: Sim, b: Building) {
+  return atLodge(s, b).filter((q) => q.task!.stage === 1 && q.indoors);
+}
+/** Whoever is heating the stones for the lodge just now. */
+function heatingFor(s: Sim, b: Building) {
+  return atLodge(s, b).find((q) => q.task!.stage >= 5);
+}
+/** The door of a sweat lodge, which faces out from the front of it (turning with it). */
+export function lodgeDoor(b: Building) {
+  const a = (b.rot * Math.PI) / 2;
+  return { x: b.x + 0.5 + Math.sin(a) * 0.36, z: b.z + 0.5 + Math.cos(a) * 0.36 };
+}
+
 export function decide(s: Sim, p: Person) {
   // out on the water in the canoe: nothing else is thought of until it is back on the bank
   if (afloat(p)) {
@@ -338,6 +355,20 @@ export function decide(s: Sim, p: Person) {
     const stewing = hour >= STEW_FROM;
     if ((mode === 'oven' || (mode && stewing)) || (stewing && !!c.stew && c.stew.ready < 0 && !c.stew.oven))
       add('cook', 1.5 * fit(p, SK.cook) * (cookOf(s) === p ? 1.35 : 0.8));
+  }
+  // the sweat lodge: on a cold evening the cold and the sick go to sweat, while there is wood to heat the stones;
+  // and when a sign sends the believers to shelter (or on the band's day of rest), they shelter in the lodge
+  const lodge = age >= 12 ? s.sweatOf() : undefined;
+  if (lodge && p.food >= 30 && (p.sweat === undefined || s.tick - p.sweat >= SWEAT_EVERY * TICKS_PER_DAY) && atLodge(s, lodge).length < SWEAT_HOLDS
+    && (s.lodgeHot(lodge) || (s.hearthLit() && c.stock.wood >= SWEAT_WOOD + 4))) {
+    const shelter = !!sheltering(s, p);
+    if (shelter || (hour >= 15 && hour < 21 && temp < 10)) {
+      let w = 1 + (p.warmth < 75 ? ((75 - p.warmth) / 75) * 1.3 : 0) + (p.sick > 0 ? 1.1 : 0) + (temp < 0 ? 0.15 : 0);
+      // (stones already hot, or being heated, call whoever is about: a sweat is better shared)
+      if (s.lodgeHot(lodge) || heatingFor(s, lodge)) w += SWEAT_CALL;
+      if (shelter) w = Math.max(w, SHELTER_PULL + 0.15);
+      add('sweat', w);
+    }
   }
   // a tooth or a shell strung on a cord, for a partner or a close friend, now and then
   if (age >= 14 && !dark && ((c.stock.trinkets >= 1 && c.stock.fiber >= 1) || s.goodsOf().some((i) => i.kind === 'beads')) && s.tick - (p.gave ?? -1e9) > GIFT_DAYS * TICKS_PER_DAY && giftFor(s, p))
@@ -696,6 +727,23 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       }
       p.gave = s.tick;
       return t;
+    }
+    case 'sweat': {
+      const b = s.sweatOf();
+      if (!b) return null;
+      // the first to go heats the stones in the fire, if nobody is at it and they aren't hot already
+      if (!s.lodgeHot(b) && !heatingFor(s, b)) {
+        if (!s.hearthLit() || c.stock.wood < SWEAT_WOOD) return null;
+        const st = seat(s, p, 1.05);
+        const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, b.id);
+        t.stage = 5;
+        p.thought = 'Off to heat stones in the fire for the sweat lodge.';
+        return t;
+      }
+      const door = lodgeDoor(b);
+      const why = sheltering(s, p);
+      p.thought = why ? `To the sweat lodge. ${why}` : p.sick > 0 ? 'To the sweat lodge, to sweat out the fever.' : 'To the sweat lodge, to sweat the cold out.';
+      return newTask(s, kind, ti(door.x, door.z), door.x, door.z, b.id);
     }
     case 'feast': {
       const st = seat(s, p, 1.1 + ((p.id * 37) % 5) * 0.12);
@@ -1237,6 +1285,8 @@ export function abandon(s: Sim, p: Person, keepCarry = false) {
       else st.cordage += MEND_CORD;
       t.amount = 0;
     }
+    // (hot stones carried from the fire to the lodge are dropped: they go cold)
+    if (t.kind === 'sweat' && p.carry === CARRY.Stone) p.carry = CARRY.None;
     if (t.kind === 'nurse' && t.amount > 0) {
       st.herbs += t.amount;
       t.amount = 0;
@@ -2544,6 +2594,99 @@ export function runTask(s: Sim, p: Person) {
       const what = bead ? `a ${bead.quality === 2 ? 'fine ' : ''}string of beads` : 'a necklace of teeth and shells';
       s.remember(q, 'gift', 8 + worth * 3, 1, p.id, `${p.name} gave them ${what}.`);
       p.thought = `Gave ${q.name} ${bead ? 'a string of beads' : 'a necklace'}.`;
+      finish(s, p);
+      return;
+    }
+    case 'sweat': {
+      const b = s.building(t.ref);
+      if (!b || !b.built) {
+        p.indoors = false;
+        if (p.carry === CARRY.Stone) p.carry = CARRY.None;
+        return finish(s, p);
+      }
+      // heating the stones: to the fire, a spell squatting at it feeding the stones into the embers, then the hot
+      // stones carried over to the lodge in a forked stick
+      if (t.stage === 5) {
+        if (moving(go(s, p, t))) return;
+        t.stage = 6;
+        t.timer = SWEAT_HEATING;
+      }
+      if (t.stage === 6) {
+        if (!s.hearthLit() || c.stock.wood < SWEAT_WOOD) return finish(s, p);
+        p.act = ACT.Tend;
+        face(p, c.x, c.z);
+        p.thought = 'Heating stones in the fire for the sweat lodge.';
+        if (--t.timer > 0) return;
+        s.takeFirewood(c, SWEAT_WOOD);
+        s.book('burned', SWEAT_WOOD);
+        s.book('sweat.heated', 1);
+        p.carry = CARRY.Stone;
+        p.carryAmt = 0;
+        const door = lodgeDoor(b);
+        t.stage = 7;
+        t.goal = Math.floor(door.z) * s.N + Math.floor(door.x);
+        t.gx = door.x;
+        t.gz = door.z;
+        p.path = null;
+        p.thought = 'Carrying hot stones over to the sweat lodge.';
+        return;
+      }
+      if (t.stage === 7) {
+        if (moving(go(s, p, t))) return;
+        p.carry = CARRY.None;
+        b.hot = s.tick + SWEAT_HOT;
+        s.buildingsVersion++;
+        t.stage = 0;
+        // (those waiting at the door go in now, and the call goes round those sitting about camp)
+        for (const q of atLodge(s, b)) if (q !== p && q.task!.stage === 0) q.nextThink = s.tick;
+        for (const q of s.members(c)) if (q.task && ['idle', 'warm', 'socialize'].includes(q.task.kind) && !q.indoors && hyp(q.x - c.x, q.z - c.z) < 14) q.nextThink = s.tick;
+      }
+      if (t.stage === 0) {
+        if (moving(go(s, p, t))) return;
+        if (!s.lodgeHot(b)) {
+          // the stones are still in the fire: they wait at the door for them, a while
+          if (!heatingFor(s, b) || ++t.amount > 60) return finish(s, p);
+          p.act = ACT.Sit;
+          face(p, b.x + 0.5, b.z + 0.5);
+          p.thought = 'Waiting at the sweat lodge for the hot stones.';
+          return;
+        }
+        if (inLodge(s, b).length >= SWEAT_HOLDS) return finish(s, p);
+        t.stage = 1;
+        t.timer = SWEAT_TICKS;
+        p.indoors = true;
+        p.path = null;
+        const why = sheltering(s, p);
+        p.thought = why ? `In the sweat lodge, in the dark round the hot stones. ${why}` : p.sick > 0 ? 'In the sweat lodge, sweating out the fever.' : 'In the sweat lodge, pouring water on the hot stones.';
+      }
+      // inside, in the dark, round the stones; out when the time is up or the stones have gone cold
+      p.act = ACT.Sit;
+      p.warmth = clamp(p.warmth + SWEAT_WARM / SWEAT_TICKS);
+      if (--t.timer > 0 && s.lodgeHot(b)) return;
+      const others = inLodge(s, b).filter((q) => q !== p);
+      p.indoors = false;
+      p.sweat = s.tick;
+      p.warmed = Math.max(p.warmed ?? 0, s.tick + SWEAT_HOURS * TICKS_PER_HOUR);
+      p.belonging = clamp(p.belonging + SWEAT_BELONG);
+      for (const q of others) {
+        s.adjust(p, q, SWEAT_BOND);
+        s.adjust(q, p, SWEAT_BOND);
+      }
+      s.book('sweat.sat', 1);
+      let text = '';
+      if (p.sick > 0) {
+        p.sick = Math.max(0, p.sick - SWEAT_BREAK);
+        if (p.sick === 0) {
+          s.book('sweat.broke', 1);
+          text = 'Sweated out a fever in the lodge.';
+          s.remember(p, 'recovered', 6, 1, -1, text);
+        }
+      }
+      // in the dark, people talk of the signs and what they foretell
+      lodgeTales(s, p, others);
+      if (!text && !p.memories.some((m) => m.kind === 'sweat' && s.tick - m.tick < 30 * TICKS_PER_DAY))
+        s.remember(p, 'sweat', 4, 0.5, -1, others.length ? `Sweated in the lodge at ${c.name} with ${others.length === 1 ? others[0].name : `${others.length} others`}.` : `Sweated in the lodge at ${c.name}.`);
+      p.thought = 'Out of the sweat lodge, steaming in the cold air.';
       finish(s, p);
       return;
     }
@@ -4089,6 +4232,12 @@ export function completeBuilding(s: Sim, b: Building, p: Person) {
   if (b.walls === 'plank') {
     const wedges = s.toolsOf(s.campById(b.band) ?? s.camp, 'wedges')[0];
     if (wedges && s.wearTool(wedges)) s.event('tool', `The band's wedges split their last log at ${(s.campById(b.band) ?? s.camp).name}.`, [p.id], b.x + 0.5, b.z + 0.5, 1);
+  }
+  // a sweat lodge is covered over with hides from the stores (and bark where the band is short of them)
+  if (b.kind === 'sweat') {
+    const owner = s.campById(b.band) ?? s.camp, n = Math.min(SWEAT_HIDES, Math.floor(owner.stock.hides));
+    owner.stock.hides -= n;
+    s.book('built.hides', n, owner);
   }
   const label = labelOf(b).toLowerCase();
   const first = s.buildings.filter((q) => q.kind === b.kind && (q.walls ?? 'wood') === (b.walls ?? 'wood') && q.built && q.band === b.band).length === 1;

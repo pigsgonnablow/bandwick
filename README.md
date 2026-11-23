@@ -342,6 +342,20 @@ leaves and covered with earth, and by evening they are baked through, filling 50
 together at the fire like the stew, and feels closer still for it. On the day of the midwinter feast the feast is
 baked in the oven, and eaten first. While it bakes the oven is drawn as a low mound of earth with smoke seeping from it.
 
+**Sweat lodge.** A band with huts that nurses its fevers with herbs may come to sweat them out. A healer who can
+build (foraging 12, building 8), sitting with someone sick, may think of a low dome of bent withies covered over
+with hides, and the band raises one a little way from the fire (wood, cordage, stones for the pit, and up to four
+hides from the stores, finished with bark where it is short). On cold evenings the first to go heats stones in the
+fire (two loads of wood) and carries them in, and up to six sit in the dark round them for a couple of hours while
+water is poured over; anyone about joins while the stones are hot, the cold and the sick most of all. They come
+out warmed through, and the cold bites less for hours after; for four days a fever takes hold of them less than
+half as often, and a fever sweated out breaks two days sooner. Those who sweat together grow closer and feel they
+belong. The lodge is also where the band's beliefs are talked over: someone may come out believing what another
+inside with them believes, more readily than from a tale at the fire; believers sheltering from a sign (or a band
+keeping its day of rest) shelter in the lodge; and a band with a lodge hardens its beliefs into customs sooner.
+The lodge's card says who is inside, whether the stones are hot, and how many have sweated lately; steam curls
+from the top while they are. `npx tsx tools/sweatsave.ts` and `node tools/sweatshots.mjs` photograph it.
+
 **Bad food.** Meat, fish and eggs eaten raw can turn the stomach: about 1 meal in 100, two and a half times that in
 the warm months, and roasted or stewed hardly ever. A stew left in the pot overnight in the warm can turn too.
 Either way it is a couple of days' sickness, nursed with herbs like a fever.
