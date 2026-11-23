@@ -88,6 +88,8 @@ export const ACT = {
   Mourn: 10, Dead: 11, Run: 12, Hunt: 13, Dig: 14,
   /** children's games; squatting to tend the fire; hanging food on the rack; hands out to the fire */
   Play: 15, Tend: 16, Rack: 17, Warm: 18,
+  /** (19 and 20 are the renderer's swimming and treading water) standing at the hide frame, drawing the scraper down the hide */
+  Scrape: 21,
 } as const;
 /** One-off moves the renderer plays when a person's `flash` changes (low two bits). */
 /**
@@ -289,6 +291,13 @@ export const MASTER_CRAFT = 1.6;
 export const MASTER_OTHER = 0.6;
 /** How much of the usual time sewing and weaving take with a bone needle and awl in the band. */
 export const NEEDLE_SPEED = 0.65;
+/**
+ * A hide laced taut in a scraping frame is fleshed and softened standing at it, both hands to the scraper, where by
+ * the fire it is worked over the knee: hidework at the band's frame takes this much of the usual time, and the frame
+ * is worth this many more levels to the work (the hide comes off it evenly thinned, and what is sewn from it lasts).
+ */
+export const FRAME_SPEED = 0.75;
+export const FRAME_FINE = 3;
 /** Bones kept from each deer, and at most. */
 export const BONES_PER_DEER = 2;
 export const BONES_KEPT = 10;
@@ -826,6 +835,8 @@ export const KILNED: RecipeKey[] = ['jar'];
 /** The recipes woven at the loom: they can't be made without a loom shed, and are made in it. */
 export const LOOMED: RecipeKey[] = ['tunic', 'blanket', 'sash'];
 /** The recipes that go faster with a bone needle and awl: sewing hides, weaving baskets and traps. */
+/** The recipes worked from hides and furs: at the band's hide frame, once it has one (see FRAME_SPEED). */
+export const HIDEWORK: RecipeKey[] = ['cloak', 'hat', 'mittens', 'shoes', 'bag', 'furcloak'];
 export const SEWN: RecipeKey[] = ['cloak', 'basket', 'fishtrap', 'snare', 'hat', 'mittens', 'shoes', 'cape', 'bag', 'furcloak', 'net'];
 /** One made thing. It lies on its band's stockpile unless someone holds it, or it is set out in the land. */
 export interface Item {
@@ -1054,7 +1065,7 @@ export interface Person {
   beliefs?: string[];
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe', 'frame'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -1115,6 +1126,9 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   oven: spec({ wood: 2, mud: 3, work: 40, label: 'Earth oven' }),
   // a whole trunk of old pine, hollowed with fire and the axe, drawn up on the bank of a lake, a wide river or the sea
   canoe: spec({ wood: 10, work: 160, label: 'Dugout canoe' }),
+  // a hide-scraping frame: four poles lashed into a square and stood up between two forked posts, a deer hide laced
+  // into it with cord through holes cut round its edge, the scrapers and a pegged-out hide on the ground before it
+  frame: spec({ wood: 5, cordage: 3, work: 35, label: 'Hide frame' }),
 };
 /** The buildings a band raises for its own sake, in its spare hours over years, and never as a job of work. */
 export const MONUMENTS: readonly BuildKind[] = ['barrow', 'stones'];

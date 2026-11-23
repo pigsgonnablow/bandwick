@@ -23,7 +23,7 @@ export const SKILL_TIPS: Record<string, string> = {
   toolmaking: 'Toolmaking: knapping stone and shaping wood into axes, spears and other tools by the fire.',
   weaving: 'Weaving: twisting grass into cordage and weaving baskets and mats.',
   pottery: 'Pottery: shaping and firing clay into pots, bowls, lamps and storage jars. More skill works faster, cracks fewer in the firing and makes finer things.',
-  hidework: 'Hidework: scraping hides and sewing cloaks, hats, shoes and bags, and mending them when they wear. Once the band knows butchering, a skilled hand gets more meat from every carcass.',
+  hidework: 'Hidework: scraping hides and sewing cloaks, hats, shoes and bags, and mending them when they wear. Once the band knows butchering, a skilled hand gets more meat from every carcass. Hideworkers also think of the scraping frame, where hides are worked faster and come out finer.',
   gardening: 'Gardening: sowing, weeding and harvesting the garden plots. A skilled gardener works faster and brings in a bigger harvest: about 60% from a beginner, 140% from a master.',
   cooking: 'Cooking: the band\'s evening stew, boiled with hot stones in a hide or cooked in the pot at the fire, the meat baked in the earth oven, and the herb brews steeped in the pot. A better cook\'s stew fills more from the same food, and people remember the best of it. The band\'s cook also thinks of bone broth and herbal brews.',
 };
@@ -145,6 +145,7 @@ export const CARD_TIPS: Record<string, string> = {
   'Filled by': 'Filled by: who laid the food in the earth oven and covered it over.',
   Thread: 'Thread: hanks of nettle and grass fiber spun on a spindle by the fire, for weaving cloth at the loom.',
   Weaving: 'Weaving: who is at the loom now, and what they are weaving.',
+  'At the frame': 'At the frame: who is working hides at the scraping frame now, and what they are making.',
   Cloth: 'Cloth: how many of the band have a woven tunic to wear and a blanket to sleep under.',
   Pigs: 'Pigs: the herd in the pen. Sows farrow in spring, and in autumn the spare pigs are killed for the stores.',
   Tending: 'Tending: who is working here today.',
