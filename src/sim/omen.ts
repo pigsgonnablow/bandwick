@@ -157,6 +157,9 @@ export const CUSTOM_YEARS = 8;
 export const CUSTOM_PROVEN = 2;
 export const CUSTOM_SHARE = 0.65;
 export const CUSTOM_CHANCE = 0.35;
+/** How much more readily a belief is taken up in the sweat lodge than from a tale at the fire; and how much likelier a band with a lodge, where its beliefs are talked over, is to harden one into a custom. */
+export const LODGE_CONVERT = 1.5;
+export const LODGE_CUSTOM = 1.4;
 /** At most this many beliefs a band has going, and one person holds. */
 export const LORE_MAX = 6;
 export const BELIEFS_MAX = 4;
@@ -494,6 +497,19 @@ export function heardTale(s: Sim, p: Person, key: string) {
   if (s.rAi.chance(TOLD_CONVERT * (s.has(p, 'pious') ? 2 : 1))) adopt(s, p, l, 'Heard the tale and came to believe');
 }
 
+/**
+ * In the dark of the sweat lodge, people talk of the signs: someone coming out may have come to believe what another
+ * inside with them believes (more readily than from a tale at the fire).
+ */
+export function lodgeTales(s: Sim, p: Person, inside: Person[]) {
+  const c = s.campById(p.band);
+  if (!c?.lore?.length || s.age(p) < 12) return;
+  const told = c.lore.filter((l) => !believes(p, l.key) && !believesSign(p, l.sign) && inside.some((q) => believes(q, l.key)));
+  if (!told.length) return;
+  const l = told[s.rAi.int(0, told.length)];
+  if (s.rAi.chance(TOLD_CONVERT * LODGE_CONVERT * (s.has(p, 'pious') ? 2 : 1))) adopt(s, p, l, 'Heard it told in the dark of the sweat lodge, and came to believe');
+}
+
 /** The thought of someone telling (or hearing) a tale of an omen. */
 export function taleOf(l: Lore) {
   return `the tale of how ${SIGNS[l.sign].label} came before ${l.of}`;
@@ -546,7 +562,7 @@ function upkeep(s: Sim, c: Camp, dayOfYear: number) {
       delete l.held;
       s.event('omen_fade', `Few at ${c.name} still believe that ${loreText(l)}.`, [], c.x, c.z, 2);
     }
-    if (yearly && l.held && !custom && s.tick - l.held >= CUSTOM_YEARS * TICKS_PER_YEAR && l.proven >= CUSTOM_PROVEN && share >= CUSTOM_SHARE && s.rOmen.chance(CUSTOM_CHANCE)) harden(s, c, l);
+    if (yearly && l.held && !custom && s.tick - l.held >= CUSTOM_YEARS * TICKS_PER_YEAR && l.proven >= CUSTOM_PROVEN && share >= CUSTOM_SHARE && s.rOmen.chance(CUSTOM_CHANCE * (s.sweatOf(c) ? LODGE_CUSTOM : 1))) harden(s, c, l);
   }
 }
 

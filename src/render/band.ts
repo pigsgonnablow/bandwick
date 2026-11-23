@@ -368,7 +368,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'hut0p', 'hut1p', 'storehouse', 'storehoused', 'storehouses', 'storehousep', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit', 'canoe', 'canoeOut', 'hearthPot', 'hearthPotEmpty', 'hearthBoil', 'hearthStone', 'hearthPotStone', 'hearthPotEmptyStone', 'hearthBoilStone', 'oven', 'ovenLit']) {
+      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit', 'canoe', 'canoeOut', 'hearthPot', 'hearthPotEmpty', 'hearthBoil', 'hearthStone', 'hearthPotStone', 'hearthPotEmptyStone', 'hearthBoilStone', 'oven', 'ovenLit', 'sweat', 'sweatHot']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -1669,7 +1669,7 @@ export class BandLayer {
   private modelOf(b: { kind: string; id: number; walls?: string; look?: string }) {
     // (a garden plot as it grows, a monument as it goes up, a weir with fish in its basket, a charcoal clamp smouldering)
     // (and a hearth with the band's cooking pot at it)
-    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir' || b.kind === 'clamp' || b.kind === 'canoe' || b.kind === 'hearth' || b.kind === 'oven') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
+    if (b.kind === 'plot' || b.kind === 'barrow' || b.kind === 'stones' || b.kind === 'weir' || b.kind === 'clamp' || b.kind === 'canoe' || b.kind === 'hearth' || b.kind === 'oven' || b.kind === 'sweat') return b.look && this.buildingMeshes.has(b.look) ? b.look : b.kind;
     if (b.kind !== 'hut' && b.kind !== 'storehouse') return b.kind;
     const shape = b.kind === 'storehouse' ? b.kind : b.id % 2 ? 'hut1' : 'hut0';
     const own = shape + (b.walls === 'daub' ? 'd' : b.walls === 'stone' ? 's' : b.walls === 'plank' ? 'p' : '');
@@ -1753,6 +1753,8 @@ export class BandLayer {
       if (b.bedding && b.kind === 'leanto' && b.built) put('bedding', cx, cz, rot, 1, 1, b.band);
       // (and the earth oven baking, a thin smoke through the earth over it)
       if ((b.kind === 'clamp' && b.look === 'clampLit') || (b.kind === 'oven' && b.look === 'ovenLit')) clamps.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz });
+      // (steam curling out of the top of a sweat lodge with the stones hot and people inside, as off the stew pot)
+      if (b.kind === 'sweat' && b.look === 'sweatHot') pots.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x] + 0.1, z: cz });
       // (the stew pot sits in the embers at its own spot in the hearth, turned with it)
       // (or the hide slung beside the fire for stone boiling)
       const boil = b.look?.startsWith('hearthBoil');

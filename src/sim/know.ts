@@ -567,6 +567,15 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'weave cloth on a loom', memory: 'Wove the first cloth on a loom.',
   },
   {
+    // (a healer who has sat through many fevers with the sick, at a band that heats stones and has learned to build,
+    // thinks of shutting the heat in: a low dome of withies under hides, hot stones in a pit, water poured over them,
+    // and the fever sweated out)
+    key: 'sweat', label: 'Sweat lodge', needs: ['huts', 'herbs'], requires: [skill(SK.forage, 12), skill(SK.build, 8)],
+    practice: { sickbed: 1, stew: 0.2 }, odds: 30,
+    found: 'bent withies into a low dome, covered it with hides and sat inside with a sick friend round stones hot from the fire, pouring water over them, until the fever ran out of them in sweat: the band\'s first sweat lodge',
+    taught: 'sweat out fevers and the cold in a lodge of hides', memory: 'Built the first sweat lodge, and sweated out a fever in it.',
+  },
+  {
     key: 'daub', label: 'Wattle-and-daub', needs: ['huts'], requires: [skill(SK.build, 13), skill(SK.weave, 8)], near: 'mud',
     practice: { thatch: 1, build: 1 }, odds: 40,
     found: 'worked out how to weave walls of reeds and plaster them with mud',
@@ -601,7 +610,7 @@ export const DISCOVERY = new Map(DISCOVERIES.map((d) => [d.key, d]));
 /** What a band has to know to build something. */
 export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   const out: string[] = [];
-  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir', clamp: 'charcoal', canoe: 'canoe' } as Partial<Record<BuildKind, string>>)[b.kind];
+  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir', clamp: 'charcoal', canoe: 'canoe', sweat: 'sweat' } as Partial<Record<BuildKind, string>>)[b.kind];
   if (k) out.push(k);
   if (b.walls === 'daub') out.push('daub');
   if (b.walls === 'stone') out.push('stonework');

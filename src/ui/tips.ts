@@ -15,7 +15,7 @@ export const NEED_TIPS: Record<string, string> = {
 
 /** Skills on the Skills tab: what each one makes better. */
 export const SKILL_TIPS: Record<string, string> = {
-  foraging: 'Foraging: picking berries, digging roots, gathering acorns, eggs, honey, mushrooms, herbs and grass. More skill picks faster and carries more home.',
+  foraging: 'Foraging: picking berries, digging roots, gathering acorns, eggs, honey, mushrooms, herbs and grass. More skill picks faster and carries more home. A healer who can build also thinks of the sweat lodge, sitting with the sick.',
   woodcutting: 'Woodcutting: felling trees, and burning charcoal in a clamp for the kiln. More skill brings a tree down in fewer strokes. A master (15 and up) is seldom caught by a falling tree, gets more wood out of each one, and loses less of a clamp to ash. Woodcutters also think of the log sledge, of clearing garden ground by fire, of splitting oak into planks with wedges, and of the dugout canoe.',
   building: 'Building: raising shelters, racks and stores, and digging mud. More skill gets the work done faster.',
   hunting: 'Hunting: bringing down deer. More skill means more spears that find their mark.',
@@ -145,6 +145,9 @@ export const CARD_TIPS: Record<string, string> = {
   'Filled by': 'Filled by: who laid the food in the earth oven and covered it over.',
   Thread: 'Thread: hanks of nettle and grass fiber spun on a spindle by the fire, for weaving cloth at the loom.',
   Weaving: 'Weaving: who is at the loom now, and what they are weaving.',
+  Inside: 'Inside: who is sitting in the sweat lodge now, round the hot stones.',
+  Stones: 'Stones: whether the stones in the lodge are hot, or being heated in the fire. They stay hot for a few hours, and anyone about may go in while they do.',
+  'Sweated lately': 'Sweated lately: how many of the band have sat in the lodge in the last few days. For a while after, a fever is slower to take hold of them.',
   Cloth: 'Cloth: how many of the band have a woven tunic to wear and a blanket to sleep under.',
   Pigs: 'Pigs: the herd in the pen. Sows farrow in spring, and in autumn the spare pigs are killed for the stores.',
   Tending: 'Tending: who is working here today.',
