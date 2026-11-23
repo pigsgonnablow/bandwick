@@ -47,11 +47,12 @@ export class InvariantChecker {
       if (c.stock.trinkets > TRINKETS_KEPT + 2) flag('more teeth and shells than are kept', `${at} ${c.name}: ${c.stock.trinkets}`);
     }
     // the band's goods: each made plain, good or fine; a bowl only ever on the pile; no more on the pile than the
-    // band keeps (with a little slack for a merge); one kiln to a band
+    // band keeps (with a little slack for a merge); one kiln and one hide frame to a band
     for (const c of sim.liveCamps()) {
       const n = sim.goodsOf(c).length, keep = sim.members(c).length * GOODS_EACH + GOODS_OVER;
       if (n > keep * 2 + 4) flag('more goods on the pile than the band keeps', `${at} ${c.name}: ${n} of ${keep}`);
       if (sim.buildings.filter((b) => b.band === c.id && b.kind === 'kiln').length > 1) flag('two kilns in one band', `${at} ${c.name}`);
+      if (sim.buildings.filter((b) => b.band === c.id && b.kind === 'frame').length > 1) flag('two hide frames in one band', `${at} ${c.name}`);
     }
     for (const it of sim.items) if (GOODS.includes(it.kind)) {
       if (it.quality !== undefined && ![0, 1, 2].includes(it.quality)) flag('goods of no known quality', `${at} ${it.kind} ${it.id} ${it.quality}`);

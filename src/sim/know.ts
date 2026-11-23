@@ -567,6 +567,14 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'weave cloth on a loom', memory: 'Wove the first cloth on a loom.',
   },
   {
+    // (a hideworker who has scraped hide after hide over the knee by the fire, sewing yet another cloak, thinks of
+    // lacing the hide taut in a frame of poles and standing to it with both hands on the scraper)
+    key: 'hideframe', label: 'Hide-scraping frame', needs: ['cloaks'], requires: [skill(SK.hide, 11), skill(SK.build, 8)],
+    practice: { sew: 1, carcass: 0.5 }, odds: 14,
+    found: 'laced a deer hide taut in a square of poles and scraped it standing, thin and even from edge to edge',
+    taught: 'lace hides in a frame to scrape them', memory: 'Laced the first hide in a scraping frame.',
+  },
+  {
     // (a healer who has sat through many fevers with the sick, at a band that heats stones and has learned to build,
     // thinks of shutting the heat in: a low dome of withies under hides, hot stones in a pit, water poured over them,
     // and the fever sweated out)
@@ -610,7 +618,7 @@ export const DISCOVERY = new Map(DISCOVERIES.map((d) => [d.key, d]));
 /** What a band has to know to build something. */
 export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   const out: string[] = [];
-  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir', clamp: 'charcoal', canoe: 'canoe', sweat: 'sweat' } as Partial<Record<BuildKind, string>>)[b.kind];
+  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir', clamp: 'charcoal', canoe: 'canoe', frame: 'hideframe', sweat: 'sweat' } as Partial<Record<BuildKind, string>>)[b.kind];
   if (k) out.push(k);
   if (b.walls === 'daub') out.push('daub');
   if (b.walls === 'stone') out.push('stonework');

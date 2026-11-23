@@ -13,7 +13,7 @@ import {
   TRAITS, OPPOSED, Trait, SK, ACT, CARRY, foodTotal, FOODS, TASK_KINDS, Ref, Card, CardLine, HEALTH, POT_HOLDS, POT_KEEP, HIDES_PER_CLOAK, FURS_PER_CLOAK, FURS_KEPT, BEAST, BED_FIBER, HERBS_WANT, MIDWINTER, FEAST_MEAL, isStag, SLOTS, Slot, GARMENTS, GarmentKind, isGarment, MEND_AT, MEND_CORD, MEND_MAX, SHOES_REST, SHOES_WEAR_EVERY,
   BAG_LOAD, NEEDLE_SPEED, BASKET_HOLDS, HARPOON_HIT, HARPOON_CATCH, LINE_CATCH, LINE_AGE, NET_CREW, NET_HAND, HIDES_KEPT, BONES_KEPT, TRINKETS_KEPT, REMAINS, ROT_FROM, BONES_FROM, remainsStage,
   QUALITY_WEAR, GOODS, GOODS_EACH, GOODS_OVER, WOOD_PLENTY, KILN_CRACK, HEARTH_CRACK, SEASONING, SEASONED_HEAT, CHARCOAL_KEPT, CHARCOAL_CRACK, CHARCOAL_FINE, SWIDDEN_SOIL, SWIDDEN_GRASS, CANOE_CATCH,
-  LOOMED, KILNED, POTTED, JAR_HOLDS, JAR_KEEP, JARRED, JARS_MAX, LAMP_FAT, FAT_KEPT, SINEW_KEPT, SINEW_SEWN, THREAD_TRY, THREAD_KEPT, FIBER_PER_THREAD, BLANKET_REST,
+  LOOMED, HIDEWORK, FRAME_FINE, FRAME_SPEED, KILNED, POTTED, JAR_HOLDS, JAR_KEEP, JARRED, JARS_MAX, LAMP_FAT, FAT_KEPT, SINEW_KEPT, SINEW_SEWN, THREAD_TRY, THREAD_KEPT, FIBER_PER_THREAD, BLANKET_REST,
   STEWED, POT_AT, BOIL_AT, BOIL_GAIN, BOIL_TICKS, OVENED, OVEN_GAIN, OVEN_GLUT, OVEN_TO, OVEN_TICKS, OVEN_WOOD, GRIDDLE_GAIN, COOK_GAIN, STEW_BERRIES, STEW_GAIN, STEW_MASTER, STEW_GREENS, STEW_MEALS, STEW_TICKS, Stew, BROTH_FILL, BROTH_KEEP, BROTH_EACH, BREW_HERBS, BREW_COLD, BREW_KEEP, BREW_HEAL, HERBS_BREW,
   ACCIDENT_YEARLY, Hurt, HURT_WORDS, WOUND_DAYS, WOUND_RISK,
   SWEAT_DAYS, SWEAT_WARD, SWEAT_HOLDS, SWEAT_BREAK,
@@ -2458,24 +2458,34 @@ export class Sim {
   loomOf(c = this.camp) {
     return this.buildings.find((b) => b.band === c.id && b.kind === 'loom' && b.built);
   }
-  /** Where someone works a recipe: the potters at the kiln, the weavers of cloth at the loom, the charcoal burner at the clamp (absent: by the fire). */
-  workshopFor(key: RecipeKey, c = this.camp) {
-    return RECIPES[key].skill === SK.pot ? this.kilnOf(c) : LOOMED.includes(key) ? this.loomOf(c) : key === 'charcoal' ? this.clampOf(c) : undefined;
+  /** The band's built hide-scraping frame, if it has one. */
+  frameOf(c = this.camp) {
+    return this.buildings.find((b) => b.band === c.id && b.kind === 'frame' && b.built);
   }
-  /** Where a potter sits at the kiln: in front of its stoke hole (which turns with the kiln), a little apart from the others; a weaver at the loom, in its open front. */
+  /**
+   * Where someone works a recipe: the potters at the kiln, the weavers of cloth at the loom, the charcoal burner at the clamp,
+   * the hideworkers at the frame (absent: by the fire).
+   */
+  workshopFor(key: RecipeKey, c = this.camp) {
+    return RECIPES[key].skill === SK.pot ? this.kilnOf(c) : LOOMED.includes(key) ? this.loomOf(c) : key === 'charcoal' ? this.clampOf(c) : HIDEWORK.includes(key) ? this.frameOf(c) : undefined;
+  }
+  /**
+   * Where a potter sits at the kiln: in front of its stoke hole (which turns with the kiln), a little apart from the others; a weaver at the loom, in its open front;
+   * a hideworker standing before the frame.
+   */
   kilnSeat(kiln: Building, p: Person) {
-    // (at the loom, on the stool just inside the shed's open front, side by side)
-    const loom = kiln.kind === 'loom';
-    const a = (kiln.rot * Math.PI) / 2, side = (((p.id * 37) % 5) - 2) * (loom ? 0.07 : 0.12), out = loom ? 0.08 : 0.42;
+    // (at the loom, on the stool just inside the shed's open front, side by side; at the frame, before the laced hide, close in)
+    const loom = kiln.kind === 'loom', frame = kiln.kind === 'frame';
+    const a = (kiln.rot * Math.PI) / 2, side = (((p.id * 37) % 5) - 2) * (loom ? 0.07 : frame ? 0.05 : 0.12), out = loom ? 0.08 : frame ? 0.14 : 0.42;
     return { x: kiln.x + 0.5 + Math.sin(a) * out + Math.cos(a) * side, z: kiln.z + 0.5 + Math.cos(a) * out - Math.sin(a) * side };
   }
   /**
    * How well someone makes a thing: plain, good or fine, by how far they are into the craft (a kiln is
-   * worth a few years' practice to a potter: it fires evenly).
+   * worth a few years' practice to a potter: it fires evenly; and a scraping frame to a hideworker).
    */
   qualityFor(p: Person, key: RecipeKey, charcoal = false) {
     const rc = RECIPES[key];
-    const lvl = p.skills[rc.skill] + (rc.skill === SK.pot && this.kilnOf() ? 3 + (charcoal ? CHARCOAL_FINE : 0) : 0);
+    const lvl = p.skills[rc.skill] + (rc.skill === SK.pot && this.kilnOf() ? 3 + (charcoal ? CHARCOAL_FINE : 0) : 0) + (HIDEWORK.includes(key) && this.frameOf() ? FRAME_FINE : 0);
     const r = this.rAi;
     if (!r.chance(Math.min(1, Math.max(0, (lvl - 6) / 6)))) return 0;
     return r.chance(Math.min(1, Math.max(0, (lvl - 12) / 5))) ? 2 : 1;
@@ -4525,6 +4535,15 @@ export class Sim {
         c.plan.push('Build a loom shed for the weavers');
       }
     }
+    // a hide-scraping frame, once someone has thought of lacing a hide in one
+    if (this.knows('hideframe', c) && !this.bandBuildings(c).some((b) => b.kind === 'frame')) {
+      const tile = this.siteFor('frame', null);
+      if (tile >= 0) {
+        this.clearTile(tile);
+        this.newBuilding('frame', tile, -1);
+        c.plan.push('Put up a frame for scraping hides');
+      }
+    }
     // a weir across a narrow stretch of river near camp, once the band knows how (where a run passes, if any does),
     // built outside the winter, when the river is not too cold to stand in
     if (this.knows('weir', c) && !winterNow && !this.bandBuildings(c).some((b) => b.kind === 'weir')) {
@@ -4898,7 +4917,7 @@ export class Sim {
         // (a charcoal clamp goes by the kiln it feeds, a little way off for the smoke)
         const kiln = kind === 'clamp' ? this.kilnOf() : undefined;
         const d = byGraves ? hyp(x - (this.camp.graveyard % N), z - Math.floor(this.camp.graveyard / N)) : kiln ? hyp(x - kiln.x, z - kiln.z) : hyp(dx, dz);
-        const want = byGraves ? 1.6 : kiln ? 2.2 : kind === 'clamp' ? 4.5 : kind === 'oven' ? 2.4 : kind === 'barrow' ? 7.5 : kind === 'stones' ? 8 : kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'loom' ? 3.6 : kind === 'sweat' ? 4.2 : kind === 'pen' ? 4.8 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
+        const want = byGraves ? 1.6 : kiln ? 2.2 : kind === 'clamp' ? 4.5 : kind === 'oven' ? 2.4 : kind === 'barrow' ? 7.5 : kind === 'stones' ? 8 : kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'loom' ? 3.6 : kind === 'sweat' ? 4.2 : kind === 'frame' ? 3.3 : kind === 'pen' ? 4.8 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
         let sc = -Math.abs(d - want) * 1.6;
         if (w.level[i] !== w.level[this.camp.tile]) sc -= 2.5;
         sc -= this.treesOnTile[i] * 1.2;
@@ -5975,6 +5994,13 @@ export class Sim {
         const has = (k: Slot) => ms.filter((p) => p.worn?.[k] !== undefined).length;
         lines.push(L('Cloth', `${has('torso')} of ${ms.length} in tunics, ${has('bed')} with blankets`));
         notes.push(`An upright loom under a thatched roof: a beam on two posts, the threads hanging from it weighted with stones. Tunics, blankets and patterned sashes are woven here from thread spun by the fire.`);
+      }
+      if (b.kind === 'frame' && b.built) {
+        const at = this.people.filter((p) => p.alive && p.band === b.band && p.task?.kind === 'craft' && p.task.amount > 0 && HIDEWORK.includes(RECIPE_KEYS[p.task.ref]));
+        for (const p of at) lines.push(L('At the frame', `${p.name}: ${RECIPES[RECIPE_KEYS[p.task!.ref]].doing.replace(/^Sewing /, '')}`, pref(p.id)));
+        const owner = this.campById(b.band) ?? this.camp, hides = Math.floor(owner.stock.hides), furs = Math.floor(owner.stock.furs);
+        lines.push(L('Hides', `${hides} ${hides === 1 ? 'hide' : 'hides'}${furs ? `, ${furs} ${furs === 1 ? 'pelt' : 'pelts'}` : ''} put by`));
+        notes.push(`A square of poles between two posts, a deer hide laced taut in it. Hides scraped standing at it are worked in ${Math.round((1 - FRAME_SPEED) * 100)}% less time and thinned evenly, so what is sewn from them comes out finer and wears longer.`);
       }
       if (b.kind === 'pen' && b.built) {
         const herd = pigsOf(this, this.camp);

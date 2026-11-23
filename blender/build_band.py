@@ -31,7 +31,7 @@ Conventions (read by src/render/band.ts):
   boat__dugout                                                    the dugout the first band lands in (origin at the waterline, bow to -Y).
   item__{chopper,axe,stick,snare,fishtrap,basket,pot,cloak,needle,hat,mittens,shoes,cape,bag,necklace,bowl,beads,tunic,blanket,sash,lamp,jar,harpoon,line,net,cookpot}  each made thing in real colours,
       for the picture in its window (the game fits it to the picture).
-  bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit,kiln,loom,pen}  one tile footprint, centred on the origin
+  bld__{hearth,flame,leanto,bedding,hut0,hut1,storehouse,rack,site,windbreak,woodshed,fence,pit,kiln,loom,pen,frame}  one tile footprint, centred on the origin
       (the windbreak reaches out in an arc behind the fire);
   bld__{weir,weirFull}                                            a fish weir across a river tile, origin on the river bed, its point (and basket trap)
       downstream to -y; ...Full with fish in the basket.
@@ -4605,6 +4605,97 @@ for k in range(4):
 q.cyl(4, 0.0025, 0.0025, basket_at + Vector((-0.05, -0.02, 0.06)), basket_at + Vector((0.04, 0.03, 0.064)), WOOD, rnd, 0.03)
 q.cyl(8, 0.009, 0.009, basket_at + Vector((-0.036, -0.012, 0.0605)), basket_at + Vector((-0.032, -0.010, 0.0615)), LOOM_STONE[0], rnd, 0.03)  # the whorl
 q.finish("bld__loom")
+
+
+# ---------------------------------------------------------------- the hide frame
+# A hide-scraping frame: two forked posts set in the ground, a square of four poles lashed at the corners and stood
+# between them, and a deer hide laced into it with cord run through slits round its edge, the flesh side to the front
+# (-y), where the hideworker stands. The top of the hide is already scraped pale and thin; below, the flesh and fat
+# are still on it. On the ground before it a second hide is pegged out flat to dry, flesh side up; at the side a
+# stump for a block, with a bone flesher and a stone scraper on it, and a roll of finished hides beside it.
+HIDE_FLESH, HIDE_SCRAPED, HIDE_HAIR = (184, 136, 110), (226, 208, 172), (120, 88, 58)
+q = Part()
+rnd = random.Random(93)
+FY = 0.07           # the plane of the frame
+FX, FZ0, FZ1 = 0.17, 0.05, 0.35
+for x in (-FX - 0.035, FX + 0.035):
+    forked_post(q, (x, FY + 0.01, 0), (x, FY + 0.01, FZ1 + 0.01), rnd, r=0.012)
+# the square of poles, the uprights tied to the posts, the cross poles overrunning the corners
+for x in (-FX, FX):
+    q.cyl(5, 0.009, 0.008, (x, FY, FZ0 - 0.03), (x, FY, FZ1 + 0.03), POLE, rnd)
+    for z in (FZ0 + 0.02, FZ1 - 0.04):
+        sx = 1 if x > 0 else -1
+        q.cyl(4, 0.004, 0.004, (x, FY, z), (x + sx * 0.035, FY + 0.01, z), SINEW_C, rnd, 0.05)  # tied to the post
+for z in (FZ0, FZ1):
+    q.cyl(5, 0.009, 0.009, (-FX - 0.03, FY, z), (FX + 0.03, FY, z + rnd.uniform(-0.004, 0.004)), POLE, rnd)
+    for x in (-FX, FX):  # the corners lashed
+        q.cyl(6, 0.012, 0.012, (x, FY, z - 0.008), (x, FY, z + 0.008), SINEW_C, rnd, 0.05)
+# the hide: rows top to bottom, its width swelling at the shoulders and haunches, the legs drawn out at the corners
+ROWS, COLS = 10, 9
+HZ0, HZ1 = FZ0 + 0.035, FZ1 - 0.03
+def hide_w(i):
+    t = i / (ROWS - 1)
+    w = 0.112 + 0.012 * math.sin(t * math.pi * 2 + 0.6) - 0.008 * math.sin(t * math.pi)
+    if i in (0, ROWS - 1):
+        w += 0.018  # the legs, stretched out toward the corners
+    return w
+front, back, edge = [], [], []
+for i in range(ROWS):
+    z = HZ1 - (HZ1 - HZ0) * i / (ROWS - 1)
+    w = hide_w(i)
+    row_f, row_b = [], []
+    for k in range(COLS):
+        u = -1 + 2 * k / (COLS - 1)
+        x = u * w
+        zz = z
+        # the legs: the corner points drawn out, the middle of the top and bottom edges pulled in a little
+        if i in (0, ROWS - 1) and 0 < k < COLS - 1:
+            zz += (-0.012 if i == 0 else 0.012) * (1 - abs(u)) ** 0.7
+        bulge = 0.004 * (1 - u * u) * math.sin(math.pi * i / (ROWS - 1))
+        row_f.append((x, FY - 0.002 - bulge, zz))
+        row_b.append((x, FY + 0.002 - bulge, zz))
+    front.append(row_f)
+    back.append(row_b)
+def flesh(i, k):
+    # scraped from the top down: pale and thin above, a ragged line where the work has got to, the rest still fleshy
+    line = 4 + (1 if (k * 7) % 3 == 0 else 0)
+    return jit(HIDE_SCRAPED if i < line else HIDE_FLESH, rnd, 0.05)
+shell(q, front, back, flesh, lambda i, k: jit(HIDE_HAIR, rnd, 0.06), HIDE_DK, rnd, 0.05)
+# the lacing: a cord from each slit at the hide's edge to the pole nearest it
+for i in range(0, ROWS, 2):
+    for k in (0, COLS - 1):
+        x, y, z = front[i][k]
+        px = FX if k else -FX
+        q.cyl(3, 0.0018, 0.0018, (x, FY, z), (px, FY, z + rnd.uniform(-0.01, 0.01)), SINEW_C, rnd, 0.04, cap=False)
+for k in range(1, COLS - 1, 2):
+    for i, pz in ((0, FZ1), (ROWS - 1, FZ0)):
+        x, y, z = front[i][k]
+        q.cyl(3, 0.0018, 0.0018, (x, FY, z), (x + rnd.uniform(-0.01, 0.01), FY, pz), SINEW_C, rnd, 0.04, cap=False)
+# a second hide pegged out flat on the ground before it, flesh side up, drying
+GX, GY = -0.2, -0.24
+gtop, gbot = [], []
+for i in range(6):
+    yy = GY - 0.1 + 0.2 * i / 5
+    w = 0.08 + 0.015 * math.sin(i / 5 * math.pi * 2 + 0.5) + (0.015 if i in (0, 5) else 0)
+    gtop.append([(GX + w * (-1 + 2 * k / 6), yy + (0.01 if i == 0 and 0 < k < 6 else -0.01 if i == 5 and 0 < k < 6 else 0), 0.006) for k in range(7)])
+    gbot.append([(x, y, 0.002) for x, y, _ in gtop[-1]])
+shell(q, gtop, gbot, lambda i, k: jit(HIDE_SCRAPED if (i + k) % 4 else (212, 186, 148), rnd, 0.05), lambda i, k: HIDE_HAIR, HIDE_DK, rnd, 0.05)
+for i in (0, 2, 3, 5):
+    for k in (0, 6):
+        x, y, _ = gtop[i][k]
+        dx = -0.012 if k == 0 else 0.012
+        q.cyl(4, 0.004, 0.003, (x + dx, y, -0.01), (x + dx * 1.4, y, 0.022), WOOD, rnd, 0.05)  # a peg
+# the stump at the side, a bone flesher and a stone scraper on it, and a roll of finished hides beside it
+SX, SY = 0.25, -0.2
+q.cyl(7, 0.036, 0.04, (SX, SY, 0), (SX, SY, 0.07), (118, 90, 60), rnd, 0.05)
+q.cyl(7, 0.035, 0.035, (SX, SY, 0.07), (SX, SY, 0.072), (196, 170, 128), rnd, 0.03)
+q.cyl(5, 0.005, 0.004, (SX - 0.026, SY - 0.01, 0.076), (SX + 0.026, SY + 0.012, 0.078), (226, 218, 196), rnd, 0.04)  # the flesher, a deer's shin bone
+q.blob((SX + 0.01, SY - 0.018, 0.078), (0.012, 0.009, 0.005), FLINT, rnd, 0.05, noise=0.15)                        # the scraper
+for k in range(2):
+    at = (SX - 0.07 + k * 0.012, SY + 0.07 + k * 0.035, 0.018)
+    q.cyl(8, 0.018, 0.018, (at[0] - 0.045, at[1], at[2]), (at[0] + 0.045, at[1] + 0.01, at[2]), HIDE if k else HIDE_SCRAPED, rnd, 0.06)
+    q.cyl(5, 0.019, 0.019, (at[0] - 0.006, at[1] + 0.001, at[2]), (at[0] + 0.006, at[1] + 0.002, at[2]), SINEW_C, rnd, 0.04)  # tied round
+q.finish("bld__frame")
 
 
 # ---------------------------------------------------------------- the sweat lodge

@@ -368,7 +368,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'hut0p', 'hut1p', 'storehouse', 'storehoused', 'storehouses', 'storehousep', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit', 'canoe', 'canoeOut', 'hearthPot', 'hearthPotEmpty', 'hearthBoil', 'hearthStone', 'hearthPotStone', 'hearthPotEmptyStone', 'hearthBoilStone', 'oven', 'ovenLit', 'sweat', 'sweatHot']) {
+      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit', 'canoe', 'canoeOut', 'hearthPot', 'hearthPotEmpty', 'hearthBoil', 'hearthStone', 'hearthPotStone', 'hearthPotEmptyStone', 'hearthBoilStone', 'oven', 'ovenLit', 'frame', 'sweat', 'sweatHot']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -2212,8 +2212,12 @@ Pose poseFor(float act, float t, float ph, float run) {
     p = loopPose(${CLIP.warm}, t / 1.8);
   } else if (act < 19.5) {               // swimming, the stroke driven by distance covered
     p = loopPose(${CLIP.swim}, ph);
-  } else {                               // treading water
+  } else if (act < 20.5) {               // treading water
     p = loopPose(${CLIP.tread}, t / 1.4);
+  } else {                               // scraping a hide laced in the frame: both hands on the scraper, drawn down and lifted back
+    float c = smoothstep(0.0, 1.0, abs(fract(t * 0.55) * 2.0 - 1.0));
+    p.thL = -0.16; p.thR = 0.12; p.knL = p.knR = 0.12; p.lean = 0.16 + 0.1 * c; p.head = 0.18;
+    p.shL = p.shR = -1.55 + 0.6 * c; p.elL = p.elR = -0.55 - 0.25 * c;
   }
   return p;
 }
