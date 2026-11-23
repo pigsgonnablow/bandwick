@@ -312,10 +312,13 @@ describe('a small band starving', () => {
   it('asks a neighbour with food to share to take it in, and goes to live there when it does', () => {
     const { s, home, near, ms } = starving();
     home.stock.preserved += 500;
+    for (const p of ms) p.food = 5;
     odds(s, true);
     expect((s as any).askTakenIn(near)).toBe(true);
     expect(near.gone).toBe(s.tick);
+    // (and are given a meal as soon as they come)
     for (const p of ms) expect(p.band).toBe(home.id);
+    for (const p of ms) expect(p.food).toBeGreaterThan(50);
     expect(s.events.some((e) => e.kind === 'merge' && /starving/.test(e.text))).toBe(true);
   });
 
@@ -350,6 +353,31 @@ describe('a small band starving', () => {
       if ((s as any).askTakenIn(near)) { taken++; break; }
     }
     expect(taken).toBe(0);
+  });
+
+  it('after a neighbour turns it away, asks another in reach before asking that one again', () => {
+    const { s, home, near, ms } = starving();
+    home.stock.preserved += 500;
+    // a third band, farther from the hungry one than home is
+    const tile = s.chooseSite({ from: near, min: 10, max: 40, avoid: 8 });
+    const far = s.foundCamp(tile, empty(), -1, -1);
+    s.camp = far;
+    grow(s, 3);
+    s.camp = home;
+    far.stock.preserved += 500;
+    const d = (o: typeof home) => Math.hypot(o.x - near.x, o.z - near.z);
+    const [first, second] = d(home) < d(far) ? [home, far] : [far, home];
+    expect(d(second)).toBeLessThan(60);
+    odds(s, false);
+    (s as any).askTakenIn(near);
+    expect(s.events.at(-1)!.text).toContain(`went to ${first.name}`);
+    (s as any).askTakenIn(near);
+    expect(s.events.at(-1)!.text).toContain(`went to ${second.name}`);
+    // (both have turned them away now: the nearer again)
+    (s as any).askTakenIn(near);
+    expect(s.events.at(-1)!.text).toContain(`went to ${first.name}`);
+    // and being turned away again and again is the one memory, not a pile of them
+    for (const p of ms) expect(p.memories.filter((m) => m.kind === 'turned_away').length).toBe(1);
   });
 });
 
@@ -467,6 +495,35 @@ describe('a feud', () => {
     expect(a.band).toBe(c.id);
     expect(s.events.at(-1)!.kind).toBe('death_quarrel');
     expect(s.events.at(-1)!.text).toBe(`${a.name} killed ${b.name} in a quarrel. The band let it lie.`);
+  });
+
+  it('does not let a killer driven out with nothing come straight back, while they live', () => {
+    const { s, c, a } = feud(-20);
+    const nc = s.campById(a.band)!;
+    expect(nc.exiledFrom).toEqual({ band: c.id, who: a.id, at: s.tick });
+    // alone, with nothing to eat: a band like that goes to its nearest neighbour, but not to the one that drove them out
+    for (const k of Object.keys(nc.stock) as (keyof Stock)[]) nc.stock[k] = 0;
+    expect((s as any).considerMerge(nc)).toBe(false);
+    expect(a.band).toBe(nc.id);
+    (s as any).bands(20);
+    expect(a.band).toBe(nc.id);
+    expect(nc.gone).toBe(0);
+    // years on, they may go back
+    s.tick += 5 * TICKS_PER_YEAR;
+    expect((s as any).considerMerge(nc)).toBe(true);
+    expect(a.band).toBe(c.id);
+  });
+
+  it('lets the children of a killer driven out go back once the killer is dead', () => {
+    const { s, c, a } = feud(-20);
+    const nc = s.campById(a.band)!;
+    s.camp = nc;
+    const kid = s.newPerson(0, s.tick - 6 * TICKS_PER_YEAR, -1, -1);
+    kid.x = nc.x; kid.z = nc.z;
+    s.camp = c;
+    s.kill(a, 'old age');
+    expect((s as any).considerMerge(nc)).toBe(true);
+    expect(kid.band).toBe(c.id);
   });
 });
 

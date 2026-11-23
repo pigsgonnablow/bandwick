@@ -60,6 +60,23 @@ describe('being mocked', () => {
     expect(bully.band).not.toBe(home);
   });
 
+  it('shuns a child who keeps on, but never sends a child off to live alone', () => {
+    const s = sim(1);
+    const [bully, victim] = pair(s);
+    const home = bully.band;
+    // the same bully, but seven years old
+    bully.birth = s.tick - 7 * TICKS_PER_YEAR;
+    bully.rebuked = s.tick;
+    const others = s.members().filter((x) => x !== bully && x !== victim);
+    for (let i = 0; i < RELENTLESS; i++) s.mocked(bully, victim);
+    expect(bully.shunned).toBe(s.tick);
+    s.tick += TICKS_PER_SEASON + 1;
+    for (const x of others) s.adjust(x, bully, -100);
+    for (let i = 0; i < PICKED_ON; i++) s.mocked(bully, victim);
+    expect(s.events.some((e) => e.kind === 'exile')).toBe(false);
+    expect(bully.band).toBe(home);
+  });
+
   it('stops while the bully has been made to leave them be', () => {
     const s = sim(1);
     const [bully, victim] = pair(s);
