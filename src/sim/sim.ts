@@ -102,13 +102,17 @@ export const LEAN_WINTERS_TO_MOVE = 3;
  * A small band (this many or fewer) starving with its stores bare tries to go and live with a neighbour, every
  * few days (FAMINE_ASK_DAYS) while the hunger lasts. The neighbour may turn them away: it takes them in at best
  * with FAMINE_TAKE_IN, less when it has under FAMINE_SPARE food a head to share with them, and never in a famine
- * of its own or from farther than FAMINE_REACH.
+ * of its own or from farther than FAMINE_REACH. A neighbour that turned them away is asked again only once every
+ * other in reach has been, or FAMINE_REFUSED_DAYS have passed.
  */
-export const FAMINE_MERGE_MAX = 14;
+export const FAMINE_MERGE_MAX = 20;
 export const FAMINE_ASK_DAYS = 4;
 export const FAMINE_TAKE_IN = 0.7;
 export const FAMINE_SPARE = 12;
 export const FAMINE_REACH = 60;
+export const FAMINE_REFUSED_DAYS = 30;
+/** Years a band won't take back someone it drove out (nor the camp they made), while they live. */
+export const EXILE_BARRED_YEARS = 5;
 export const WARM_RADIUS_SHELTERED = 3.2;
 /** 'a' or 'an' for a word. */
 export const art = (w: string) => (/^[aeiou]/i.test(w) ? 'an' : 'a');
@@ -261,6 +265,10 @@ export interface Camp {
   lastFamine?: number;
   /** when the band, starving, last asked a neighbour to take it in (absent: never) */
   askedIn?: number;
+  /** the neighbours that turned the band away when it was starving, and when (absent: none) */
+  refusedBy?: Record<number, number>;
+  /** a camp made by someone driven out of a band: that band, who was driven out and when (absent: not an exile's camp) */
+  exiledFrom?: { band: number; who: number; at: number };
   lastFight?: number;
   /** the band's colour (hue in degrees, saturation and lightness 0..1); absent in older saves */
   color?: BandColor;
@@ -3561,25 +3569,69 @@ export class Sim {
   }
 
   /**
-   * A small band starving with its stores bare asks the nearest neighbour not starving itself to take it in. The
-   * neighbour may: the more food it has to share, and the more of its people are kin to them, the likelier. If
-   * it won't, they go home hungry, and may try again in a few days. Whether they were taken in.
+   * A small band starving with its stores bare asks the nearest neighbour not starving itself to take it in (one
+   * that has lately turned it away only once every other in reach has too). The neighbour may: the more food it has
+   * to share, and the more of its people are kin to them, the likelier. If it won't, they go home hungry, and may
+   * try again in a few days. Whether they were taken in.
    */
   private askTakenIn(c: Camp) {
     c.askedIn = this.tick;
     const ms = this.members(c);
-    const to = this.liveCamps().filter((o) => o !== c && !o.famine && this.members(o).length && hyp(o.x - c.x, o.z - c.z) < FAMINE_REACH)
-      .sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
+    const refused = (o: Camp) => this.tick - (c.refusedBy?.[o.id] ?? -1e9) < FAMINE_REFUSED_DAYS * TICKS_PER_DAY ? 1 : 0;
+    const to = this.liveCamps().filter((o) => o !== c && !o.famine && this.members(o).length && !this.barred(c, o) && hyp(o.x - c.x, o.z - c.z) < FAMINE_REACH)
+      .sort((a, b) => refused(a) - refused(b) || hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
     if (!to || !ms.length) return false;
     const theirs = this.members(to);
     const spare = foodTotal(to.stock) / (theirs.length + ms.length);
     const kin = ms.some((p) => theirs.some((q) => this.isKin(p, q)));
     const chance = FAMINE_TAKE_IN * Math.min(1, spare / FAMINE_SPARE) + (kin ? 0.15 : 0);
     if (this.rLife.chance(Math.min(0.9, chance))) return this.considerMerge(c, false, to);
-    for (const p of ms) if (this.age(p) >= 14) this.remember(p, 'turned_away', -10, 2, -1, `Went to ${to.name}, starving, and was turned away.`);
+    (c.refusedBy ??= {})[to.id] = this.tick;
+    // (being turned away again in the same hunger stings afresh, but it is the one memory, not one for every door)
+    for (const p of ms) if (this.age(p) >= 14) {
+      p.memories = p.memories.filter((m) => m.kind !== 'turned_away');
+      this.remember(p, 'turned_away', -10, 2, -1, `Went to ${to.name}, starving, and was turned away.`);
+    }
     this.event('turned_away', `The hungry people of ${c.name} went to ${to.name} to ask to live there, but ${to.name} ${spare < FAMINE_SPARE / 2 ? 'had too little to share' : 'would not take them in'}, and they went home.`,
       ms.slice(0, 4).map((p) => p.id), c.x, c.z, 3);
     return false;
+  }
+
+  /**
+   * Starving people taken in by a band are given a meal from its stores before anything else, rather than left to
+   * die on the way to its fire: a helping each, two for the hungriest, as at the band's own meals.
+   */
+  private feedNewcomers(ms: Person[], to: Camp) {
+    const st = to.stock;
+    for (const p of ms) {
+      if (!p.alive || p.food >= 50) continue;
+      const portion = this.age(p) < 12 ? 0.6 : 1;
+      const want = portion * Math.max(1, Math.min(2, (88 - p.food) / 48));
+      let got = 0;
+      for (const k of ['preserved', 'nuts', 'roots', 'grain', 'berries', 'greens', 'mushrooms', 'eggs', 'fish', 'meat', 'honey'] as const) {
+        const take = Math.min(st[k], want - got);
+        if (take <= 0) continue;
+        st[k] -= take;
+        this.book(`eaten.${k}`, take);
+        got += take;
+        if (got >= want - 1e-6) break;
+      }
+      p.food = clamp(p.food + 48 * (got / portion));
+    }
+  }
+
+  /**
+   * Whether band `o` won't have the people of camp `c` back: `c` was made by someone `o` drove out, who is still alive
+   * and among them, and not long ago. (Once they are dead, or the years have passed, their family may go back; and
+   * children on their own always may.)
+   */
+  private barred(c: Camp, o: Camp) {
+    const ex = c.exiledFrom;
+    if (!ex || ex.band !== o.id || this.tick - ex.at >= EXILE_BARRED_YEARS * TICKS_PER_YEAR) return false;
+    // (children left on their own are never turned away)
+    if (!this.members(c).some((p) => this.age(p) >= 16)) return false;
+    const who = this.byId.get(ex.who);
+    return !!who && who.alive && who.band === c.id;
   }
 
   private considerMerge(c: Camp, cold = false, famineTo?: Camp) {
@@ -3588,7 +3640,7 @@ export class Sim {
     if (!cold && !famineTo && adults.length >= 2 && ms.length > 3) return false;
     // (a band whose fire has gone cold goes only to a neighbour with a fire and the wood to keep it; a starving one, to
     // whoever agreed to take it in)
-    const to = famineTo ?? this.liveCamps().filter((o) => o !== c && (!cold || (o.stock.wood >= 30 && hyp(o.x - c.x, o.z - c.z) < 60))).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
+    const to = famineTo ?? this.liveCamps().filter((o) => o !== c && !this.barred(c, o) && (!cold || (o.stock.wood >= 30 && hyp(o.x - c.x, o.z - c.z) < 60))).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
     if (!to || !ms.length) return false;
     this.join(ms, to);
     // their pigs can't be driven to another band's pen: they are killed, and the meat goes with the stores
@@ -3609,7 +3661,10 @@ export class Sim {
     this.hearth(c).fuel = 0;
     for (const p of ms) this.remember(p, 'moved_camp', -8, 2, -1, cold ? `Left ${c.name} in the dead of winter, with no wood for the fire, for the fire at ${to.name}.`
       : famineTo ? `Left ${c.name}, starving, for ${to.name}, who took them in.` : `Left ${c.name}, too few to go on, for ${to.name}.`);
-    if (famineTo) this.event('merge', `The people of ${c.name}, starving, went to ${to.name} and were taken in.`, ms.map((p) => p.id), c.x, c.z, 4);
+    if (famineTo) {
+      this.event('merge', `The people of ${c.name}, starving, went to ${to.name} and were taken in.`, ms.map((p) => p.id), c.x, c.z, 4);
+      this.feedNewcomers(ms, to);
+    }
     else if (cold) this.event('merge', `The people of ${c.name}, their wood gone and their fire cold, went through the snow to live at ${to.name}.`, ms.map((p) => p.id), c.x, c.z, 4);
     else this.event('merge', `${ms.length === 1 ? `${ms[0].name}, the last of the people of ${c.name},` : `The last ${num(ms.length)} of the people of ${c.name}`} went to live at ${to.name}.`,
       ms.map((p) => p.id), c.x, c.z, 4);
@@ -3973,6 +4028,8 @@ export class Sim {
 
   /** Shunned, and still at it: the band drives the bully out, if most of the grown-ups side with the one picked on. */
   private driveOut(p: Person, q: Person, ms: Person[], c: Camp) {
+    // (a child who torments another is shunned, but nobody sends a child off to live alone)
+    if (this.age(p) < 16) return;
     let against = 0, n = 0;
     for (const x of ms) {
       if (x === p || x === q || this.age(x) < 16) continue;
@@ -4039,6 +4096,7 @@ export class Sim {
     const nc = this.foundCamp(site, take, c.id, att.id);
     nc.color = this.contrastColor(c.color ?? this.distinctColor());
     nc.origin = 'turmoil';
+    nc.exiledFrom = { band: c.id, who: att.id, at: this.tick };
     this.camp = c;
     this.join(group, nc);
     nc.settled = this.tick;

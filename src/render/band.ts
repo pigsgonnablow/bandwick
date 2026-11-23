@@ -1410,8 +1410,10 @@ export class BandLayer {
           carryCount.set(held, ak + 1);
         }
       }
-      // a lamp lit beside someone sitting at their work after dark
-      if (s.tool === LAMP_TOOL && s.shownAct === ACT.Sit && s.act !== ACT.Dead) {
+      // a lamp lit beside someone at their work after dark: sitting, or on their feet at the clamp or a workshop (not while
+      // they walk, or swim, with it)
+      const atWork = s.shownAct !== ACT.Walk && s.shownAct !== ACT.Run && s.shownAct !== ACT.Hunt && s.shownAct !== SWIM && s.shownAct !== TREAD;
+      if (s.tool === LAMP_TOOL && atWork && s.act !== ACT.Dead) {
         const lm = this.carryMeshes.get(LAMP);
         const lk = carryCount.get(LAMP) ?? 0;
         if (lm && lk < lm.instanceMatrix.count) {
