@@ -5,7 +5,7 @@
 // bank (which leaves wood lying for the band) and to build their dam.
 import type { Sim } from './sim';
 import { isTreeType, treeSpecies, treeStage, LOGS, STUMP_BASE, WOOD_BY_STAGE, STAGE_WORD } from './sim';
-import { Beast, Den, BEAST, BOAR, FOX, BEAVER, Person, SK } from './band';
+import { Beast, Den, BEAST, BOAR, FOX, BEAVER, Person, SK, HEDGE_FOX } from './band';
 import type { Camp } from './sim';
 import { isDark, hourOf, seasonOf, snowLies, freshFrozen, TICKS_PER_DAY } from './time';
 import { T, WATER, DIRS4 } from './types';
@@ -301,8 +301,8 @@ function foxes(s: Sim, den: Den, group: Beast[], people: Person[], dark: boolean
   if (out && den.raid === undefined && s.tick % 20 === 0) {
     const snare = s.items.find((it) => it.kind === 'snare' && (it.catch ?? 0) > 0 && it.tile !== undefined && it.tile >= 0
       && hyp((it.tile % s.N) + 0.5 - den.x, Math.floor(it.tile / s.N) + 0.5 - den.z) < 14
-      // a camp that keeps dogs keeps the foxes off the snares close by it
-      && !s.liveCamps().some((c) => hyp((it.tile! % s.N) - c.x, Math.floor(it.tile! / s.N) - c.z) < 14 && s.members(c).some((p) => p.dog !== undefined)));
+      // a camp that keeps dogs keeps the foxes off the snares close by it (and so does one ringed with thorns)
+      && !s.liveCamps().some((c) => hyp((it.tile! % s.N) - c.x, Math.floor(it.tile! / s.N) - c.z) < (s.hedgeOf(c) ? HEDGE_FOX : 14) && (s.members(c).some((p) => p.dog !== undefined) || !!s.hedgeOf(c))));
     if (snare && r.chance(0.35)) den.raid = snare.id;
   }
   const raider = den.raid !== undefined ? group.find((b) => !b.young) : undefined;

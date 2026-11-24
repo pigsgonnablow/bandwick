@@ -1250,6 +1250,11 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
           const owner = s.byId.get(b.owner);
           const label = labelOf(b).toLowerCase();
           p.thought = owner && owner.alive ? `Building a ${label} for ${owner.id === p.id ? 'their family' : owner.name + "'s family"}.` : `Building the ${label}.`;
+          // (a thorn hedge is laid round from its gate: the work goes on where it has got to)
+          if (b.kind === 'hedge' && b.ring?.length) {
+            const at = b.ring[Math.min(b.ring.length - 1, Math.floor((b.work / specOf(b).work) * b.ring.length))];
+            return newTask(s, 'build', at, (at % N) + 0.5, Math.floor(at / N) + 0.5, b.id, true);
+          }
           // (a weir is built from the bank, wading out to drive in the stakes)
           const bank = b.kind === 'weir' ? weirBank(s, b.tile) : -1;
           if (bank >= 0) {
@@ -4061,7 +4066,8 @@ export function runTask(s: Sim, p: Person) {
         t.timer = 70;
       }
       p.act = ACT.Build;
-      face(p, b.x + 0.5, b.z + 0.5);
+      if (b.kind === 'hedge') face(p, t.gx, t.gz);
+      else face(p, b.x + 0.5, b.z + 0.5);
       b.work += (1 + p.skills[SK.build] * 0.06) * (s.age(p) >= 58 ? 0.7 : 1);
       if (!b.builders.includes(p.id)) b.builders.push(p.id);
       if (s.tick % 10 === 0) s.buildingsVersion++;

@@ -503,6 +503,21 @@ export const SWEAT_BELONG = 8;
 /** How much more someone wants to sweat while the stones are hot (or being heated) than to heat them themselves. */
 export const SWEAT_CALL = 0.75;
 /**
+ * The thorn hedge round a camp. It is laid HEDGE_PAST beyond the band's furthest building (and never nearer the fire
+ * than HEDGE_LEAST or further than HEDGE_MOST), with a gap wherever a path worn plain to see runs out through it.
+ * Wolves keep HEDGE_WOLF further from a hedged camp; nothing out there falls on anyone within HEDGE_SAFE of the
+ * hedge's ring; inside it nobody is uneasy in the dark, away from the fire; and the foxes are kept off the snares
+ * within HEDGE_FOX of the fire.
+ */
+export const HEDGE_PAST = 2;
+export const HEDGE_LEAST = 6;
+export const HEDGE_MOST = 9;
+export const HEDGE_WOLF = 6;
+export const HEDGE_SAFE = 4;
+export const HEDGE_FOX = 16;
+/** A path worn this plain (of 255) through the line of the hedge is left open as a gap. */
+export const HEDGE_GAP = 110;
+/**
  * The longhouse: a long hall of posts and wattle under one thatched roof, a fire down the middle of it and a high
  * seat at its head for the band's leader. On the night of the midwinter feast the band feasts in it, and on evenings
  * colder than HALL_COLD the stories are told in it rather than out at the open fire. The first in kindles its fire
@@ -1112,7 +1127,7 @@ export interface Person {
   beliefs?: string[];
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe', 'frame', 'sweat', 'longhouse'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe', 'frame', 'sweat', 'longhouse', 'hedge'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -1182,6 +1197,9 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   // a longhouse: a long hall framed in posts, its walls of wattle, a thatched gable roof over it with a smoke hole at
   // each end, a long hearth down the middle and a high seat at the head of it between two carved posts
   longhouse: spec({ wood: 30, fiber: 14, cordage: 6, work: 320, label: 'Longhouse' }),
+  // a thorn hedge: blackthorn and bramble cut out on the land and laid in a ring round the camp between stakes driven
+  // in a pace apart, the thorns turned outward, with a gap left where each path runs out (the wood is the brush)
+  hedge: spec({ wood: 24, cordage: 2, work: 200, label: 'Thorn hedge' }),
 };
 /** The buildings a band raises for its own sake, in its spare hours over years, and never as a job of work. */
 export const MONUMENTS: readonly BuildKind[] = ['barrow', 'stones'];
@@ -1267,6 +1285,9 @@ export interface Building {
   lit?: number;
   /** a dugout canoe: who has it out on the water (absent: drawn up on the bank) */
   out?: number;
+  /** a thorn hedge: the tiles it runs over, round from its gate, and how far it stands from the fire */
+  ring?: number[];
+  reach?: number;
   work: number; // done
   built: boolean;
   owner: number; // person id of the household head
