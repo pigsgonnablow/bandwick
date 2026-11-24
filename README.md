@@ -384,6 +384,16 @@ anyone within 4 tiles of the hedge after dark, nobody inside it is uneasy in the
 are kept off the snares within 16 tiles of it, as a camp's dogs keep them off. A band that moves on leaves its hedge
 behind. The hedge's card gives its length and how far it stands from the fire.
 
+**Fords and footbridges.** Rivers and a lake's edge are shallow enough to wade, but it is slow going, and below
+10°C each step in the water chills (the colder, the more). A band keeps count of the steps waded at each ford within
+16 tiles of its fire (by those crossing, not those wading in to fish or swim). A woodcutter with an axe who can build
+(woodcutting 13, building 9), wading the ford again, may think of laying logs across it, and from then on the band
+bridges the ford it has waded most once it has been waded 60 times: where the river is no more than 3 tiles across
+straight over and the banks are about level, two trunks are laid side by side from bank to bank on posts in the river
+bed (14 wood, 3 cordage), worked from the near bank. Once it is finished the ford is crossed dry-shod and at a walk.
+A band lays up to three, never two at the same ford. The bridge's card gives its span.
+`npx tsx tools/bridgesave.ts` and `node tools/bridgeshots.mjs` photograph one.
+
 **Bad food.** Meat, fish and eggs eaten raw can turn the stomach: about 1 meal in 100, two and a half times that in
 the warm months, and roasted or stewed hardly ever. A stew left in the pot overnight in the warm can turn too.
 Either way it is a couple of days' sickness, nursed with herbs like a fever.

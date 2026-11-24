@@ -518,6 +518,22 @@ export const HEDGE_FOX = 16;
 /** A path worn this plain (of 255) through the line of the hedge is left open as a gap. */
 export const HEDGE_GAP = 110;
 /**
+ * Fords and footbridges. Wading a river or a lake's edge is slow going, and in the cold it chills: each step into
+ * the water below WADE_COLD takes up to WADE_CHILL off someone's warmth (the colder the water, the more). A band
+ * keeps count of the steps waded at each ford near camp, and once one has been waded BRIDGE_USE times it bridges it,
+ * where the river there is no wider than BRIDGE_SPAN tiles and the banks either side are about level. It keeps up to
+ * BRIDGES of them. A bridge is crossed dry-shod, at a walk.
+ */
+export const WADE_COLD = 10;
+export const WADE_CHILL = 2.5;
+export const BRIDGE_USE = 60;
+export const BRIDGE_SPAN = 3;
+export const BRIDGES = 3;
+/** Fords this close to a bridge (in steps) are the same ford: not bridged again. */
+export const BRIDGE_APART = 4;
+/** How far from the fire the band counts the steps waded at its fords. */
+export const FORD_NEAR = 16;
+/**
  * The longhouse: a long hall of posts and wattle under one thatched roof, a fire down the middle of it and a high
  * seat at its head for the band's leader. On the night of the midwinter feast the band feasts in it, and on evenings
  * colder than HALL_COLD the stories are told in it rather than out at the open fire. The first in kindles its fire
@@ -1127,7 +1143,7 @@ export interface Person {
   beliefs?: string[];
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe', 'frame', 'sweat', 'longhouse', 'hedge'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe', 'frame', 'sweat', 'longhouse', 'hedge', 'bridge'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -1200,6 +1216,9 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   // a thorn hedge: blackthorn and bramble cut out on the land and laid in a ring round the camp between stakes driven
   // in a pace apart, the thorns turned outward, with a gap left where each path runs out (the wood is the brush)
   hedge: spec({ wood: 24, cordage: 2, work: 200, label: 'Thorn hedge' }),
+  // a log footbridge: two straight trunks felled and trimmed, laid side by side from bank to bank over the ford on posts
+  // driven into the river bed, flattened along the top with the axe and lashed together, a pole rail along one side
+  bridge: spec({ wood: 14, cordage: 3, work: 90, label: 'Footbridge' }),
 };
 /** The buildings a band raises for its own sake, in its spare hours over years, and never as a job of work. */
 export const MONUMENTS: readonly BuildKind[] = ['barrow', 'stones'];
@@ -1288,6 +1307,9 @@ export interface Building {
   /** a thorn hedge: the tiles it runs over, round from its gate, and how far it stands from the fire */
   ring?: number[];
   reach?: number;
+  /** a footbridge: the river tiles it spans, bank to bank, and the walking level of its deck */
+  span?: number[];
+  deck?: number;
   work: number; // done
   built: boolean;
   owner: number; // person id of the household head

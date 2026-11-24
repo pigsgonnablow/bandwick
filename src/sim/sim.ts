@@ -16,7 +16,7 @@ import {
   LOOMED, HIDEWORK, FRAME_FINE, FRAME_SPEED, KILNED, POTTED, JAR_HOLDS, JAR_KEEP, JARRED, JARS_MAX, LAMP_FAT, FAT_KEPT, SINEW_KEPT, SINEW_SEWN, THREAD_TRY, THREAD_KEPT, FIBER_PER_THREAD, BLANKET_REST,
   STEWED, POT_AT, BOIL_AT, BOIL_GAIN, BOIL_TICKS, OVENED, OVEN_GAIN, OVEN_GLUT, OVEN_TO, OVEN_TICKS, OVEN_WOOD, GRIDDLE_GAIN, COOK_GAIN, STEW_BERRIES, STEW_GAIN, STEW_MASTER, STEW_GREENS, STEW_MEALS, STEW_TICKS, Stew, BROTH_FILL, BROTH_KEEP, BROTH_EACH, BREW_HERBS, BREW_COLD, BREW_KEEP, BREW_HEAL, HERBS_BREW,
   ACCIDENT_YEARLY, Hurt, HURT_WORDS, WOUND_DAYS, WOUND_RISK,
-  SWEAT_DAYS, SWEAT_WARD, SWEAT_HOLDS, SWEAT_BREAK, HALL_COLD, HALL_SPLIT, HEDGE_PAST, HEDGE_LEAST, HEDGE_MOST, HEDGE_WOLF, HEDGE_SAFE, HEDGE_GAP,
+  SWEAT_DAYS, SWEAT_WARD, SWEAT_HOLDS, SWEAT_BREAK, HALL_COLD, HALL_SPLIT, HEDGE_PAST, HEDGE_LEAST, HEDGE_MOST, HEDGE_WOLF, HEDGE_SAFE, HEDGE_GAP, BRIDGE_USE, BRIDGE_SPAN, BRIDGES, BRIDGE_APART, FORD_NEAR,
   RUN_FISH, WEIR_PASS, WEIR_HOLDS, CROP, CROP_NAMES, newPlot, GROW_DAYS, PLOT_YIELD, SEED_PER_PLOT, GREENS_PER_DAY, GREENS_LOAD, LEAN_GARDEN, PLENTY_GARDEN, SOIL_REST, SOIL_FALLOW,
 } from './band';
 import {
@@ -327,6 +327,8 @@ export interface Camp {
   seed?: number;
   /** the beasts this band (or the band it came from) has brought down: its first of each is remembered */
   hunted?: ('deer' | 'boar')[];
+  /** the steps waded at each ford near camp, by tile (absent: none yet), for bridging the busiest */
+  fords?: Record<number, number>;
   plan: string[];
 }
 
@@ -760,6 +762,7 @@ export class Sim {
     }
     this.byId = new Map(this.people.map((p) => [p.id, p]));
     this.buildings = d.buildings as Building[];
+    this.layBridges();
     for (const b of this.buildings) { b.band ??= this.camp.id; b.fiber ??= 0; b.cordage ??= 0; b.mud ??= 0; b.stone ??= 0; }
     // saves from before discovery: a band knows what it already knew (everything but drying and stonework
     // was known to all then), and everything it has built or begun
@@ -1497,6 +1500,9 @@ export class Sim {
     if (p.warmth < (woodRun ? 5 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel' && k !== 'sweat' && !this.inHall(p) && !delivering(p)) return true;
     // the fire keeper wakes in the night when the fire will not last till morning
     if (k === 'sleep' && isDark(this.tick) && this.fireShort() && !this.fuelOnHand(this.camp) && this.fireKeeper() === p) return true;
+    // and nobody sits on in the sweat lodge while the fire dies: the eldest grown-up in there comes out to feed it
+    if (k === 'sweat' && isDark(this.tick) && this.hearth().fuel < 3 && this.camp.stock.wood >= 1 && !this.fuelOnHand(this.camp) && this.age(p) >= 16
+      && !this.people.some((q) => q !== p && q.alive && q.band === p.band && q.task?.kind === 'sweat' && this.age(q) >= 16 && q.birth < p.birth)) return true;
     // worn out on the way home with a load: the bed is at camp, where they're going anyway
     // (and with the wood for the fire in their arms, they put it on before they lie down)
     if (p.rest < 8 && k !== 'sleep' && k !== 'fuel' && !delivering(p) && !graveDug) return true;
@@ -2490,6 +2496,64 @@ export class Sim {
       if (kept[j]) ring.push(line[j]);
     }
     return { ring, reach };
+  }
+  /** The footbridge whose deck runs over a tile (built or not), if any. */
+  bridgeOn(i: number) {
+    return this.buildings.find((b) => b.kind === 'bridge' && b.span?.includes(i));
+  }
+  /** Lay the decks of the finished footbridges into the ground everyone walks on: dry going at the banks' level. */
+  layBridges() {
+    let any = false;
+    for (const b of this.buildings) {
+      if (b.kind !== 'bridge' || !b.built || !b.span) continue;
+      for (const i of b.span) {
+        this.grid.cost[i] = 10;
+        this.grid.walkLevel[i] = b.deck ?? this.grid.walkLevel[i];
+      }
+      any = true;
+    }
+    if (any) this.grid.invalidate();
+  }
+  /** Someone has waded a step into tile i: counted against the ford for a band near it (if they are crossing it). */
+  waded(p: Person, i: number) {
+    const c = this.campById(p.band);
+    if (!c || c.gone || this.world.water[i] === WATER.None) return;
+    // (not those wading out to fish or to swim, or to the weir or the canoe: they are going into the water, not over it)
+    const k = p.task?.kind;
+    if (k === 'fish' || k === 'swim' || k === 'weir' || k === 'canoe') return;
+    if (hyp((i % this.N) + 0.5 - c.x, Math.floor(i / this.N) + 0.5 - c.z) > FORD_NEAR) return;
+    const f = (c.fords ??= {});
+    f[i] = (f[i] ?? 0) + 1;
+  }
+  /**
+   * Where a band would lay a footbridge: over its most waded ford that can be bridged, the river there no wider than
+   * BRIDGE_SPAN, dry level banks either side and nothing in the way. The span of river tiles, the banks, and the deck.
+   */
+  bridgeSite(c = this.camp): { span: number[]; a: number; b: number; deck: number; rot: number } | null {
+    const N = this.N, w = this.world;
+    const fords = Object.entries(c.fords ?? {}).map(([k, n]) => [Number(k), n] as [number, number]).filter(([, n]) => n >= BRIDGE_USE).sort((x, y) => y[1] - x[1] || x[0] - y[0]);
+    const land = (i: number) => i >= 0 && i < N * N && w.water[i] === WATER.None && this.grid.walkable(i);
+    const bridged = this.buildings.filter((b) => b.kind === 'bridge').flatMap((b) => b.span ?? []);
+    for (const [t] of fords) {
+      // (a river ford, and not the same ford over again beside a bridge already there)
+      if (w.water[t] !== WATER.River || bridged.some((i) => Math.abs((i % N) - (t % N)) + Math.abs(Math.floor(i / N) - Math.floor(t / N)) <= BRIDGE_APART)) continue;
+      let best: { span: number[]; a: number; b: number; deck: number; rot: number } | null = null;
+      for (const [rot, step] of [[0, 1], [1, N]] as const) {
+        // out along the line each way to the bank
+        const span = [t];
+        let a = t - step, b = t + step;
+        while (span.length <= BRIDGE_SPAN && a >= 0 && w.water[a] !== WATER.None) { span.unshift(a); a -= step; }
+        while (span.length <= BRIDGE_SPAN && b < N * N && w.water[b] !== WATER.None) { span.push(b); b += step; }
+        if (span.length > BRIDGE_SPAN || !land(a) || !land(b)) continue;
+        // (along a row it must not wrap round the edge of the map)
+        if (rot === 0 && Math.floor(a / N) !== Math.floor(b / N)) continue;
+        if (Math.abs(w.level[a] - w.level[b]) > 1) continue;
+        if ([a, ...span].some((i) => this.buildings.some((o) => o.tile === i || o.span?.includes(i)))) continue;
+        if (!best || span.length < best.span.length) best = { span, a, b, deck: Math.max(w.level[a], w.level[b]), rot };
+      }
+      if (best) return best;
+    }
+    return null;
   }
   /** The band's built sweat lodge, if it has one. */
   sweatOf(c = this.camp) {
@@ -4615,6 +4679,19 @@ export class Sim {
         c.plan.push('Lay a thorn hedge round the camp');
       }
     }
+    // a footbridge over the ford the band wades most, once someone has thought of one (a few of them, in time)
+    if (this.knows('bridge', c) && !this.bandBuildings(c).some((b) => b.kind === 'bridge' && !b.built) && this.bandBuildings(c).filter((b) => b.kind === 'bridge').length < BRIDGES) {
+      const site = this.bridgeSite(c);
+      if (site) {
+        const b = this.newBuilding('bridge', site.a, -1);
+        b.span = site.span;
+        b.deck = site.deck;
+        b.rot = site.rot;
+        // (the whole ford is bridged: the count starts again at any other crossing of it)
+        for (const k of Object.keys(c.fords!).map(Number)) if (site.span.some((i) => Math.abs((i % this.N) - (k % this.N)) + Math.abs(Math.floor(i / this.N) - Math.floor(k / this.N)) <= BRIDGE_APART)) delete c.fords![k];
+        c.plan.push('Lay a footbridge over the ford');
+      }
+    }
     // a loom shed, once someone has thought of the loom
     if (this.knows('loom', c) && !this.bandBuildings(c).some((b) => b.kind === 'loom')) {
       const tile = this.siteFor('loom', null);
@@ -5588,6 +5665,8 @@ export class Sim {
       fuel: b.fuel, owner: b.owner, bedding: (b.bedding ?? 0) > 0,
       // a thorn hedge: the tiles it runs over, and the fire it rings
       ...(b.kind === 'hedge' ? { ring: b.ring ?? [], cx: Math.floor(this.campById(b.band)?.x ?? b.x) + 0.5, cz: Math.floor(this.campById(b.band)?.z ?? b.z) + 0.5 } : {}),
+      // a footbridge: the river tiles its deck runs over
+      ...(b.kind === 'bridge' ? { span: b.span ?? [] } : {}),
       // a garden plot's look: bare, sown, in leaf or green, ripe, or stubble after the reaping
       ...(b.kind === 'plot' ? { look: this.plotLook(b) } : {}),
       // a weir's basket with fish in it
@@ -6075,6 +6154,10 @@ export class Sim {
         const owner = this.campById(b.band) ?? this.camp;
         lines.push(L('Length', `${b.ring?.length ?? 0} paces, ${Math.round(b.reach ?? 0)} from the fire`));
         if (b.built) notes.push(`Blackthorn and bramble laid between stakes in a ring round ${owner.name}, the thorns turned outward, with gaps where the paths run out. Wolves keep further from the camp, nothing out on the land falls on anyone near it after dark, nobody inside is uneasy in the dark away from the fire, and the foxes are kept off the snares close by.`);
+      }
+      if (b.kind === 'bridge') {
+        lines.push(L('Span', `${b.span?.length ?? 0} ${b.span?.length === 1 ? 'pace' : 'paces'} of water, bank to bank`));
+        if (b.built) notes.push('Two trunks laid side by side from bank to bank on posts driven into the river bed, flattened along the top and lashed together. Anyone crosses it dry-shod and at a walk, where the ford was slow going and, in the cold, chilling.');
       }
       if (b.kind === 'sweat' && b.built) {
         const owner = this.campById(b.band) ?? this.camp;

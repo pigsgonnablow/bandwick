@@ -59,6 +59,7 @@ export type Practice =
   | 'laid' // one of the band's dead laid in the burial ground by camp (each adult there to see it)
   | 'raise' // a spell of work on a monument
   | 'stew' // a stew cooked for the band in the pot at the fire (each cook)
+  | 'wade' // a step waded through a river or a lake's edge (twice over in the cold)
 
 /**
  * What someone has to be before they can have an idea. Only skill levels for now; a new kind of
@@ -600,6 +601,14 @@ export const DISCOVERIES: Discovery[] = [
     taught: 'ring the camp with a hedge of cut thorns', memory: 'Laid the first thorn hedge round the camp.',
   },
   {
+    // (a woodcutter with an axe, who can build, wading the ford by camp again with a load on their back, the water
+    // cold round their legs, thinks of the trunk that fell across a stream in the woods: two of them, side by side)
+    key: 'bridge', label: 'Log footbridges', needs: ['axe'], requires: [skill(SK.wood, 13), skill(SK.build, 9)],
+    practice: { wade: 1 }, odds: 300,
+    found: 'felled two straight trunks by the ford, laid them side by side from bank to bank on posts driven into the river bed and lashed them together, and walked across dry-shod: the band\'s first footbridge',
+    taught: 'bridge a ford with logs', memory: 'Laid the first footbridge over the ford.',
+  },
+  {
     key: 'daub', label: 'Wattle-and-daub', needs: ['huts'], requires: [skill(SK.build, 13), skill(SK.weave, 8)], near: 'mud',
     practice: { thatch: 1, build: 1 }, odds: 40,
     found: 'worked out how to weave walls of reeds and plaster them with mud',
@@ -634,7 +643,7 @@ export const DISCOVERY = new Map(DISCOVERIES.map((d) => [d.key, d]));
 /** What a band has to know to build something. */
 export function knowHowFor(b: { kind: BuildKind; walls?: Walls }): string[] {
   const out: string[] = [];
-  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir', clamp: 'charcoal', canoe: 'canoe', frame: 'hideframe', sweat: 'sweat', longhouse: 'longhouse', hedge: 'hedge' } as Partial<Record<BuildKind, string>>)[b.kind];
+  const k = ({ hut: 'huts', storehouse: 'storehouse', rack: 'preserving', windbreak: 'windbreak', woodshed: 'woodshed', plot: 'garden', fence: 'fences', pit: 'pits', kiln: 'kiln', loom: 'loom', pen: 'pigs', barrow: 'barrow', stones: 'stones', weir: 'weir', clamp: 'charcoal', canoe: 'canoe', frame: 'hideframe', sweat: 'sweat', longhouse: 'longhouse', hedge: 'hedge', bridge: 'bridge' } as Partial<Record<BuildKind, string>>)[b.kind];
   if (k) out.push(k);
   if (b.walls === 'daub') out.push('daub');
   if (b.walls === 'stone') out.push('stonework');
