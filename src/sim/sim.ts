@@ -16,7 +16,7 @@ import {
   LOOMED, HIDEWORK, FRAME_FINE, FRAME_SPEED, KILNED, POTTED, JAR_HOLDS, JAR_KEEP, JARRED, JARS_MAX, LAMP_FAT, FAT_KEPT, SINEW_KEPT, SINEW_SEWN, THREAD_TRY, THREAD_KEPT, FIBER_PER_THREAD, BLANKET_REST,
   STEWED, POT_AT, BOIL_AT, BOIL_GAIN, BOIL_TICKS, OVENED, OVEN_GAIN, OVEN_GLUT, OVEN_TO, OVEN_TICKS, OVEN_WOOD, GRIDDLE_GAIN, COOK_GAIN, STEW_BERRIES, STEW_GAIN, STEW_MASTER, STEW_GREENS, STEW_MEALS, STEW_TICKS, Stew, BROTH_FILL, BROTH_KEEP, BROTH_EACH, BREW_HERBS, BREW_COLD, BREW_KEEP, BREW_HEAL, HERBS_BREW,
   ACCIDENT_YEARLY, Hurt, HURT_WORDS, WOUND_DAYS, WOUND_RISK,
-  SWEAT_DAYS, SWEAT_WARD, SWEAT_HOLDS, SWEAT_BREAK,
+  SWEAT_DAYS, SWEAT_WARD, SWEAT_HOLDS, SWEAT_BREAK, HALL_COLD, HALL_SPLIT,
   RUN_FISH, WEIR_PASS, WEIR_HOLDS, CROP, CROP_NAMES, newPlot, GROW_DAYS, PLOT_YIELD, SEED_PER_PLOT, GREENS_PER_DAY, GREENS_LOAD, LEAN_GARDEN, PLENTY_GARDEN, SOIL_REST, SOIL_FALLOW,
 } from './band';
 import {
@@ -27,7 +27,7 @@ import { decide, runTask, abandon, sendHome, delivering, foodInHand, afloat, FAR
 import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard, deadfallNight, DEADFALL_RANGE } from './beasts';
 import { updatePigs, pigsDaily, packPigs, pigCard, penOf, pigsOf, pigsWanted, pigToKill, pigFeed, pigMeat, grown, PIG_ID } from './pigs';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets, ELITE } from './know';
-import { Rule, WOMAN_LEADS, ruleDaily, ruledIdeas, builderBand, rulerOf, ruleSummary, BUILDER_SPLIT, BUILDER_WALLS, BUILDER_RAISE } from './rule';
+import { Rule, WOMAN_LEADS, ruleDaily, ruledIdeas, builderBand, rulerOf, ruleSummary, BUILDER_SPLIT, BUILDER_WALLS, BUILDER_RAISE, seatHolder } from './rule';
 import { Lore, Custom, Omen, Sky, SignKind, omenDaily, omenHourly, omenOutcome, deathSign, noPairing, midwinterOffering, carryCustoms, loreSummary, beliefsOf, skyNow, OMEN_KINDS } from './omen';
 import { RunMap, mapRuns, runsTick, runOn, runExtra, runNear, weirSite, weirRot } from './runs';
 import { canoeSite, canoeRot, freeCanoe, openStock, canoeTarget } from './canoe';
@@ -1494,7 +1494,7 @@ export class Sim {
     const woodRun = (k === 'fell' || k === 'haul' || k === 'deadwood') && this.hearth().fuel < 2;
     // (feeding the fire is how they get warm: nobody turns away from it to go and sit by it cold)
     // (someone carrying goods home is already on the way to the fire: dropping the load would not get them there sooner)
-    if (p.warmth < (woodRun ? 5 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel' && k !== 'sweat' && !delivering(p)) return true;
+    if (p.warmth < (woodRun ? 5 : 18) && k !== 'warm' && k !== 'sleep' && k !== 'fuel' && k !== 'sweat' && !this.inHall(p) && !delivering(p)) return true;
     // the fire keeper wakes in the night when the fire will not last till morning
     if (k === 'sleep' && isDark(this.tick) && this.fireShort() && !this.fuelOnHand(this.camp) && this.fireKeeper() === p) return true;
     // worn out on the way home with a load: the bed is at camp, where they're going anyway
@@ -2192,7 +2192,7 @@ export class Sim {
     const spare = foodTotal(c.stock) - ms.length * FEAST_MEAL;
     if (!c.rationing && spare >= ms.length * 6) {
       c.feastDay = dayOf(this.tick);
-      this.event('feast', `The people of ${c.name} held a feast by the fire on the longest night.`, [], c.x, c.z, 3);
+      this.event('feast', `The people of ${c.name} held a feast ${this.hallOf(c) ? 'in their longhouse' : 'by the fire'} on the longest night.`, [], c.x, c.z, 3);
     } else this.event('feast_none', `There was no feast at ${c.name} on the longest night: the stores were too thin.`, [], c.x, c.z, 2);
   }
 
@@ -2453,6 +2453,23 @@ export class Sim {
   /** Whether someone sat in the sweat lodge lately enough that a fever is slower to take hold of them. */
   sweatWarded(p: Person) {
     return p.sweat !== undefined && this.tick - p.sweat < SWEAT_DAYS * TICKS_PER_DAY;
+  }
+  /** The band's built longhouse, if it has one. */
+  hallOf(c = this.camp) {
+    return this.buildings.find((b) => b.band === c.id && b.kind === 'longhouse' && b.built);
+  }
+  /** Whether the fire down the middle of a longhouse is burning just now. */
+  hallLit(b: Building) {
+    return (b.lit ?? -1) > this.tick;
+  }
+  /** Whether someone is in the band's longhouse, at a feast or a tale (the only things done indoors there). */
+  inHall(p: Person) {
+    const k = p.task?.kind;
+    return p.indoors && (k === 'tell' || k === 'listen' || k === 'feast');
+  }
+  /** Whether it is cold enough this evening that the band's tales are told in its longhouse rather than out at the fire. */
+  hallWeather(c = this.camp) {
+    return temperature(this.tick, this.anomaly, Math.max(0, this.world.level[c.tile] - SEA - 1)) < HALL_COLD;
   }
   /** The band's built loom shed, if it has one. */
   loomOf(c = this.camp) {
@@ -3418,7 +3435,8 @@ export class Sim {
     // (a band that has raised a monument together holds together longer)
     const monuments = this.bandBuildings(c).filter((b) => isMonument(b.kind) && b.built).length;
     const chance = Math.min(0.45, Math.max(0, (ms.length - 16) * 0.035) + tension * 1.6 + (this.treesNear(c, 10) < 25 ? 0.04 : 0) + (trouble ? 0.12 : 0)) * MONUMENT_SPLIT ** monuments;
-    if (!r.chance(chance)) return false;
+    // (and a band that sits down together under one roof holds together longer too)
+    if (!r.chance(chance * (this.hallOf(c) ? HALL_SPLIT : 1))) return false;
     // whoever is most restless (or most at odds with the rest) leads the way
     let leader: Person | null = null, best = -1e9;
     for (const p of adults) {
@@ -4526,6 +4544,15 @@ export class Sim {
         c.plan.push('Build a sweat lodge, and cover it with hides');
       }
     }
+    // a longhouse for the whole band to gather in, once someone has thought of one and the households have their homes
+    if (this.knows('longhouse', c) && !this.bandBuildings(c).some((b) => b.kind === 'longhouse') && underway.size === 0) {
+      const tile = this.siteFor('longhouse', null);
+      if (tile >= 0) {
+        this.clearTile(tile);
+        this.newBuilding('longhouse', tile, -1);
+        c.plan.push('Raise a longhouse for the band to gather in');
+      }
+    }
     // a loom shed, once someone has thought of the loom
     if (this.knows('loom', c) && !this.bandBuildings(c).some((b) => b.kind === 'loom')) {
       const tile = this.siteFor('loom', null);
@@ -4917,12 +4944,14 @@ export class Sim {
         // (a charcoal clamp goes by the kiln it feeds, a little way off for the smoke)
         const kiln = kind === 'clamp' ? this.kilnOf() : undefined;
         const d = byGraves ? hyp(x - (this.camp.graveyard % N), z - Math.floor(this.camp.graveyard / N)) : kiln ? hyp(x - kiln.x, z - kiln.z) : hyp(dx, dz);
-        const want = byGraves ? 1.6 : kiln ? 2.2 : kind === 'clamp' ? 4.5 : kind === 'oven' ? 2.4 : kind === 'barrow' ? 7.5 : kind === 'stones' ? 8 : kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'loom' ? 3.6 : kind === 'sweat' ? 4.2 : kind === 'frame' ? 3.3 : kind === 'pen' ? 4.8 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
+        const want = byGraves ? 1.6 : kiln ? 2.2 : kind === 'clamp' ? 4.5 : kind === 'oven' ? 2.4 : kind === 'barrow' ? 7.5 : kind === 'stones' ? 8 : kind === 'stockpile' ? 1.8 : kind === 'pit' ? 2.6 : kind === 'kiln' ? 3.2 : kind === 'loom' ? 3.6 : kind === 'sweat' ? 4.2 : kind === 'longhouse' ? 3.4 : kind === 'frame' ? 3.3 : kind === 'pen' ? 4.8 : kind === 'storehouse' ? 2.2 : kind === 'rack' ? 3 : kind === 'leanto' ? 3.5 : 4;
         let sc = -Math.abs(d - want) * 1.6;
         if (w.level[i] !== w.level[this.camp.tile]) sc -= 2.5;
         sc -= this.treesOnTile[i] * 1.2;
         // (a monument stands wider than its tile: open, level ground round it, not a wood to clear or a bank's edge)
         if (isMonument(kind)) for (let ez = -1; ez <= 1; ez++) for (let ex = -1; ex <= 1; ex++) sc -= this.treesOnTile[i + ez * N + ex] * 0.6 + (w.water[i + ez * N + ex] !== WATER.None ? 3 : 0) + (w.level[i + ez * N + ex] !== w.level[i] ? 2 : 0);
+        // (and a longhouse runs the length of its tile: level ground to either side of it, not a bank's edge)
+        if (kind === 'longhouse') for (const o of [-1, 1, -N, N]) sc -= (w.level[i + o] !== w.level[i] ? 3 : 0) + (w.water[i + o] !== WATER.None ? 3 : 0);
         for (const kh of kinHomes) sc -= hyp(kh.x - x, kh.z - z) * 0.25;
         sc += (hash3(i, w.params.seed, 99) % 100) * 0.012;
         if (sc > bestS) { bestS = sc; best = i; }
@@ -5503,6 +5532,8 @@ export class Sim {
       ...(b.kind === 'canoe' && b.built && b.out !== undefined ? { look: 'canoeOut' } : {}),
       // a sweat lodge with its stones hot and people inside: the door flap down, steam leaking out
       ...(b.kind === 'sweat' && b.built && this.lodgeHot(b) ? { look: 'sweatHot' } : {}),
+      // a longhouse with its fire lit and the band inside: the door hide tied back, smoke from the roof
+      ...(b.kind === 'longhouse' && b.built && this.hallLit(b) ? { look: 'longhouseLit' } : {}),
       // a charcoal clamp stacked and covered, smouldering
       ...(b.kind === 'clamp' && b.built && b.burnUntil !== undefined ? { look: 'clampLit' } : {}),
       ...(b.kind === 'oven' ? this.ovenLook(b) : {}),
@@ -5983,6 +6014,18 @@ export class Sim {
         const ms = this.members(owner).filter((p) => this.age(p) >= 12);
         lines.push(L('Sweated lately', `${ms.filter((p) => this.sweatWarded(p)).length} of ${ms.length}`));
         notes.push(`A low dome of bent withies covered in hides. On cold evenings stones heated in the fire are carried into the pit inside, and up to ${SWEAT_HOLDS} sit round them in the dark while water is poured over. They come out warmed through; for ${SWEAT_DAYS} days after, a fever takes hold ${Math.round((1 - SWEAT_WARD) * 100)}% less often, and a fever sweated out breaks ${SWEAT_BREAK} days sooner. In the dark of the lodge, people tell what they believe the signs foretell.`);
+      }
+      if (b.kind === 'longhouse' && b.built) {
+        const owner = this.campById(b.band) ?? this.camp;
+        const inside = this.people.filter((p) => p.alive && p.band === b.band && this.inHall(p));
+        const seat = seatHolder(this, owner);
+        lines.push(L('High seat', seat ? `${seat.name}${seat.id === owner.rule?.ruler ? ', who rules the band' : ', who led the band here'}` : 'Empty', seat ? pref(seat.id) : undefined));
+        lines.push(L('Hall fire', this.hallLit(b) ? (inside.length ? `Burning, ${inside.length} inside` : 'Burning low') : 'Cold'));
+        for (const p of inside.slice(0, 8)) lines.push(L('Inside', p.name, pref(p.id)));
+        if (inside.length > 8) lines.push(L('', `and ${inside.length - 8} more`));
+        const t = owner.ledger?.total;
+        lines.push(L('Gathered', `${t?.['hall.feast'] ? `${Math.round(t['hall.feast'])} feasted, ` : ''}${Math.round(t?.['hall.tale'] ?? 0)} heard a tale`));
+        notes.push(`A long hall framed in posts under one thatched roof, a fire down the middle and a high seat at its head for the band's leader. The band feasts in it on the longest night, and on evenings colder than ${HALL_COLD}° the tales are told in it rather than out at the fire. Inside, the cold is kept off; those who hear a tale under its roof feel the more a part of the band, those who feast in it more still, and everyone thinks the better of whoever sits in the high seat.`);
       }
       if (b.kind === 'loom' && b.built) {
         const at = this.people.filter((p) => p.alive && p.band === b.band && p.task?.kind === 'craft' && p.task.amount > 0 && LOOMED.includes(RECIPE_KEYS[p.task.ref]));

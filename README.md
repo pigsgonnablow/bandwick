@@ -356,6 +356,23 @@ keeping its day of rest) shelter in the lodge; and a band with a lodge hardens i
 The lodge's card says who is inside, whether the stones are hot, and how many have sweated lately; steam curls
 from the top while they are. `npx tsx tools/sweatsave.ts` and `node tools/sweatshots.mjs` photograph it.
 
+**Longhouse.** A band with huts and a storehouse may come to want one roof over all of it. A master builder who can
+fell trees (building 15, woodcutting 12), framing the band's huts in poles or sitting out at the crowded fire of an
+evening, may think of a hall as long as four huts, and once every household has its home the band raises one a
+little way from the fire (30 wood, 14 fiber, 6 cordage, and a long job of work): posts and wattle under a thatched
+gable roof, a smoke hole at each end, carved door posts banded in ochre, a stag's skull on the gable. On the longest
+night the band feasts in it rather than out at the fire, and on evenings colder than 8° the tales are told in it,
+the word going round the huts so that those gone indoors come out to listen. The first in lights the fire down the
+middle (three loads of wood), fed a load at a time while anyone is in. Inside, the cold is kept off; those who hear
+a tale under its roof feel the more a part of the band, and those who feast in it more still. At its head is a high
+seat for the band's leader: its ruler, or else whoever led the band to its camp. Everyone who feasts in the hall with
+them thinks the better of them (half that for a tale), and a ruler who feasts the band from the high seat eases its
+chafing under them by almost a third. Someone looked up to in a band with a longhouse is half again as likely to
+take hold of it, and a band that sits down together under one roof is less likely to split. With no wood to light
+it the feast goes out to the open fire after all. While its fire burns the door hide is tied back, the doorway glows
+at night and smoke rises from the roof. The hall's card names who holds the high seat and who is inside.
+`npx tsx tools/longhousesave.ts` and `node tools/longhouseshots.mjs` photograph it.
+
 **Bad food.** Meat, fish and eggs eaten raw can turn the stomach: about 1 meal in 100, two and a half times that in
 the warm months, and roasted or stewed hardly ever. A stew left in the pot overnight in the warm can turn too.
 Either way it is a couple of days' sickness, nursed with herbs like a fever.

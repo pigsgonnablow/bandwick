@@ -502,6 +502,26 @@ export const SWEAT_BOND = 1.2;
 export const SWEAT_BELONG = 8;
 /** How much more someone wants to sweat while the stones are hot (or being heated) than to heat them themselves. */
 export const SWEAT_CALL = 0.75;
+/**
+ * The longhouse: a long hall of posts and wattle under one thatched roof, a fire down the middle of it and a high
+ * seat at its head for the band's leader. On the night of the midwinter feast the band feasts in it, and on evenings
+ * colder than HALL_COLD the stories are told in it rather than out at the open fire. The first in kindles its fire
+ * with HALL_WOOD from the stores, which burns HALL_LIT ticks and is fed with a load more while it is in use. Inside,
+ * out of the wind and round the fire, the cold is kept off (HALL_WARM a tick); those who hear a tale under its roof
+ * feel the more a part of the band (HALL_BELONG), and those who feast in it more still (HALL_FEAST). Whoever holds
+ * the high seat is thought the better of by everyone who feasts (HALL_REGARD) or hears a tale (half that) with them
+ * in the hall. On cold evenings a tale in the hall draws listeners in from the huts too (HALL_CALL).
+ */
+export const HALL_COLD = 8;
+export const HALL_WOOD = 3;
+export const HALL_LIT = 40;
+export const HALL_WARM = 1.6;
+export const HALL_BELONG = 8;
+export const HALL_FEAST = 12;
+export const HALL_REGARD = 2;
+export const HALL_CALL = 0.35;
+/** How much less likely a band that sits down together under one roof is to split. */
+export const HALL_SPLIT = 0.7;
 /** Herbs the band keeps by once it brews (the hot drinks in winter want more than the fevers). */
 export const HERBS_BREW = 12;
 /**
@@ -1092,7 +1112,7 @@ export interface Person {
   beliefs?: string[];
 }
 
-export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe', 'frame', 'sweat'] as const;
+export const BUILD_KINDS = ['hearth', 'leanto', 'hut', 'storehouse', 'rack', 'stockpile', 'windbreak', 'woodshed', 'plot', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow', 'stones', 'weir', 'clamp', 'oven', 'canoe', 'frame', 'sweat', 'longhouse'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
 /**
  * What goes into a building: wood for the frame, grass and reed fiber for thatch, cordage to lash it
@@ -1159,6 +1179,9 @@ export const BUILD: Record<BuildKind, BuildSpec> = {
   // a sweat lodge: a low dome of bent withies lashed where they cross, covered over with hides (up to SWEAT_HIDES from
   // the stores when it is finished, bark where the band is short of them), a pit for the hot stones inside
   sweat: spec({ wood: 6, cordage: 3, stone: 4, work: 50, label: 'Sweat lodge' }),
+  // a longhouse: a long hall framed in posts, its walls of wattle, a thatched gable roof over it with a smoke hole at
+  // each end, a long hearth down the middle and a high seat at the head of it between two carved posts
+  longhouse: spec({ wood: 30, fiber: 14, cordage: 6, work: 320, label: 'Longhouse' }),
 };
 /** The buildings a band raises for its own sake, in its spare hours over years, and never as a job of work. */
 export const MONUMENTS: readonly BuildKind[] = ['barrow', 'stones'];
@@ -1240,6 +1263,8 @@ export interface Building {
   charge?: number;
   /** a sweat lodge: until when the stones in its pit are hot (absent: cold) */
   hot?: number;
+  /** a longhouse: until when the fire down the middle of it burns (absent: cold) */
+  lit?: number;
   /** a dugout canoe: who has it out on the water (absent: drawn up on the bank) */
   out?: number;
   work: number; // done

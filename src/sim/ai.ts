@@ -4,7 +4,7 @@ import { SHELTER_PULL, sheltering, sparesWhite, shunned, whiteKilled, omenTale, 
 import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE, aDish } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
-import { SEASONED_HEAT, CANOE_SPEED, CANOE_CATCH, CANOE_OPEN, SWEAT_HOLDS, SWEAT_TICKS, SWEAT_HEATING, SWEAT_HOT, SWEAT_WOOD, SWEAT_WARM, SWEAT_HOURS, SWEAT_BREAK, SWEAT_EVERY, SWEAT_HIDES, SWEAT_BOND, SWEAT_BELONG, SWEAT_CALL, HIDEWORK, FRAME_SPEED } from './band';
+import { SEASONED_HEAT, CANOE_SPEED, CANOE_CATCH, CANOE_OPEN, SWEAT_HOLDS, SWEAT_TICKS, SWEAT_HEATING, SWEAT_HOT, SWEAT_WOOD, SWEAT_WARM, SWEAT_HOURS, SWEAT_BREAK, SWEAT_EVERY, SWEAT_HIDES, SWEAT_BOND, SWEAT_BELONG, SWEAT_CALL, HALL_WOOD, HALL_LIT, HALL_WARM, HALL_BELONG, HALL_FEAST, HALL_REGARD, HALL_CALL, HIDEWORK, FRAME_SPEED } from './band';
 import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, LAME_SPEED, LAME_WORK, ONE_EYE_AIM, BAD_HAND_WORK, BAD_HAND_AIM, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, STEW_FROM, STEW_TO, GRIDDLE_GAIN, GRIDDLED, RAW_SICK, RAW_WARM, RAW_WARM_AT, COOKED_SICK, STALE_SICK, GUT_DAYS, RAW_RISKY, OVEN_FROM, OVEN_LOAD, OVEN_BELONG, BOIL_TICKS, STEW_CALL, STEW_TICKS, STEW_BELONG, BREW_WARM, BREW_HOURS, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
   PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, CHARCOAL_CRACK, CLAMP_BURN, CHARCOAL_YIELD, SLEDGE_LOAD, SLEDGE_SNOW, MASTER_FALL, MASTER_WOOD, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
@@ -14,7 +14,7 @@ import { freeCanoe, canoeTarget, openReach } from './canoe';
 import { addPig, gateOf, feedPigs, pigToKill, killPig, pigsHungry, pigsOf, grown } from './pigs';
 import { hourOf, isDark, berriesRipe, freshFrozen, snowLies, seasonOf, dayOf, daylight, yearOf, TICKS_PER_DAY, TICKS_PER_HOUR } from './time';
 import { WATER, DIRS4, treeId } from './types';
-import { ruledDrive, monumentRaised } from './rule';
+import { ruledDrive, monumentRaised, seatHolder, heldFeast } from './rule';
 
 const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b);
 /** A full load of something gathered: more with a hide bag over the shoulder. */
@@ -195,10 +195,10 @@ function storyteller(s: Sim, p: Person) {
   return true;
 }
 /** Who is awake and near enough the fire to gather round a story. */
-function nearFire(s: Sim, p: Person) {
+function nearFire(s: Sim, p: Person, indoorsToo = false) {
   const c = s.camp;
   let n = 0;
-  for (const q of s.people) if (q !== p && q.alive && q.band === p.band && s.age(q) >= 3 && !q.indoors && q.task?.kind !== 'sleep' && hyp(q.x - c.x, q.z - c.z) < 8) n++;
+  for (const q of s.people) if (q !== p && q.alive && q.band === p.band && s.age(q) >= 3 && (indoorsToo || !q.indoors) && q.task?.kind !== 'sleep' && hyp(q.x - c.x, q.z - c.z) < 8) n++;
   return n;
 }
 
@@ -289,6 +289,67 @@ export function lodgeDoor(b: Building) {
   return { x: b.x + 0.5 + Math.sin(a) * 0.36, z: b.z + 0.5 + Math.cos(a) * 0.36 };
 }
 
+/** The band's longhouse, if a gathering can go into it: built, and its fire burning or wood enough to light it. */
+function hallFor(s: Sim, c: Camp) {
+  const b = s.hallOf(c);
+  return b && (s.hallLit(b) || c.stock.wood >= HALL_WOOD) ? b : undefined;
+}
+/** The doorway of a longhouse, in the middle of its long front side (turning with it). */
+export function hallDoor(b: Building) {
+  const a = (b.rot * Math.PI) / 2;
+  return { x: b.x + 0.5 + Math.sin(a) * 0.3, z: b.z + 0.5 + Math.cos(a) * 0.3 };
+}
+/** Into the longhouse, its fire kindled from the stores if it isn't burning (or not, if there is no wood to). */
+function enterHall(s: Sim, p: Person, b: Building) {
+  const c = s.campById(b.band) ?? s.camp;
+  if (!s.hallLit(b)) {
+    if (c.stock.wood < HALL_WOOD) return false;
+    s.takeFirewood(c, HALL_WOOD);
+    s.book('burned', HALL_WOOD, c);
+    b.lit = s.tick + HALL_LIT;
+    s.buildingsVersion++;
+  }
+  p.indoors = true;
+  p.path = null;
+  return true;
+}
+/** Sitting in the longhouse: the fire down the middle kept fed from the stores while anyone is in, and warming them. */
+function inHall(s: Sim, p: Person, b: Building) {
+  const c = s.campById(b.band) ?? s.camp;
+  if (s.hallLit(b) && b.lit! - s.tick < 5 && c.stock.wood >= 1) {
+    s.takeFirewood(c, 1);
+    s.book('burned', 1, c);
+    b.lit = s.tick + HALL_LIT / 2;
+  }
+  if (s.hallLit(b)) p.warmth = clamp(p.warmth + HALL_WARM);
+  // (and someone steps out now and then to bank the camp fire, so it isn't let go out while the band is all inside)
+  const h = s.hearth();
+  if (h.fuel < 3 && c.stock.wood >= 2) {
+    const dry = s.takeFirewood(c, 2);
+    s.book('burned', 2, c);
+    const wasOut = h.fuel <= 0;
+    s.stoke(h, 2, dry);
+    if (wasOut) s.buildingsVersion++;
+  }
+}
+/** The longhouse someone is at a feast or a tale in, if they are in one. */
+function hallOfTask(s: Sim, p: Person) {
+  if (!p.indoors || !p.task) return undefined;
+  const ref = p.task.kind === 'listen' ? s.byId.get(p.task.ref)?.task?.ref : p.task.ref;
+  const b = ref !== undefined && ref >= 0 ? s.building(ref) : undefined;
+  return b?.kind === 'longhouse' ? b : undefined;
+}
+/** Out of the longhouse, and done. */
+function leave(s: Sim, p: Person) {
+  p.indoors = false;
+  finish(s, p);
+}
+/** Whether the one in the high seat is at tonight's feast in the longhouse (or was, and has gone home full). */
+function holderAtFeast(s: Sim, q: Person | null) {
+  if (!q) return false;
+  return (q.task?.kind === 'feast' && !!hallOfTask(s, q)) || q.memories.some((m) => m.kind === 'highseat' && s.tick - m.tick < TICKS_PER_DAY / 2);
+}
+
 export function decide(s: Sim, p: Person) {
   // out on the water in the canoe: nothing else is thought of until it is back on the bank
   if (afloat(p)) {
@@ -341,9 +402,11 @@ export function decide(s: Sim, p: Person) {
   // of an evening, the band's eldest tells the old stories by the fire, and whoever is about gathers round
   // (not when the band is short of wood or food: there is work to be done then, and no heart for stories)
   const evening = hour >= 17 && hour < 21.5 && s.hearthLit() && !s.fireShort() && c.stock.wood >= 8 && !c.rationing && (c.jobs.food ?? 0) < 0.7;
-  if (evening && p.rest > 30 && c.storyNight !== dayOf(s.tick) && busyWith(s, 'tell') === 0 && storyteller(s, p) && nearFire(s, p) >= 2) add('tell', 1.9);
+  // (on a cold evening, in a band with a longhouse, the tale is told in there, and those gone to their huts come out for it)
+  const hallTale = evening && s.hallWeather(c) && !!hallFor(s, c);
+  if (evening && p.rest > 30 && c.storyNight !== dayOf(s.tick) && busyWith(s, 'tell') === 0 && storyteller(s, p) && nearFire(s, p, hallTale) >= 2) add('tell', 1.9);
   const teller = evening ? s.people.find((q) => q !== p && q.alive && q.band === p.band && q.task?.kind === 'tell') : undefined;
-  if (teller && age >= 3 && p.rest > 20 && hyp(p.x - c.x, p.z - c.z) < 12) add('listen', 1.55 + (child ? 0.3 : 0));
+  if (teller && age >= 3 && p.rest > 20 && hyp(p.x - c.x, p.z - c.z) < 12) add('listen', 1.55 + (child ? 0.3 : 0) + (teller.task!.ref >= 0 ? HALL_CALL : 0));
   // the longest night: everyone gathers at the fire for the feast
   if (c.feastDay === dayOf(s.tick) && hour >= 16.5 && hour < 21.5 && age >= 2 && hyp(p.x - c.x, p.z - c.z) < 24 && !p.memories.some((m) => m.kind === 'midwinter' && dayOf(m.tick) === c.feastDay))
     add('feast', 2.3);
@@ -600,12 +663,14 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       return newTask(s, kind, s.tileOf(q), q.x, q.z, q.id, true);
     }
     case 'tell': {
-      const st = seat(s, p, 1.0);
+      // (into the longhouse on a cold evening, where the band has one)
+      const hall = s.hallWeather(c) ? hallFor(s, c) : undefined;
+      const st = hall ? hallDoor(hall) : seat(s, p, 1.0);
       c.storyNight = dayOf(s.tick);
       // a story from the band's own past, if it has one: something that happened in the teller's lifetime
       const told = s.events.filter((e) => e.weight >= 3 && STORY_KINDS.includes(e.kind) && !/ stands\b/.test(e.text) && e.tick > p.birth + 8 * TICKS_PER_DAY * 48
         && e.tick < s.tick - 20 * TICKS_PER_DAY && e.people.some((id) => s.byId.get(id)?.band === p.band));
-      const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z);
+      const t = newTask(s, kind, ti(st.x, st.z), st.x, st.z, hall ? hall.id : -1);
       t.amount = told.length ? told[s.rAi.int(0, told.length)].id : -1;
       p.thought = `Telling ${storyOf(s, t.amount, p)}.`;
       // (or, if they believe in a sign, the tale of what it foretold)
@@ -617,7 +682,8 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
     case 'listen': {
       const teller = s.people.find((q) => q.alive && q.band === p.band && q.task?.kind === 'tell');
       if (!teller) return null;
-      const st = seat(s, p, 1.5);
+      const hall = teller.task!.ref >= 0 ? s.building(teller.task!.ref) : undefined;
+      const st = hall ? hallDoor(hall) : seat(s, p, 1.5);
       p.thought = `Listening to ${teller.name} tell ${storyOf(s, teller.task!.amount, teller)}.`;
       // a tale of a sign: they may come to believe it
       const tale = c.tale?.day === dayOf(s.tick) ? c.lore?.find((l) => l.key === c.tale!.key) : undefined;
@@ -746,6 +812,13 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
       return newTask(s, kind, ti(door.x, door.z), door.x, door.z, b.id);
     }
     case 'feast': {
+      // (in the longhouse, where the band has one)
+      const hall = hallFor(s, c);
+      if (hall) {
+        const door = hallDoor(hall);
+        p.thought = seatHolder(s, c) === p ? 'To the longhouse, to sit in the high seat at the midwinter feast.' : 'To the longhouse for the midwinter feast.';
+        return newTask(s, kind, ti(door.x, door.z), door.x, door.z, hall.id);
+      }
       const st = seat(s, p, 1.1 + ((p.id * 37) % 5) * 0.12);
       p.thought = 'To the fire for the midwinter feast.';
       return newTask(s, kind, ti(st.x, st.z), st.x, st.z);
@@ -2208,40 +2281,61 @@ export function runTask(s: Sim, p: Person) {
         if (moving(go(s, p, t))) return;
         t.stage = 1;
         t.timer = 22;
+        // into the longhouse, the fire lit, and the word goes round the huts that a tale is being told
+        if (t.ref >= 0) {
+          const b = s.building(t.ref);
+          if (!b || !enterHall(s, p, b)) t.ref = -1;
+          else for (const q of s.members(c)) if (q !== p && q.task && ['idle', 'warm', 'socialize'].includes(q.task.kind) && hyp(q.x - c.x, q.z - c.z) < 12) q.nextThink = s.tick;
+        }
       }
       p.act = ACT.Chat;
-      face(p, c.x, c.z);
+      const hall = hallOfTask(s, p);
+      if (hall) inHall(s, p, hall);
+      else face(p, c.x, c.z);
       if (--t.timer > 0) return;
       // the story told: those who sat through it feel the more a part of the band, the children take in a little
       // of the teller's own craft, and everyone thinks the better of the one who told it
       const story = storyOf(s, t.amount, p);
       const best = p.skills.indexOf(Math.max(...p.skills));
       let heard = 0;
-      for (const q of s.people) {
-        if (!q.alive || q.task?.kind !== 'listen' || q.task.ref !== p.id || q.task.stage < 1) continue;
+      // (told in the longhouse: whoever is in the high seat, if they are there, is thought the better of for it)
+      const listeners = s.people.filter((q) => q.alive && q.task?.kind === 'listen' && q.task.ref === p.id && q.task.stage >= 1);
+      const holder = hall ? seatHolder(s, c) : null;
+      const seated = !!holder && (holder === p || (listeners.includes(holder) && holder.indoors));
+      for (const q of listeners) {
         heard++;
+        if (hall && q.indoors) {
+          q.belonging = clamp(q.belonging + HALL_BELONG);
+          if (seated && q !== holder) s.adjust(q, holder!, HALL_REGARD / 2);
+          s.book('hall.tale', 1);
+        }
         q.belonging = clamp(q.belonging + 18);
         q.mood = clamp(q.mood + 3);
         s.adjust(q, p, 2);
         if (s.age(q) < 14 && q.skills[best] < p.skills[best]) trainSkill(q, best, WATCH_GAIN * 0.5);
         if (!q.memories.some((m) => m.kind === 'story' && s.tick - m.tick < 12 * TICKS_PER_DAY))
-          s.remember(q, 'story', 4, 0.4, p.id, `Heard ${p.name} tell ${story}.`);
-        finish(s, q);
+          s.remember(q, 'story', 4, 0.4, p.id, hall && q.indoors ? `Heard ${p.name} tell ${story} in the longhouse.` : `Heard ${p.name} tell ${story}.`);
+        leave(s, q);
       }
       if (heard) p.belonging = clamp(p.belonging + 12);
       p.thought = heard ? `Told ${story}.` : 'Nobody stayed to listen.';
-      finish(s, p);
+      leave(s, p);
       return;
     }
     case 'listen': {
       const q = s.byId.get(t.ref);
-      if (!q || !q.alive || q.task?.kind !== 'tell') return finish(s, p);
+      if (!q || !q.alive || q.task?.kind !== 'tell') return leave(s, p);
       if (t.stage === 0) {
         if (moving(go(s, p, t))) return;
         t.stage = 1;
+        // (the tale is being told in the longhouse: in they go)
+        const b = q.task.ref >= 0 ? s.building(q.task.ref) : undefined;
+        if (b) enterHall(s, p, b);
       }
       p.act = ACT.Sit;
-      face(p, q.x, q.z);
+      const hall = hallOfTask(s, p);
+      if (hall) inHall(s, p, hall);
+      else face(p, q.x, q.z);
       return;
     }
     case 'play': {
@@ -2695,10 +2789,27 @@ export function runTask(s: Sim, p: Person) {
         if (moving(go(s, p, t))) return;
         t.stage = 1;
         t.timer = 40;
+        // (into the longhouse, its fire lit; or, with no wood to light it, the feast is out at the open fire after all)
+        if (t.ref >= 0) {
+          const b = s.building(t.ref);
+          if (!b || !enterHall(s, p, b)) {
+            t.ref = -1;
+            const st = seat(s, p, 1.1 + ((p.id * 37) % 5) * 0.12);
+            t.stage = 0;
+            t.goal = Math.floor(st.z) * s.N + Math.floor(st.x);
+            t.gx = st.x;
+            t.gz = st.z;
+            p.path = null;
+            return;
+          }
+        }
       }
       // eating, talking and singing round the fire, and whoever sits nearest the woodpile keeps it built up
+      // (in the longhouse, the fire down the middle of it)
+      const hall = hallOfTask(s, p);
       const h = s.hearth();
-      if (h.fuel < 3 && c.stock.wood >= 2) {
+      if (hall) inHall(s, p, hall);
+      else if (h.fuel < 3 && c.stock.wood >= 2) {
         const dry = s.takeFirewood(c, 2);
         s.book('burned', 2);
         const wasOut = h.fuel <= 0;
@@ -2706,7 +2817,7 @@ export function runTask(s: Sim, p: Person) {
         if (wasOut) s.buildingsVersion++;
       }
       p.act = t.timer % 14 < 7 ? ACT.Eat : ACT.Chat;
-      face(p, c.x, c.z);
+      if (!hall) face(p, c.x, c.z);
       if (--t.timer > 0) return;
       const st = c.stock;
       let got = 0;
@@ -2729,14 +2840,25 @@ export function runTask(s: Sim, p: Person) {
       const show = Math.min(1, goods.reduce((a, i) => a + 1 + (i.quality ?? 0), 0) / Math.max(4, s.members(c).length * 2));
       // (and a band with a ring of standing stones goes out to them after, to see the year turn)
       const ring = s.bandBuildings(c).some((b) => b.kind === 'stones' && b.built);
-      p.belonging = clamp(p.belonging + 30 + show * 15 + (ring ? 12 : 0));
+      p.belonging = clamp(p.belonging + 30 + show * 15 + (ring ? 12 : 0) + (hall ? HALL_FEAST : 0));
       s.book('feast.ate', 1);
       for (const q of s.people) if (q !== p && q.alive && q.task?.kind === 'feast' && q.task.stage >= 1) s.adjust(p, q, 1.5);
-      s.remember(p, 'midwinter', 14 + Math.round(show * 8) + (ring ? 6 : 0), 1, -1, (show >= 0.5
-        ? `Feasted by the fire at ${c.name} on the longest night, the band's goods set out round it`
-        : `Feasted by the fire at ${c.name} on the longest night`) + (ring ? ', and went out to the standing stones to see the year turn.' : '.'));
-      p.thought = 'Full, and warm, and among their own.';
-      finish(s, p);
+      // feasted in the longhouse: the one in the high seat is thought the better of by all who ate under it with them,
+      // and a ruler who feasted the band from it eases the band's chafing under them
+      if (hall) {
+        s.book('hall.feast', 1);
+        const holder = seatHolder(s, c);
+        if (holder === p) {
+          heldFeast(s, c, p);
+          s.remember(p, 'highseat', 8, 2, -1, `Sat in the high seat at the head of the longhouse at ${c.name}, and feasted the band on the longest night.`);
+        } else if (holder && holderAtFeast(s, holder)) s.adjust(p, holder, HALL_REGARD);
+      }
+      const where = hall ? `in the longhouse at ${c.name}` : `by the fire at ${c.name}`;
+      s.remember(p, 'midwinter', 14 + Math.round(show * 8) + (ring ? 6 : 0) + (hall ? 4 : 0), 1, -1, (show >= 0.5
+        ? `Feasted ${where} on the longest night, the band's goods set out round it`
+        : `Feasted ${where} on the longest night`) + (ring ? ', and went out to the standing stones to see the year turn.' : '.'));
+      p.thought = hall ? 'Full, and warm, and among their own under one roof.' : 'Full, and warm, and among their own.';
+      leave(s, p);
       return;
     }
     case 'herbs': {

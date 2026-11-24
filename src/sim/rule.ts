@@ -31,6 +31,14 @@ export const RULERS: Record<RuleKind, { label: string; suits: (s: Sim, p: Person
   builder: { label: 'builder', suits: (s, p) => s.has(p, 'ambitious') && !s.has(p, 'cruel') && !s.has(p, 'greedy') },
 };
 
+/**
+ * The high seat at the head of a longhouse. Someone looked up to in a band that sits together under one roof is
+ * likelier to take hold of it (HALL_RISE); and a ruler who feasts the band in the hall from the high seat on the
+ * longest night eases its strain under them (to HALL_EASE of what it was).
+ */
+export const HALL_RISE = 1.5;
+export const HALL_EASE = 0.7;
+
 /** How often a band that comes over the hills (the first, or strangers) is led by a woman rather than a man. */
 export const WOMAN_LEADS = 0.3;
 /** The day of the year (spring) a loose band may come under a ruler. */
@@ -91,6 +99,16 @@ export function rulerOf(s: Sim, c: Camp): Person | null {
   const p = s.byId.get(c.rule.ruler);
   return p && p.alive && p.band === c.id ? p : null;
 }
+/**
+ * Who sits in the high seat of a band's longhouse: its ruler, or failing one the one who led the band to its camp,
+ * while they are still alive and among it.
+ */
+export function seatHolder(s: Sim, c: Camp): Person | null {
+  const ruler = rulerOf(s, c);
+  if (ruler) return ruler;
+  const p = s.byId.get(c.leader);
+  return p && p.alive && p.band === c.id ? p : null;
+}
 /** Whether a band lives under a builder. */
 export function builderBand(c: Camp | undefined) {
   return c?.rule?.kind === 'builder';
@@ -135,7 +153,7 @@ function rise(s: Sim, c: Camp) {
   const ms = s.members(c);
   if (ms.length < RISE_PEOPLE || s.tick - c.founded < TICKS_PER_YEAR * 2 || !c.knows.includes('huts')) return;
   const p = contender(s, c, 'builder');
-  if (!p || !s.rRule.chance(RISE_CHANCE)) return;
+  if (!p || !s.rRule.chance(RISE_CHANCE * (s.hallOf(c) ? HALL_RISE : 1))) return;
   take(s, c, p, 'builder');
   s.event('rule', `${p.name} took hold of ${c.name}. A builder, ${he(p)} set the band to raising things that would last, and the others did as ${he(p)} said.`, [p.id], p.x, p.z, 4);
 }
@@ -240,6 +258,12 @@ export function monumentRaised(s: Sim, c: Camp) {
   for (const q of s.members(c)) if (q !== p) s.adjust(q, p, MONUMENT_PRIDE);
   c.rule!.strain = (c.rule!.strain ?? 0) * MONUMENT_EASE;
   s.remember(p, 'raised', 20, 6, -1, `Saw the band raise a monument under ${his(p)} rule.`);
+}
+
+/** The ruler feasted the band from the high seat of its longhouse: the band chafes the less under them. */
+export function heldFeast(s: Sim, c: Camp, p: Person) {
+  if (!c.rule || rulerOf(s, c) !== p) return;
+  c.rule.strain = (c.rule.strain ?? 0) * HALL_EASE;
 }
 
 /** "Ruled by Ada, a builder, since year 12", for the band panel and the person card. */

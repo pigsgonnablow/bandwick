@@ -50,6 +50,9 @@ Conventions (read by src/render/band.ts):
   item__wedges                                                    wedges and a maul for splitting oak into planks.
   bld__{sweat,sweatHot}                                           a sweat lodge, a low dome of withies under hides, its door to -Y: cold, the flap
       rolled up and stones heaped by the door; hot, the flap let down and the hides darkened with steam.
+  bld__{longhouse,longhouseLit}                                  the band's longhouse, a long hall along X under a thatched gable roof, its door in the
+      middle of the long front side (-Y) between two carved posts, an antlered skull on the +X gable: cold, the door hide let down
+      and the smoke holes dark; lit, the hide tied back and the doorway and the smoke holes black (they glow at night).
 Models face -Y in Blender (= +Z in the game). 1 unit = one 6 m tile; an adult is 0.4 tall.
 """
 import math
@@ -4844,6 +4847,111 @@ def sweat_lodge(hot, seed):
 
 sweat_lodge(False, 97)
 sweat_lodge(True, 97)
+
+
+# ---------------------------------------------------------------- the longhouse
+# The band's longhouse: a long hall along x, as long as the tile allows, framed in posts with wattle walls to
+# shoulder height and a sagging thatched gable roof over it, weighted with ropes and stones. The door is in the
+# middle of the long front side (-y): two carved door posts banded in red ochre with a lintel across them, a threshold
+# stone, and a split-log bench along the wall to one side. Each gable end is closed with wattle up to a smoke hole
+# under the ridge, its barge boards crossed into horns above it; a stag's skull hangs on the +x end, over the
+# firewood stacked against it. bld__longhouse
+# is it cold, the door hide let down over the doorway; bld__longhouseLit is it with the fire lit and the band inside,
+# the hide tied back so the doorway shows black (and glows at night, as do the smoke holes), a few more logs fetched.
+LW, LD, LH = 0.8, 0.38, 0.21
+OCHRE = (156, 66, 42)
+CARVED = (128, 96, 62)
+
+
+def longhouse(lit, seed):
+    q = Part()
+    rnd = random.Random(seed)
+    # the footing: a low kerb of stones along the foot of the walls, then the wattle walls between posts
+    store_walls(q, "wood", LW, LD, 0.0, LH, rnd)
+    for x in (-LW / 2, -LW / 4, LW / 4, LW / 2):  # the main posts along each long side, standing proud of the weave
+        for y in (-LD / 2, LD / 2):
+            q.cyl(5, 0.014, 0.012, (x * 1.01, y * 1.03, -0.01), (x * 1.01, y * 1.03, LH + 0.02), POLE, rnd, 0.06)
+    for k in range(22):
+        x = -LW / 2 + LW * (k + 0.5) / 22
+        if abs(x) < 0.08:
+            continue  # the doorway
+        for y in (-LD / 2 - 0.016, LD / 2 + 0.016):
+            q.blob((x, y, 0.01), (0.026, 0.02, 0.016), rnd.choice(STONES), rnd, 0.05, noise=0.2)
+    # the roof: thatch from ragged eaves past the walls up to a bound ridge, sagging along the middle
+    ez, rz = LH + 0.045, LH + 0.31
+    pt = gable_thatch(q, LW / 2 + 0.06, LD / 2 + 0.09, ez, rz, rnd, sag=0.018, n=14)
+    # the gable ends closed with wattle up to a smoke hole under the ridge: black while the fire burns (it glows by
+    # night), only shadowed while it is cold
+    for sx in (-1, 1):
+        bm = q.bm
+        x = sx * (LW / 2 - 0.004)
+        vs = [bm.verts.new((x, -LD / 2, LH)), bm.verts.new((x, LD / 2, LH)), bm.verts.new((x, 0.045, LH + 0.19)), bm.verts.new((x, -0.045, LH + 0.19))]
+        q.paint([bm.faces.new(vs if sx > 0 else list(reversed(vs)))], WATTLE, rnd, 0.06)
+        hole = [bm.verts.new((x + sx * 0.003, 0.045, LH + 0.19)), bm.verts.new((x + sx * 0.003, 0.0, LH + 0.255)), bm.verts.new((x + sx * 0.003, -0.045, LH + 0.19))]
+        q.paint([bm.faces.new(hole if sx > 0 else list(reversed(hole)))], DOORWAY if lit else HATCH)
+        q.cyl(4, 0.006, 0.006, (x + sx * 0.006, -0.05, LH + 0.188), (x + sx * 0.006, 0.05, LH + 0.188), POLE, rnd, 0.05)
+        # the barge boards up each gable, crossed and carved into horns past the ridge
+        gx = sx * (LW / 2 + 0.065)
+        for side in (-1, 1):
+            e, r = pt(gx, 0.0, side), pt(gx, 1.0, side)
+            q.cyl(4, 0.008, 0.008, (gx, e[1] * 0.92, e[2] + 0.012), (gx, -side * 0.05, r[2] + 0.06), CARVED, rnd, 0.05)
+    # the doorway, its two carved posts banded in ochre, and a lintel across them
+    y0 = -LD / 2
+    dw, dh = 0.11, 0.17
+    q.box((0, y0 - 0.008, dh / 2), (dw, 0.02, dh), DOORWAY if lit else HATCH)
+    for dx in (-1, 1):
+        x = dx * (dw / 2 + 0.012)
+        q.cyl(6, 0.016, 0.014, (x, y0 - 0.018, -0.01), (x, y0 - 0.018, LH + 0.05), CARVED, rnd, 0.05)
+        for z in (0.05, 0.1, 0.15, 0.2):  # carved rings, picked out in red ochre
+            q.cyl(6, 0.0175, 0.0175, (x, y0 - 0.018, z - 0.007), (x, y0 - 0.018, z + 0.007), OCHRE, rnd, 0.06, cap=False)
+        q.blob((x, y0 - 0.018, LH + 0.06), (0.02, 0.02, 0.018), CARVED, rnd, 0.05)  # a knob carved at the top
+    q.cyl(5, 0.013, 0.013, (-dw / 2 - 0.04, y0 - 0.022, dh + 0.012), (dw / 2 + 0.04, y0 - 0.022, dh + 0.012), CARVED, rnd, 0.05)
+    # a stag's skull fixed high on the +x gable, under the smoke hole, its antlers spread across the wattle
+    sk = Vector((LW / 2 + 0.014, 0, LH + 0.12))
+    q.blob(tuple(sk), (0.012, 0.018, 0.024), BONE, rnd, 0.04)
+    q.blob(tuple(sk + Vector((0.006, 0, -0.026))), (0.01, 0.011, 0.016), BONE_DK, rnd, 0.04)
+    for dy in (-1, 1):
+        base = sk + Vector((0.002, dy * 0.012, 0.018))
+        tip = base + Vector((0.004, dy * 0.075, 0.045))
+        q.cyl(4, 0.0045, 0.0025, tuple(base), tuple(tip), ANTLER, rnd, 0.05)
+        for t, up in ((0.3, 0.032), (0.6, 0.03), (0.85, 0.022)):
+            m = base.lerp(tip, t)
+            q.cyl(3, 0.003, 0.0015, tuple(m), tuple(m + Vector((0.004, dy * 0.006, up))), ANTLER, rnd, 0.05)
+    # the door hide: let down over the doorway, or tied back to one post with the dark of the hall showing
+    if lit:
+        q.box((dw / 2 + 0.012, y0 - 0.032, dh * 0.55), (0.03, 0.01, dh * 0.85), HIDE_DK, rnd, 0.05, rot=Matrix.Rotation(0.25, 3, "Z"))
+        q.cyl(5, 0.017, 0.017, (dw / 2 + 0.012, y0 - 0.036, dh * 0.5), (dw / 2 + 0.012, y0 - 0.036, dh * 0.56), ROPE, rnd, 0.03)
+    else:
+        top = [[(-dw / 2 - 0.006 + (dw + 0.012) * k / 4, y0 - 0.03 - (0.004 if k % 2 else 0), z) for k in range(5)] for z in (dh + 0.004, dh * 0.5, 0.004)]
+        shell(q, top, [[(x, y + 0.006, z) for x, y, z in row] for row in top], lambda i, k: jit(HIDE, rnd, 0.06), lambda i, k: HIDE_IN, HIDE_DK, rnd)
+    q.blob((0, y0 - 0.07, 0.004), (0.07, 0.04, 0.01), STONES[2], rnd, 0.05, noise=0.15)  # the threshold stone
+    # a bench of a split log on two stones, along the front wall to the left of the door
+    for x in (-0.32, -0.16):
+        q.blob((x, y0 - 0.06, 0.016), (0.026, 0.022, 0.02), rnd.choice(STONES), rnd, 0.05, noise=0.2)
+    q.cyl(7, 0.02, 0.02, (-0.35, y0 - 0.06, 0.042), (-0.13, y0 - 0.06, 0.042), (136, 104, 68), rnd, 0.05)
+    q.box((-0.24, y0 - 0.06, 0.062), (0.22, 0.03, 0.004), (176, 142, 100), rnd, 0.03)  # its split face, up
+    # firewood stacked against the +x gable, under the eave, and more by the door while the fire is lit
+    for j in range(3):
+        for k in range(4 - j):
+            y = -0.1 + k * 0.05 + j * 0.025
+            q.cyl(6, 0.016, 0.016, (LW / 2 + 0.02, y, 0.017 + j * 0.03), (LW / 2 + 0.13, y + rnd.uniform(-0.01, 0.01), 0.017 + j * 0.03),
+                  BARK if (j + k) % 2 else (128, 96, 64), rnd, 0.06)
+            q.cyl(6, 0.014, 0.014, (LW / 2 + 0.131, y, 0.017 + j * 0.03), (LW / 2 + 0.133, y, 0.017 + j * 0.03), (196, 170, 128), rnd, 0.03, cap=True)
+    if lit:
+        for k in range(3):
+            a = rnd.uniform(-0.4, 0.4)
+            c = Vector((0.16 + k * 0.035, y0 - 0.07, 0.012))
+            q.cyl(5, 0.012, 0.012, tuple(c - Vector((math.cos(a) * 0.05, math.sin(a) * 0.05, 0))), tuple(c + Vector((math.cos(a) * 0.05, math.sin(a) * 0.05, 0))),
+                  BARK, rnd, 0.06)
+    else:
+        # a water jar and a bowl set out on the bench end
+        q.cyl(8, 0.018, 0.022, (0.17, y0 - 0.055, 0.0), (0.17, y0 - 0.055, 0.045), (150, 100, 68), rnd, 0.05)
+        q.cyl(8, 0.012, 0.012, (0.17, y0 - 0.055, 0.045), (0.17, y0 - 0.055, 0.052), (120, 80, 54), rnd, 0.04)
+    return q
+
+
+longhouse(False, 113).finish("bld__longhouse")
+longhouse(True, 113).finish("bld__longhouseLit")
 
 
 # ---------------------------------------------------------------- the pig pen
