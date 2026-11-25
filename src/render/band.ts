@@ -368,7 +368,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'hut0p', 'hut1p', 'storehouse', 'storehoused', 'storehouses', 'storehousep', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit', 'canoe', 'canoeOut', 'hearthPot', 'hearthPotEmpty', 'hearthBoil', 'hearthStone', 'hearthPotStone', 'hearthPotEmptyStone', 'hearthBoilStone', 'oven', 'ovenLit', 'frame', 'sweat', 'sweatHot', 'hedge', 'longhouse', 'longhouseLit']) {
+      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit', 'canoe', 'canoeOut', 'hearthPot', 'hearthPotEmpty', 'hearthBoil', 'hearthStone', 'hearthPotStone', 'hearthPotEmptyStone', 'hearthBoilStone', 'oven', 'ovenLit', 'frame', 'sweat', 'sweatHot', 'hedge', 'bridge', 'longhouse', 'longhouseLit']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -1051,12 +1051,21 @@ export class BandLayer {
     return Math.min(1, Math.max(0, (now - this.frameAt) / this.tickMs));
   }
 
-  /** The water at a point: its surface and how deep it is (null on land). */
+  /** The decks of the finished footbridges, by tile: where people walk over the water at the banks' height. */
+  private decks = new Map<number, number>();
+  /** How high a footbridge's deck lies: just over the higher of its two banks. */
+  private deckY(b: { x: number; z: number; rot: number; span?: number[] }) {
+    const w = this.world, N = w.size, span = b.span ?? [];
+    if (!span.length) return w.groundY[b.z * N + b.x];
+    const step = b.rot % 2 ? N : 1, far = span[span.length - 1] + step;
+    return Math.max(w.groundY[b.z * N + b.x], w.groundY[Math.min(N * N - 1, far)]) + 0.02;
+  }
+  /** The water at a point: its surface and how deep it is (null on land, or up on a footbridge). */
   waterAt(x: number, z: number) {
     const w = this.world, N = w.size;
     const tx = Math.min(N - 1, Math.max(0, Math.floor(x))), tz = Math.min(N - 1, Math.max(0, Math.floor(z)));
     const i = tz * N + tx;
-    if (w.water[i] === WATER.None) return null;
+    if (w.water[i] === WATER.None || this.decks.has(i)) return null;
     return { surface: w.waterY[i], depth: w.waterY[i] - w.groundY[i] };
   }
   private ripples: THREE.InstancedMesh;
@@ -1084,6 +1093,8 @@ export class BandLayer {
     const w = this.world, N = w.size;
     const tx = Math.min(N - 1, Math.max(0, Math.floor(x))), tz = Math.min(N - 1, Math.max(0, Math.floor(z)));
     const i = tz * N + tx;
+    const deck = this.decks.get(i);
+    if (deck !== undefined) return deck;
     if (w.water[i] !== WATER.None) return Math.max(w.groundY[i], w.waterY[i] - 0.17);
     return w.groundY[i];
   }
@@ -1677,13 +1688,15 @@ export class BandLayer {
   }
 
   private drawBuildings(night: number, camTarget: THREE.Vector3) {
+    this.decks.clear();
+    for (const b of this.buildings) if (b.kind === 'bridge' && b.built) for (const i of b.span ?? []) this.decks.set(i, this.deckY(b));
     const counts = new Map<string, number>();
     const need = new Map<string, number>();
     for (const b of this.buildings) {
       if (this.introBuild.get(b.id) === 0) continue;
       const kind = this.modelOf(b);
-      // (a thorn hedge is drawn a length at a time along its ring)
-      need.set(kind, (need.get(kind) ?? 0) + (b.kind === 'hedge' ? b.ring?.length ?? 0 : 1));
+      // (a thorn hedge is drawn a length at a time along its ring, a footbridge a length over each tile of water it spans)
+      need.set(kind, (need.get(kind) ?? 0) + (b.kind === 'hedge' ? b.ring?.length ?? 0 : b.kind === 'bridge' ? b.span?.length ?? 0 : 1));
       if (!b.built && b.kind !== 'plot' && b.kind !== 'barrow' && b.kind !== 'stones') need.set('site', (need.get('site') ?? 0) + 1);
       if (b.bedding) need.set('bedding', (need.get('bedding') ?? 0) + 1);
     }
@@ -1695,7 +1708,7 @@ export class BandLayer {
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), scl = new THREE.Vector3(1, 1, 1);
     const up = new THREE.Vector3(0, 1, 0);
     const tint = new THREE.Color();
-    const put = (kind: string, x: number, z: number, rot: number, progress: number, s = 1, band = -1, walls = 'wood') => {
+    const put = (kind: string, x: number, z: number, rot: number, progress: number, s = 1, band = -1, walls = 'wood', y?: number) => {
       const m = this.buildingMeshes.get(kind);
       if (!m) return;
       const k = counts.get(kind) ?? 0;
@@ -1709,7 +1722,7 @@ export class BandLayer {
       else tint.setRGB(1, 1, 1);
       if (bc) tint.lerp(bc.light, bc.gone ? 0.25 : 0.65);
       m.setColorAt(k, tint);
-      pos.set(x, this.world.groundY[Math.floor(z) * this.world.size + Math.floor(x)], z);
+      pos.set(x, y ?? this.world.groundY[Math.floor(z) * this.world.size + Math.floor(x)], z);
       q.setFromAxisAngle(up, rot);
       scl.setScalar(s);
       m4.compose(pos, q, scl);
@@ -1745,6 +1758,15 @@ export class BandLayer {
           put('hedge', hx, hz, rot + (h - 0.5) * 0.16, 1, 0.92 + h * 0.16, b.band);
         }
         if (!b.built) put('site', cx + 0.28, cz + 0.3, rot + 0.6, 1, 0.8);
+        continue;
+      }
+      if (b.kind === 'bridge') {
+        // a footbridge: a length of it over each tile of water, its deck level with the banks, laid out from the near
+        // bank as far as the work has got (the pile of logs waits on the bank)
+        const span = b.span ?? [], n = b.built ? span.length : Math.floor(span.length * Math.max(0, b.progress) + 0.15);
+        const deck = this.deckY(b);
+        for (let k = 0; k < n; k++) put('bridge', (span[k] % this.world.size) + 0.5, Math.floor(span[k] / this.world.size) + 0.5, rot, 1, 1, b.band, 'wood', deck);
+        if (!b.built) put('site', cx - Math.sin(rot) * 0.2, cz - Math.cos(rot) * 0.2, rot + 0.6, 1, 0.8);
         continue;
       }
       put(kind, cx, cz, rot, laid !== undefined ? Math.max(0.02, laid) : b.built ? 1 : Math.max(0.02, b.progress), 1, b.band, b.walls);

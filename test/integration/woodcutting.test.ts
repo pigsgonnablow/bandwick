@@ -262,6 +262,8 @@ describe('the log sledge', () => {
     const p = adult(s);
     const pile = s.storeSpot(true);
     p.x = pile.x; p.z = pile.z;
+    // (empty-handed, whatever they were about)
+    p.carry = CARRY.None; p.carryAmt = 0;
     const lp = s.addProp(LOGS, c.x + 6.2, 0, c.z + 0.3, 0, 1);
     s.propVal[lp] = 30;
     p.task = setup(s, p, 'haul');

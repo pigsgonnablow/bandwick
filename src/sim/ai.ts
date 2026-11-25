@@ -4,7 +4,7 @@ import { SHELTER_PULL, sheltering, sparesWhite, shunned, whiteKilled, omenTale, 
 import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE, aDish } from './sim';
 import { isBush, isBerry, isTreeType, isFiberPlant, isReeds, treeStage, treeSpecies, LOGS, GRAVE, STUMP_BASE, WOOD_BY_STAGE, DEADWOOD_BY_STAGE, BARK, CONES, STAGE_WORD, art, clamp, WINTER_CATCH, BITTER_CATCH, PROP_TASKS, FIRE_HOLDS, FAR_TREE } from './sim';
-import { SEASONED_HEAT, CANOE_SPEED, CANOE_CATCH, CANOE_OPEN, SWEAT_HOLDS, SWEAT_TICKS, SWEAT_HEATING, SWEAT_HOT, SWEAT_WOOD, SWEAT_WARM, SWEAT_HOURS, SWEAT_BREAK, SWEAT_EVERY, SWEAT_HIDES, SWEAT_BOND, SWEAT_BELONG, SWEAT_CALL, HALL_WOOD, HALL_LIT, HALL_WARM, HALL_BELONG, HALL_FEAST, HALL_REGARD, HALL_CALL, HIDEWORK, FRAME_SPEED } from './band';
+import { SEASONED_HEAT, CANOE_SPEED, CANOE_CATCH, CANOE_OPEN, SWEAT_HOLDS, SWEAT_TICKS, SWEAT_HEATING, SWEAT_HOT, SWEAT_WOOD, SWEAT_WARM, SWEAT_HOURS, SWEAT_BREAK, SWEAT_EVERY, SWEAT_HIDES, SWEAT_BOND, SWEAT_BELONG, SWEAT_CALL, HALL_WOOD, HALL_LIT, HALL_WARM, HALL_BELONG, HALL_FEAST, HALL_REGARD, HALL_CALL, HIDEWORK, FRAME_SPEED, WADE_COLD, WADE_CHILL } from './band';
 import { Person, Deer, Task, TaskKind, SK, ACT, CARRY, LAME_SPEED, LAME_WORK, ONE_EYE_AIM, BAD_HAND_WORK, BAD_HAND_AIM, MATERIALS, Material, FLASH, foodTotal, Building, specOf, labelOf, RECIPES, RECIPE_KEYS, RecipeKey, Item, ItemKind, HEALTH, TRAP_KINDS, BASKET_HOLDS, BED_FIBER, BED_DAYS, BED_REST, BLANKET_REST, HIDES_KEPT, ROOTS_LOAD, NUTS_LOAD, COOK_GAIN, COOK_TICKS, COOKED, NURSE_DAYS, SEWN, NEEDLE_SPEED, BONES_PER_DEER, BONES_KEPT, TEETH_PER_DEER, TRINKETS_KEPT, GIFT_DAYS, FEAST_MEAL, EGGS_LOAD, HONEY_STING, HONEY_TREAT, MUSHROOMS_LOAD, BAD_MUSHROOM, BAD_MUSHROOM_DAYS, BAG_LOAD, MEND_BY, MEND_CORD, isGarment, isStag, train, trainSkill, Beast, BEAST, FURS_KEPT, BEAVER_MEAT, TUSKS_PER_BOAR, CARCASS, CarcassKind, BUTCHER_MARROW, BUTCHER_SKILL, BUTCHER_TICKS, BUTCHER_LEAST, FAT_SEASON, BEAVER_FAT, FAT_KEPT, SINEW_KEPT, PEMMICAN_FAT, PEMMICAN_GAIN, SINEW_SEWN, SINEW_MEND, STEW_FROM, STEW_TO, GRIDDLE_GAIN, GRIDDLED, RAW_SICK, RAW_WARM, RAW_WARM_AT, COOKED_SICK, STALE_SICK, GUT_DAYS, RAW_RISKY, OVEN_FROM, OVEN_LOAD, OVEN_BELONG, BOIL_TICKS, STEW_CALL, STEW_TICKS, STEW_BELONG, BREW_WARM, BREW_HOURS, HARPOON_HIT, HARPOON_COLD, HARPOON_CATCH, LINE_HIT, LINE_CATCH, LINE_AGE, NET_CREW, NET_WAIT, NET_ALONE, NET_HAND, RUN_STOCKED, WEIR_LOAD,
   PEN_MUCK, isMonument, MONUMENT_AHEAD, CROP, SEED_PER_PLOT, GREENS_LOAD, GRAIN_LOAD, SOIL_TIRE, gardenSkill, GOODS, QUALITY, ITEMS, HEARTH_CRACK, KILN_CRACK, CHARCOAL_CRACK, CLAMP_BURN, CHARCOAL_YIELD, SLEDGE_LOAD, SLEDGE_SNOW, MASTER_FALL, MASTER_WOOD, WOODCUTTER, MASTER_CRAFT, MASTER_OTHER, LAMP_NIGHT, FIRE_NIGHT, LAMP_UNTIL, LAMP_REST, LAMP_SLEEP } from './band';
 import { ELITE } from './know';
@@ -72,6 +72,11 @@ function fishGear(s: Sim, p: Person): Item | undefined {
   return s.toolFor(p, kinds);
 }
 /** Where to stand to fish from a bank tile: at its edge, by the water (a share of the way from the bank's middle). */
+/** Where a thorn hedge has been laid round to: the tile of its ring the work has reached. */
+function hedgeAt(b: Building) {
+  const ring = b.ring!;
+  return ring[Math.min(ring.length - 1, Math.floor((b.work / specOf(b).work) * ring.length))];
+}
 export function fishStand(N: number, bank: number, w: number, side = 0) {
   const bx = (bank % N) + 0.5, bz = Math.floor(bank / N) + 0.5;
   const dx = (w % N) - (bank % N), dz = Math.floor(w / N) - Math.floor(bank / N);
@@ -1252,9 +1257,11 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
           p.thought = owner && owner.alive ? `Building a ${label} for ${owner.id === p.id ? 'their family' : owner.name + "'s family"}.` : `Building the ${label}.`;
           // (a thorn hedge is laid round from its gate: the work goes on where it has got to)
           if (b.kind === 'hedge' && b.ring?.length) {
-            const at = b.ring[Math.min(b.ring.length - 1, Math.floor((b.work / specOf(b).work) * b.ring.length))];
+            const at = hedgeAt(b);
             return newTask(s, 'build', at, (at % N) + 0.5, Math.floor(at / N) + 0.5, b.id, true);
           }
+          // (a footbridge is laid from its near bank, out over the water as it goes)
+          if (b.kind === 'bridge') return newTask(s, 'build', b.tile, b.x + 0.5, b.z + 0.5, b.id, true);
           // (a weir is built from the bank, wading out to drive in the stakes)
           const bank = b.kind === 'weir' ? weirBank(s, b.tile) : -1;
           if (bank >= 0) {
@@ -1495,7 +1502,7 @@ export function standOn(s: Sim, t: Task): [number, number] {
   return [Math.min(x0 + 0.95, Math.max(x0 + 0.05, t.gx)), Math.min(z0 + 0.95, Math.max(z0 + 0.05, t.gz))];
 }
 
-function go(s: Sim, p: Person, t: Task, running = false): GoResult {
+export function go(s: Sim, p: Person, t: Task, running = false): GoResult {
   const here = s.tileOf(p);
   if (!p.path) {
     if (here === t.goal || (t.near && Math.abs((here % s.N) - (t.goal % s.N)) <= 1 && Math.abs(Math.floor(here / s.N) - Math.floor(t.goal / s.N)) <= 1)) {
@@ -1530,6 +1537,9 @@ function go(s: Sim, p: Person, t: Task, running = false): GoResult {
     p.z = tz;
     if (last) return 'arrived';
     s.trails.tread(path[p.pathIdx]);
+    // (wading: slow going, and cold on the legs in the cold months; a footbridge keeps them dry)
+    const wet = path[p.pathIdx];
+    if (s.world.water[wet] !== WATER.None && !s.bridgeOn(wet)?.built) wade(s, p, wet);
     p.pathIdx++;
     if (p.pathIdx >= path.length && t.near) return 'arrived';
   } else {
@@ -1540,6 +1550,14 @@ function go(s: Sim, p: Person, t: Task, running = false): GoResult {
   p.fz = tz;
   p.act = running ? ACT.Run : ACT.Walk;
   return 'moving';
+}
+
+/** A step waded through a river or a lake's edge: cold in the cold, and counted against the ford. */
+function wade(s: Sim, p: Person, i: number) {
+  const temp = s.tempAt(p);
+  if (temp < WADE_COLD) p.warmth = Math.max(0, p.warmth - WADE_CHILL * Math.min(1, (WADE_COLD - temp) / WADE_COLD));
+  s.waded(p, i);
+  s.practise(p, 'wade', temp < WADE_COLD ? 2 : 1);
 }
 
 function speed(s: Sim, p: Person) {
@@ -4079,6 +4097,11 @@ export function runTask(s: Sim, p: Person) {
       }
       if (b.work >= specOf(b).work) completeBuilding(s, b, p);
       if (--t.timer <= 0 || b.built) finish(s, p);
+      // (a thorn hedge: once the hedge has been laid on past where they stand, they move along to where it has got to)
+      else if (b.kind === 'hedge' && b.ring?.length && hedgeAt(b) !== t.goal && t.stage === 1) {
+        const at = hedgeAt(b);
+        if (hyp((at % s.N) + 0.5 - t.gx, Math.floor(at / s.N) + 0.5 - t.gz) > 1.5) finish(s, p);
+      }
       return;
     }
     case 'fuel': {
@@ -4356,6 +4379,8 @@ export function completeBuilding(s: Sim, b: Building, p: Person) {
   b.built = true;
   b.finished = s.tick;
   s.buildingsVersion++;
+  // a footbridge's deck is walked on from now: the ford under it is crossed dry-shod
+  if (b.kind === 'bridge') s.layBridges();
   // the wedges that split its planks take the wear of it (worn out, they are made again)
   if (b.walls === 'plank') {
     const wedges = s.toolsOf(s.campById(b.band) ?? s.camp, 'wedges')[0];

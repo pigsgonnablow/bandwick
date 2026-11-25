@@ -247,6 +247,8 @@ describe('herbal brews', () => {
     const c = s.camp;
     c.stock.herbs = 5;
     const sick = s.members().find((q) => s.age(q) >= 14)!;
+    // (the only one sick just now)
+    for (const q of s.members()) q.sick = 0;
     sick.sick = 6;
     sick.x = c.x + 2; sick.z = c.z + 1;
     sick.task = null;
@@ -361,8 +363,10 @@ describe('stone boiling', () => {
     s.items = s.items.filter((i) => i.kind !== 'cookpot');
     c.knows = c.knows.filter((k) => k !== 'stew');
     expect(s.shownSkills()).toContain(SK.cook);
-    c.stock.fish = 30; c.stock.bones = 10; c.stock.herbs = 20;
     toHour(s, 14);
+    // (only fish in the stores: whatever was brought in on the way to the afternoon goes)
+    for (const k of ['berries', 'greens', 'mushrooms', 'eggs', 'meat', 'roots', 'grain', 'nuts', 'preserved'] as const) c.stock[k] = 0;
+    c.stock.fish = 30; c.stock.bones = 10; c.stock.herbs = 20;
     expect(s.cookMode()).toBe('boil');
     const cook = adult(s);
     cook.skills[SK.cook] = 0;

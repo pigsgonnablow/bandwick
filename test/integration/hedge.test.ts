@@ -6,7 +6,7 @@ import { SK, BUILD, HEDGE_WOLF, HEDGE_LEAST, HEDGE_MOST } from '../../src/sim/ba
 import { DISCOVERY, knowHowFor } from '../../src/sim/know';
 import { WATER } from '../../src/sim/types';
 import { TICKS_PER_DAY, isDark } from '../../src/sim/time';
-import { setup } from '../../src/sim/ai';
+import { setup, runTask } from '../../src/sim/ai';
 import { Sim } from '../../src/sim/sim';
 import { sim, runTo, runYears } from '../helpers';
 
@@ -76,6 +76,20 @@ describe('thorn hedge', () => {
     }
   });
 
+  it('keeps its line clear of new garden plots', () => {
+    const s = band();
+    for (let k = 0; k < 10 * TICKS_PER_DAY && !hedgeOf(s); k++) s.step();
+    const h = hedgeOf(s)!;
+    const all = new Set(h.ring);
+    s.camp.knows.push('garden');
+    for (let k = 0; k < 30; k++) {
+      const t = s.plotSite();
+      if (t < 0) break;
+      expect(all.has(t)).toBe(false);
+      s.newBuilding('plot', t, -1).built = true;
+    }
+  });
+
   it('is laid round from its gate: the builders work where it has got to', () => {
     const s = band();
     for (let k = 0; k < 10 * TICKS_PER_DAY && !hedgeOf(s); k++) s.step();
@@ -88,6 +102,14 @@ describe('thorn hedge', () => {
     const t = setup(s, p, 'build');
     expect(t?.kind).toBe('build');
     expect(t!.goal).toBe(h.ring![Math.floor(h.ring!.length * 0.5)]);
+    // and once it has been laid on past them, they move along with it, rather than lay the whole ring from one spot
+    p.task = t;
+    p.x = t!.gx; p.z = t!.gz; p.path = null;
+    runTask(s, p);
+    expect(p.task?.kind).toBe('build');
+    h.work = BUILD.hedge.work * 0.7;
+    runTask(s, p);
+    expect(p.task?.kind === 'build' && p.task.goal === t!.goal).toBe(false);
   });
 
   it('keeps the wolves further off, and the night outside the fire\'s circle is no longer unsettling inside it', () => {

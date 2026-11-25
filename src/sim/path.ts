@@ -17,19 +17,22 @@ export class Grid {
     this.cost = new Uint16Array(N * N);
     this.walkLevel = new Int8Array(N * N);
     this.traffic = new Float32Array(N * N);
-    for (let i = 0; i < N * N; i++) {
-      const t = w.terrain[i];
-      const wk = w.water[i];
-      if (wk !== WATER.None) {
-        // wading or swimming through shallow water: fords, the lake's edge, the calm sea shallows
-        // (slow going, and the sea slowest); deep water is off limits
-        this.cost[i] = t !== T.ShallowWater ? 0 : wk === WATER.Sea ? 60 : 45;
-        this.walkLevel[i] = Math.round(w.waterY[i] / STEP + 0.25);
-      } else {
-        this.cost[i] =
-          t === T.Grass || t === T.Sand ? 10 : t === T.Forest ? 15 : t === T.Stone ? 14 : w.level[i] >= 15 ? 45 : 28;
-        this.walkLevel[i] = w.level[i];
-      }
+    for (let i = 0; i < N * N; i++) this.reset(w, i);
+  }
+
+  /** Set a tile's cost and walking level back to what the land itself gives (as when a footbridge over it is gone). */
+  reset(w: WorldData, i: number) {
+    const t = w.terrain[i];
+    const wk = w.water[i];
+    if (wk !== WATER.None) {
+      // wading or swimming through shallow water: fords, the lake's edge, the calm sea shallows
+      // (slow going, and the sea slowest); deep water is off limits
+      this.cost[i] = t !== T.ShallowWater ? 0 : wk === WATER.Sea ? 60 : 45;
+      this.walkLevel[i] = Math.round(w.waterY[i] / STEP + 0.25);
+    } else {
+      this.cost[i] =
+        t === T.Grass || t === T.Sand ? 10 : t === T.Forest ? 15 : t === T.Stone ? 14 : w.level[i] >= 15 ? 45 : 28;
+      this.walkLevel[i] = w.level[i];
     }
   }
 

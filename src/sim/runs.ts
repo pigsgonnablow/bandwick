@@ -252,6 +252,8 @@ export function weirSite(s: Sim, c: Camp) {
     for (let x = Math.max(1, cx - R); x <= Math.min(N - 2, cx + R); x++) {
       const i = z * N + x;
       if (w.water[i] !== WATER.River || w.flow[i] < 0 || s.fishCap[i] <= 0) continue;
+      // (not under a footbridge)
+      if (s.bridgeOn(i)) continue;
       const d = Math.sqrt((x + 0.5 - c.x) * (x + 0.5 - c.x) + (z + 0.5 - c.z) * (z + 0.5 - c.z));
       if (d > R || d < 3) continue;
       // narrow: dry land either side, river above and below

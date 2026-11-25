@@ -52,6 +52,8 @@ Conventions (read by src/render/band.ts):
       rolled up and stones heaped by the door; hot, the flap let down and the hides darkened with steam.
   bld__hedge                                                      one length of a thorn hedge laid along X, its thorny tips out to -Y
       (the game lays one on each tile of the ring round a camp, turned so -Y faces away from the fire).
+  bld__bridge                                                     one length of a log footbridge along X, its origin at the top of the deck, a rail
+      on the +Y side (the game lays one over each tile of water the bridge spans, at the height of its banks).
   bld__{longhouse,longhouseLit}                                  the band's longhouse, a long hall along X under a thatched gable roof, its door in the
       middle of the long front side (-Y) between two carved posts, an antlered skull on the +X gable: cold, the door hide let down
       and the smoke holes dark; lit, the hide tied back and the doorway and the smoke holes black (they glow at night).
@@ -4767,6 +4769,39 @@ for k in range(10):
     at = (rnd.uniform(-HL, HL), rnd.uniform(-0.1, -0.02), rnd.uniform(HH * 0.4, HH * 0.95))
     q.blob(at, (0.007, 0.007, 0.007), SLOE, rnd, 0.05)
 q.finish("bld__hedge")
+
+
+# ---------------------------------------------------------------- the log footbridge
+# One length of a footbridge over a ford, along X, its origin at the top of the deck: two straight trunks side by side,
+# flattened along the top with the axe and lashed together at each end, resting on a pair of posts driven into the river
+# bed at each end of the length (out of sight under the deck where the lengths meet), a pole rail on short posts
+# along the +Y side. Each tile of water the bridge spans gets one length; they overlap a little, and the end ones run
+# up onto the banks.
+q = Part()
+rnd = random.Random(5150)
+BL = 0.7    # half its length
+LR = 0.045  # a trunk's radius
+OAK = (118, 92, 66)
+OAK_CUT = (176, 146, 104)
+for side in (-1, 1):
+    y = side * LR * 0.98
+    # a trunk, flattened along the top: an eight-sided log sunk so that its flats lie at the deck
+    q.cyl(8, LR, LR * 0.92, (-BL, y, -LR * 0.72), (BL, y + rnd.uniform(-0.004, 0.004), -LR * 0.72), jit(OAK, rnd, 0.06), rnd, 0.04)
+    q.box((0, y, -0.006), (2 * BL - 0.02, LR * 1.25, 0.012), jit(OAK_CUT, rnd, 0.05), rnd, 0.06)  # the hewn top
+    for x in (-BL + 0.04, BL - 0.04):  # the sawn-off ends, pale
+        q.cyl(8, LR * 0.95, LR * 0.95, (x - 0.004 * (1 if x > 0 else -1), y, -LR * 0.72), (x + 0.004 * (1 if x > 0 else -1), y, -LR * 0.72), OAK_CUT, rnd, 0.04)
+# the posts under each end, driven down into the bed, and the cross-piece the trunks rest on
+for x in (-0.42, 0.42):
+    for side in (-1, 1):
+        q.cyl(6, 0.022, 0.02, (x + rnd.uniform(-0.01, 0.01), side * 0.1, -0.7), (x, side * 0.1, -LR * 1.6), POLE, rnd, 0.06)
+    q.cyl(6, 0.02, 0.02, (x, -0.13, -LR * 1.75), (x, 0.13, -LR * 1.75), POLE, rnd, 0.05)
+    for side in (-1, 1):  # the lashing round each trunk to the cross-piece
+        q.cyl(6, LR * 1.12, LR * 1.12, (x - 0.012, side * LR * 0.98, -LR * 0.72), (x + 0.012, side * LR * 0.98, -LR * 0.72), (150, 126, 82), rnd, 0.04)
+# a rail on the +Y side: a pole along it on two short posts
+for x in (-0.42, 0.42):
+    q.cyl(5, 0.01, 0.009, (x, 0.105, -0.02), (x, 0.11, 0.16), POLE, rnd, 0.06)
+q.cyl(5, 0.008, 0.008, (-BL + 0.05, 0.11, 0.155), (BL - 0.05, 0.112, 0.15), POLE, rnd, 0.05)
+q.finish("bld__bridge")
 
 
 # ---------------------------------------------------------------- the sweat lodge
