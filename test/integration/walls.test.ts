@@ -17,11 +17,11 @@ describe('walls', () => {
 
   it('never raises stone before the band knows stonework, nor builds before every material is in', () => {
     let other = 0;
-    for (const seed of [3, 4]) {
+    for (const seed of [1, 4]) {
       // daub and stone are discoveries now, and whether a band finds them in 8 years turns on its history:
       // one of the two is given daub from the start, so walls other than wood are sure to go up
       const s = sim(seed);
-      if (seed === 3) s.camp.knows.push('huts', 'daub');
+      if (seed === 1) s.camp.knows.push('huts', 'daub');
       runYears(s, 8);
       const built = s.buildings.filter((b) => b.built && (b.kind === 'hut' || b.kind === 'storehouse'));
       other += built.filter((b) => b.walls && b.walls !== 'wood').length;

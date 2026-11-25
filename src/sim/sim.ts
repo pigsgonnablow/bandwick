@@ -16,7 +16,7 @@ import {
   LOOMED, HIDEWORK, FRAME_FINE, FRAME_SPEED, KILNED, POTTED, JAR_HOLDS, JAR_KEEP, JARRED, JARS_MAX, LAMP_FAT, FAT_KEPT, SINEW_KEPT, SINEW_SEWN, THREAD_TRY, THREAD_KEPT, FIBER_PER_THREAD, BLANKET_REST,
   STEWED, POT_AT, BOIL_AT, BOIL_GAIN, BOIL_TICKS, OVENED, OVEN_GAIN, OVEN_GLUT, OVEN_TO, OVEN_TICKS, OVEN_WOOD, GRIDDLE_GAIN, COOK_GAIN, STEW_BERRIES, STEW_GAIN, STEW_MASTER, STEW_GREENS, STEW_MEALS, STEW_TICKS, Stew, BROTH_FILL, BROTH_KEEP, BROTH_EACH, BREW_HERBS, BREW_COLD, BREW_KEEP, BREW_HEAL, HERBS_BREW,
   ACCIDENT_YEARLY, Hurt, HURT_WORDS, WOUND_DAYS, WOUND_RISK,
-  SWEAT_DAYS, SWEAT_WARD, SWEAT_HOLDS, SWEAT_BREAK, HALL_COLD, HALL_SPLIT,
+  SWEAT_DAYS, SWEAT_WARD, SWEAT_HOLDS, SWEAT_BREAK, HALL_COLD, HALL_SPLIT, HEDGE_PAST, HEDGE_LEAST, HEDGE_MOST, HEDGE_WOLF, HEDGE_SAFE, HEDGE_GAP,
   RUN_FISH, WEIR_PASS, WEIR_HOLDS, CROP, CROP_NAMES, newPlot, GROW_DAYS, PLOT_YIELD, SEED_PER_PLOT, GREENS_PER_DAY, GREENS_LOAD, LEAN_GARDEN, PLENTY_GARDEN, SOIL_REST, SOIL_FALLOW,
 } from './band';
 import {
@@ -1542,7 +1542,8 @@ export class Sim {
     if (p.indoors && shelter > 0 && temp > -2) p.warmth += 0.15;
     // safety: dark without a fire or shelter is unsettling
     const dark = isDark(this.tick);
-    const safe = !dark || nearFire || p.indoors;
+    // (and inside a thorn hedge the camp is shut in, fire or no fire)
+    const safe = !dark || nearFire || p.indoors || this.inHedge(p.x, p.z);
     p.safety += safe ? 0.4 : -0.35;
     p.food = clamp(p.food);
     p.rest = clamp(p.rest);
@@ -2441,6 +2442,54 @@ export class Sim {
   /** The band's built charcoal clamp, if it has one. */
   clampOf(c = this.camp) {
     return this.buildings.find((b) => b.band === c.id && b.kind === 'clamp' && b.built);
+  }
+  /** The band's finished thorn hedge, if it has one. */
+  hedgeOf(c = this.camp) {
+    return this.buildings.find((b) => b.band === c.id && b.kind === 'hedge' && b.built && !c.gone);
+  }
+  /** Whether a point is inside a living camp's finished thorn hedge. */
+  inHedge(x: number, z: number) {
+    for (const b of this.buildings) {
+      if (b.kind !== 'hedge' || !b.built) continue;
+      const c = this.campById(b.band);
+      if (c && !c.gone && hyp(x - c.x, z - c.z) < (b.reach ?? 0)) return true;
+    }
+    return false;
+  }
+  /** The tiles a thorn hedge round a camp's buildings would run over, round from its gate (null if it can't be laid). */
+  hedgeRing(c = this.camp): { ring: number[]; reach: number } | null {
+    const N = this.N, w = this.world;
+    const cx = Math.floor(c.x) + 0.5, cz = Math.floor(c.z) + 0.5;
+    // (round the camp's own buildings, not its far-flung plots, monuments and the things down at the water)
+    const inside = this.bandBuildings(c).filter((b) => !['plot', 'fence', 'barrow', 'stones', 'weir', 'canoe', 'clamp', 'hedge'].includes(b.kind));
+    const far = Math.max(0, ...inside.map((b) => hyp(b.x + 0.5 - cx, b.z + 0.5 - cz)));
+    const reach = Math.min(HEDGE_MOST, Math.max(HEDGE_LEAST, far + HEDGE_PAST));
+    const taken = new Set(this.buildings.map((b) => b.tile));
+    const line: number[] = [];
+    const steps = Math.ceil(reach * Math.PI * 2 * 3);
+    for (let k = 0; k < steps; k++) {
+      const a = (k / steps) * Math.PI * 2;
+      const x = Math.floor(cx + Math.cos(a) * reach), z = Math.floor(cz + Math.sin(a) * reach);
+      if (x < 1 || z < 1 || x >= N - 1 || z >= N - 1) continue;
+      const i = z * N + x;
+      if (line[line.length - 1] !== i && line[0] !== i) line.push(i);
+    }
+    // the hedge runs over dry, open land, not over a building, a grave or the water (a river or a lake shore closes the
+    // ring there itself); a path worn plain through its line is left open
+    const open = (i: number) => w.water[i] === WATER.None && this.grid.walkable(i) && !taken.has(i) && !this.gravesOn(i) && i !== c.graveyard;
+    const kept = line.map((i) => open(i) && this.trails.level[i] < HEDGE_GAP);
+    if (kept.filter(Boolean).length < 8) return null;
+    // the gate is the most trodden gap (or, with no path out yet, where the hedge would cross the ground most walked),
+    // and the hedge runs round from beside it
+    let gate = 0;
+    for (let k = 1; k < line.length; k++) if (this.trails.level[line[k]] > this.trails.level[line[gate]]) gate = k;
+    kept[gate] = false;
+    const ring: number[] = [];
+    for (let k = 1; k <= line.length; k++) {
+      const j = (gate + k) % line.length;
+      if (kept[j]) ring.push(line[j]);
+    }
+    return { ring, reach };
   }
   /** The band's built sweat lodge, if it has one. */
   sweatOf(c = this.camp) {
@@ -4158,7 +4207,8 @@ export class Sim {
   /** Out on the land alone after dark: sometimes something is out there too. */
   private wildAttack(p: Person) {
     const r = this.rWild;
-    for (const c of this.camps) if (!c.gone && hyp(p.x - c.x, p.z - c.z) < 10) return;
+    // (and nothing out there comes near a camp's thorn hedge)
+    for (const c of this.camps) if (!c.gone && hyp(p.x - c.x, p.z - c.z) < Math.max(10, (this.hedgeOf(c)?.reach ?? 0) + HEDGE_SAFE)) return;
     for (const q of this.people) if (q !== p && q.alive && hyp(q.x - p.x, q.z - p.z) < 4) return;
     if (!r.chance(0.00025 * (seasonOf(this.tick) === 3 ? 2 : 1))) return;
     const bear = seasonOf(this.tick) !== 3 && this.world.terrain[this.tileOf(p)] === T.Forest && r.chance(0.4);
@@ -4553,6 +4603,18 @@ export class Sim {
         c.plan.push('Raise a longhouse for the band to gather in');
       }
     }
+    // a thorn hedge round the camp, once someone has thought of one and the households have their homes (laid round
+    // what stands then, from the gate where the most trodden path runs out)
+    if (this.knows('hedge', c) && !this.bandBuildings(c).some((b) => b.kind === 'hedge') && underway.size === 0 && this.bandBuildings(c).some((b) => b.kind === 'hut' && b.built)) {
+      const plan = this.hedgeRing(c);
+      if (plan) {
+        const b = this.newBuilding('hedge', plan.ring[0], -1);
+        b.ring = plan.ring;
+        b.reach = plan.reach;
+        b.rot = 0;
+        c.plan.push('Lay a thorn hedge round the camp');
+      }
+    }
     // a loom shed, once someone has thought of the loom
     if (this.knows('loom', c) && !this.bandBuildings(c).some((b) => b.kind === 'loom')) {
       const tile = this.siteFor('loom', null);
@@ -4935,6 +4997,8 @@ export class Sim {
         if (w.water[i] !== WATER.None || !this.grid.walkable(i)) continue;
         if (this.buildings.some((b) => Math.abs(b.x - x) <= 1 && Math.abs(b.z - z) <= 1)) continue;
         if (i === this.camp.graveyard) continue;
+        // (nor on the line of a thorn hedge)
+        if (this.buildings.some((b) => b.kind === 'hedge' && b.ring?.includes(i))) continue;
         // a burial mound goes up by the burial ground, beside the graves and not over them
         const byGraves = kind === 'barrow' && this.camp.graveyard >= 0;
         // (a monument stands wider than its tile: no grave under any of it, for clearing its ground would take the grave too)
@@ -5151,12 +5215,12 @@ export class Sim {
     return this.grid.walkable(i) && this.world.water[i] === WATER.None;
   }
 
-  /** How far wolves keep from each camp: further from a fire at night, and from a camp that keeps dogs. */
+  /** How far wolves keep from each camp: further from a fire at night, from a camp that keeps dogs, and from a hedged one. */
   private wolfShy() {
     const dark = isDark(this.tick);
     return this.liveCamps().map((c) => ({
       x: c.x, z: c.z,
-      r: 12 + (dark && this.hearth(c)?.fuel > 0 ? 5 : 0) + (this.members(c).some((p) => p.dog !== undefined) ? 4 : 0),
+      r: 12 + (dark && this.hearth(c)?.fuel > 0 ? 5 : 0) + (this.members(c).some((p) => p.dog !== undefined) ? 4 : 0) + (this.hedgeOf(c) ? HEDGE_WOLF : 0),
     }));
   }
 
@@ -5522,6 +5586,8 @@ export class Sim {
       progress: b.built ? 1 : Math.min(0.98, (b.work / Math.max(1, specOf(b).work)) * 0.85 + (b.wood / Math.max(1, specOf(b).wood)) * 0.15),
       walls: b.walls ?? 'wood',
       fuel: b.fuel, owner: b.owner, bedding: (b.bedding ?? 0) > 0,
+      // a thorn hedge: the tiles it runs over, and the fire it rings
+      ...(b.kind === 'hedge' ? { ring: b.ring ?? [], cx: Math.floor(this.campById(b.band)?.x ?? b.x) + 0.5, cz: Math.floor(this.campById(b.band)?.z ?? b.z) + 0.5 } : {}),
       // a garden plot's look: bare, sown, in leaf or green, ripe, or stubble after the reaping
       ...(b.kind === 'plot' ? { look: this.plotLook(b) } : {}),
       // a weir's basket with fish in it
@@ -6004,6 +6070,11 @@ export class Sim {
         const goods = this.goodsOf(this.campById(b.band) ?? this.camp);
         lines.push(L('The band\'s goods', goods.length ? `${goods.length}: ${goods.filter((i) => i.quality === 2).length} fine, ${goods.filter((i) => i.quality === 1).length} good` : 'None yet'));
         notes.push(`A dome of clay over a firing pit. Pots and bowls fired in it crack ${Math.round(KILN_CRACK * 100)} times in a hundred, where the open embers crack a beginner's ${Math.round(HEARTH_CRACK * 100)}; the even heat makes them finer.`);
+      }
+      if (b.kind === 'hedge') {
+        const owner = this.campById(b.band) ?? this.camp;
+        lines.push(L('Length', `${b.ring?.length ?? 0} paces, ${Math.round(b.reach ?? 0)} from the fire`));
+        if (b.built) notes.push(`Blackthorn and bramble laid between stakes in a ring round ${owner.name}, the thorns turned outward, with gaps where the paths run out. Wolves keep further from the camp, nothing out on the land falls on anyone near it after dark, nobody inside is uneasy in the dark away from the fire, and the foxes are kept off the snares close by.`);
       }
       if (b.kind === 'sweat' && b.built) {
         const owner = this.campById(b.band) ?? this.camp;

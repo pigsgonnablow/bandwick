@@ -17,7 +17,7 @@ export const NEED_TIPS: Record<string, string> = {
 export const SKILL_TIPS: Record<string, string> = {
   foraging: 'Foraging: picking berries, digging roots, gathering acorns, eggs, honey, mushrooms, herbs and grass. More skill picks faster and carries more home. A healer who can build also thinks of the sweat lodge, sitting with the sick.',
   woodcutting: 'Woodcutting: felling trees, and burning charcoal in a clamp for the kiln. More skill brings a tree down in fewer strokes. A master (15 and up) is seldom caught by a falling tree, gets more wood out of each one, and loses less of a clamp to ash. Woodcutters also think of the log sledge, of clearing garden ground by fire, of splitting oak into planks with wedges, and of the dugout canoe.',
-  building: 'Building: raising shelters, racks and stores, and digging mud. More skill gets the work done faster. A master builder who can fell trees also thinks of the longhouse, framing the band\'s huts.',
+  building: 'Building: raising shelters, racks and stores, and digging mud. More skill gets the work done faster. A master builder who can fell trees also thinks of the longhouse, framing the band\'s huts, and one who knows the woods of a thorn hedge round the camp, hearing the wolves.',
   hunting: 'Hunting: bringing down deer. More skill means more spears that find their mark.',
   fishing: 'Fishing: more skill catches fish more often, and more of them at a time.',
   toolmaking: 'Toolmaking: knapping stone and shaping wood into axes, spears and other tools by the fire.',
@@ -145,6 +145,7 @@ export const CARD_TIPS: Record<string, string> = {
   'Filled by': 'Filled by: who laid the food in the earth oven and covered it over.',
   Thread: 'Thread: hanks of nettle and grass fiber spun on a spindle by the fire, for weaving cloth at the loom.',
   Weaving: 'Weaving: who is at the loom now, and what they are weaving.',
+  Length: 'Length: how many paces of thorn hedge ring the camp, and how far out from the fire it stands. Wolves keep further off a hedged camp, and nobody inside is uneasy in the dark.',
   Inside: 'Inside: who is in there now: round the hot stones in the sweat lodge, or at a feast or a tale in the longhouse.',
   'High seat': 'High seat: who sits at the head of the longhouse: the band\'s ruler, or else whoever led the band to its camp. Everyone who feasts or hears a tale in the hall with them thinks the better of them for it.',
   'Hall fire': 'Hall fire: whether the fire down the middle of the longhouse is burning, and how many are inside round it. It is lit from the band\'s firewood for a feast or a tale, and kept fed while anyone is in.',

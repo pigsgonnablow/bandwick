@@ -368,7 +368,7 @@ export class BandLayer {
     }
     // buildings
     for (const kind of ['hearth', 'leanto', 'bedding', 'hut0', 'hut1', 'hut0d', 'hut1d', 'hut0s', 'hut1s', 'hut0p', 'hut1p', 'storehouse', 'storehoused', 'storehouses', 'storehousep', 'rack', 'site', 'stockpile', 'windbreak', 'woodshed',
-      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit', 'canoe', 'canoeOut', 'hearthPot', 'hearthPotEmpty', 'hearthBoil', 'hearthStone', 'hearthPotStone', 'hearthPotEmptyStone', 'hearthBoilStone', 'oven', 'ovenLit', 'frame', 'sweat', 'sweatHot', 'longhouse', 'longhouseLit']) {
+      'plot', 'plotBurnt', 'plotSown', 'plotRoots', 'plotGrain', 'plotRipe', 'plotStubble', 'fence', 'pit', 'kiln', 'loom', 'pen', 'barrow1', 'barrow2', 'barrow3', 'barrow', 'stones1', 'stones2', 'stones3', 'stones', 'weir', 'weirFull', 'clamp', 'clampLit', 'canoe', 'canoeOut', 'hearthPot', 'hearthPotEmpty', 'hearthBoil', 'hearthStone', 'hearthPotStone', 'hearthPotEmptyStone', 'hearthBoilStone', 'oven', 'ovenLit', 'frame', 'sweat', 'sweatHot', 'hedge', 'longhouse', 'longhouseLit']) {
       const g0 = geoms.get(`bld__${kind}`);
       if (!g0) continue;
       const g = g0.clone();
@@ -1682,7 +1682,8 @@ export class BandLayer {
     for (const b of this.buildings) {
       if (this.introBuild.get(b.id) === 0) continue;
       const kind = this.modelOf(b);
-      need.set(kind, (need.get(kind) ?? 0) + 1);
+      // (a thorn hedge is drawn a length at a time along its ring)
+      need.set(kind, (need.get(kind) ?? 0) + (b.kind === 'hedge' ? b.ring?.length ?? 0 : 1));
       if (!b.built && b.kind !== 'plot' && b.kind !== 'barrow' && b.kind !== 'stones') need.set('site', (need.get('site') ?? 0) + 1);
       if (b.bedding) need.set('bedding', (need.get('bedding') ?? 0) + 1);
     }
@@ -1728,6 +1729,24 @@ export class BandLayer {
       const cx = b.x + 0.5, cz = b.z + 0.5;
       const rot = (b.rot * Math.PI) / 2;
       const kind = this.modelOf(b);
+      if (b.kind === 'hedge') {
+        // a thorn hedge: a length on each tile of its ring, laid along the ring (round the fire), from the gate round as
+        // far as the work has got; each length turned and sized a little differently so the line doesn't repeat
+        const ring = b.ring ?? [], n = b.built ? ring.length : Math.floor(ring.length * Math.max(0, b.progress));
+        // (each length runs from the one before it to the one after, where they touch, so the line follows the tiles
+        // round; a length on its own, either side of a gap, lies round the fire)
+        const N = this.world.size, touch = (a: number, c: number) => Math.abs((a % N) - (c % N)) <= 1 && Math.abs(Math.floor(a / N) - Math.floor(c / N)) <= 1;
+        for (let k = 0; k < n; k++) {
+          const i = ring[k], hx = (i % N) + 0.5, hz = Math.floor(i / N) + 0.5;
+          const h = ((i * 2654435761) >>> 0) / 4294967296;
+          const prev = k > 0 && touch(ring[k - 1], i) ? ring[k - 1] : i, next = k < ring.length - 1 && touch(ring[k + 1], i) ? ring[k + 1] : i;
+          const dx = (next % N) - (prev % N), dz = Math.floor(next / N) - Math.floor(prev / N);
+          const rot = dx || dz ? Math.atan2(-dz, dx) : Math.atan2(hx - (b.cx ?? cx), hz - (b.cz ?? cz));
+          put('hedge', hx, hz, rot + (h - 0.5) * 0.16, 1, 0.92 + h * 0.16, b.band);
+        }
+        if (!b.built) put('site', cx + 0.28, cz + 0.3, rot + 0.6, 1, 0.8);
+        continue;
+      }
       put(kind, cx, cz, rot, laid !== undefined ? Math.max(0.02, laid) : b.built ? 1 : Math.max(0.02, b.progress), 1, b.band, b.walls);
       const bc = this.colorMode ? this.bandColors.get(b.band) : undefined;
       if (bc) this.auraList.push({ x: cx, y: this.world.groundY[b.z * this.world.size + b.x], z: cz, r: b.kind === 'hearth' ? 3 : 2.2, c: bc.color, k: bc.gone ? 0.12 : 0.42 });

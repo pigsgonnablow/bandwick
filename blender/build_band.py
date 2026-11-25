@@ -50,6 +50,8 @@ Conventions (read by src/render/band.ts):
   item__wedges                                                    wedges and a maul for splitting oak into planks.
   bld__{sweat,sweatHot}                                           a sweat lodge, a low dome of withies under hides, its door to -Y: cold, the flap
       rolled up and stones heaped by the door; hot, the flap let down and the hides darkened with steam.
+  bld__hedge                                                      one length of a thorn hedge laid along X, its thorny tips out to -Y
+      (the game lays one on each tile of the ring round a camp, turned so -Y faces away from the fire).
   bld__{longhouse,longhouseLit}                                  the band's longhouse, a long hall along X under a thatched gable roof, its door in the
       middle of the long front side (-Y) between two carved posts, an antlered skull on the +X gable: cold, the door hide let down
       and the smoke holes dark; lit, the hide tied back and the doorway and the smoke holes black (they glow at night).
@@ -4699,6 +4701,72 @@ for k in range(2):
     q.cyl(8, 0.018, 0.018, (at[0] - 0.045, at[1], at[2]), (at[0] + 0.045, at[1] + 0.01, at[2]), HIDE if k else HIDE_SCRAPED, rnd, 0.06)
     q.cyl(5, 0.019, 0.019, (at[0] - 0.006, at[1] + 0.001, at[2]), (at[0] + 0.006, at[1] + 0.002, at[2]), SINEW_C, rnd, 0.04)  # tied round
 q.finish("bld__frame")
+
+
+# ---------------------------------------------------------------- the thorn hedge
+# One length of a dead hedge laid round a camp: stakes driven in a pace apart along X, blackthorn and bramble cut out on
+# the land and heaped and woven between them to chest height, the thorny tips turned outward (-Y, away from the fire).
+# Each tile of the ring is one length, a little longer than the tile so the lengths overlap round the bends.
+q = Part()
+rnd = random.Random(4207)
+HL = 0.76   # half its length
+HH = 0.26   # how high the brush is heaped
+THORN = (64, 52, 50)       # blackthorn bark, near black
+THORN_LT = (92, 74, 62)
+BRAMBLE = (96, 58, 62)     # bramble canes, purplish
+BR_LEAF = (54, 82, 40)
+BR_LEAF_DK = (40, 62, 34)
+SLOE = (58, 56, 96)        # sloes with their bloom
+for k in range(5):  # the stakes, driven in along the line, standing a little above the brush
+    x = -HL + 0.1 + k * (2 * HL - 0.2) / 4 + rnd.uniform(-0.03, 0.03)
+    q.cyl(5, 0.009, 0.007, (x, 0.0, -0.02), (x + rnd.uniform(-0.01, 0.01), rnd.uniform(-0.01, 0.01), HH + 0.03 + rnd.uniform(0, 0.03)), POLE, rnd, 0.08)
+
+
+def thorn_branch(q, base, d, length, r, depth, rnd):
+    """A thorny branch from base along d, forking twice, spurs bristling off it."""
+    d = d.normalized()
+    tip = base + d * length
+    q.cyl(4, r, r * 0.45, base, tip, jit(THORN if rnd.random() < 0.7 else THORN_LT, rnd, 0.1), rnd, 0.0, cap=False)
+    for s in range(3):  # spurs
+        at = base.lerp(tip, 0.25 + s * 0.25)
+        sd = Vector((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-0.5, 1))).normalized()
+        q.cyl(3, r * 0.35, r * 0.1, at, at + sd * length * 0.18, THORN, rnd, 0.0, cap=False)
+    if depth > 0:
+        for f in range(2):
+            fd = (d + Vector((rnd.uniform(-0.7, 0.7), rnd.uniform(-0.7, 0.7), rnd.uniform(-0.3, 0.6)))).normalized()
+            thorn_branch(q, base.lerp(tip, rnd.uniform(0.45, 0.8)), fd, length * 0.55, r * 0.6, depth - 1, rnd)
+
+
+# the dense core of the heap: dark, tangled, low and wide at the foot
+for k in range(8):
+    x = -HL + (k + 0.5) * 2 * HL / 8
+    q.blob((x + rnd.uniform(-0.03, 0.03), rnd.uniform(-0.015, 0.015), HH * 0.3), (0.1, 0.06, HH * 0.34), jit((52, 44, 38), rnd, 0.12), rnd, 0.1, noise=0.5)
+# branches laid in along the line, butts toward the fire, the tips out and up
+for k in range(44):
+    x = rnd.uniform(-HL, HL)
+    base = Vector((x, rnd.uniform(0.0, 0.07), rnd.uniform(0.02, HH * 0.6)))
+    d = Vector((rnd.uniform(-0.6, 0.6), -rnd.uniform(0.5, 1.0), rnd.uniform(0.15, 0.7)))
+    thorn_branch(q, base, d, rnd.uniform(0.12, 0.2), 0.008, 1, rnd)
+# and some laid along it, woven between the stakes
+for k in range(18):
+    x = rnd.uniform(-HL, HL - 0.2)
+    base = Vector((x, rnd.uniform(-0.04, 0.04), rnd.uniform(0.06, HH * 0.85)))
+    thorn_branch(q, base, Vector((1, rnd.uniform(-0.2, 0.2), rnd.uniform(-0.15, 0.15))), rnd.uniform(0.22, 0.34), 0.007, 1, rnd)
+# bramble scrambling over it: arching canes, clumps of leaves, a few sloes on the blackthorn
+for k in range(7):
+    x = rnd.uniform(-HL + 0.2, HL - 0.2)
+    a = Vector((x, rnd.uniform(-0.06, 0.06), HH * 0.5))
+    b = a + Vector((rnd.uniform(-0.18, 0.18), rnd.uniform(-0.08, 0.04), HH * 0.55))
+    c = b + Vector((rnd.uniform(-0.1, 0.1), -rnd.uniform(0.05, 0.12), -HH * 0.45))
+    q.cyl(4, 0.005, 0.004, a, b, BRAMBLE, rnd, 0.08, cap=False)
+    q.cyl(4, 0.004, 0.003, b, c, BRAMBLE, rnd, 0.08, cap=False)
+for k in range(16):
+    at = (rnd.uniform(-HL, HL), rnd.uniform(-0.1, 0.06), rnd.uniform(HH * 0.45, HH * 1.02))
+    q.blob(at, (rnd.uniform(0.03, 0.05), rnd.uniform(0.025, 0.04), rnd.uniform(0.018, 0.028)), jit(BR_LEAF if rnd.random() < 0.6 else BR_LEAF_DK, rnd, 0.1), rnd, 0.08, noise=0.3)
+for k in range(10):
+    at = (rnd.uniform(-HL, HL), rnd.uniform(-0.1, -0.02), rnd.uniform(HH * 0.4, HH * 0.95))
+    q.blob(at, (0.007, 0.007, 0.007), SLOE, rnd, 0.05)
+q.finish("bld__hedge")
 
 
 # ---------------------------------------------------------------- the sweat lodge

@@ -373,6 +373,17 @@ it the feast goes out to the open fire after all. While its fire burns the door 
 at night and smoke rises from the roof. The hall's card names who holds the high seat and who is inside.
 `npx tsx tools/longhousesave.ts` and `node tools/longhouseshots.mjs` photograph it.
 
+**Thorn hedge.** A band with huts may come to ring its camp with thorns. A builder who knows the woods (building 11,
+woodcutting 10), lying awake to the wolves howling round camp or finding the garden raided again, may think of it, and
+the band lays one once the households have their homes: blackthorn and bramble cut out on the land (24 wood) and laid
+between stakes in a ring a couple of paces beyond the furthest of the camp's buildings (6 to 9 tiles from the fire),
+the thorns turned outward, round from a gate where the most trodden path runs out, and with a gap left wherever another
+path worn plain runs through its line. It goes up a length at a time, the builders working where it has got to, and
+nothing is built on its line after. Wolves keep 6 tiles further from a hedged camp, nothing out on the land falls on
+anyone within 4 tiles of the hedge after dark, nobody inside it is uneasy in the dark away from the fire, and the foxes
+are kept off the snares within 16 tiles of it, as a camp's dogs keep them off. A band that moves on leaves its hedge
+behind. The hedge's card gives its length and how far it stands from the fire.
+
 **Bad food.** Meat, fish and eggs eaten raw can turn the stomach: about 1 meal in 100, two and a half times that in
 the warm months, and roasted or stewed hardly ever. A stew left in the pot overnight in the warm can turn too.
 Either way it is a couple of days' sickness, nursed with herbs like a fever.
