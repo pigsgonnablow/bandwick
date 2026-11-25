@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { SK, BUILD, BRIDGE_USE, BRIDGE_SPAN, WADE_COLD } from '../../src/sim/band';
 import { DISCOVERY, knowHowFor } from '../../src/sim/know';
 import { WATER } from '../../src/sim/types';
-import { TICKS_PER_DAY } from '../../src/sim/time';
+import { TICKS_PER_DAY, TICKS_PER_YEAR } from '../../src/sim/time';
 import { setup, completeBuilding, go } from '../../src/sim/ai';
 import { Sim } from '../../src/sim/sim';
 import { sim, runYears } from '../helpers';
@@ -129,5 +129,20 @@ describe('footbridge', () => {
     const dry = cross();
     expect(dry.warmth).toBe(80);
     expect(dry.counted).toBe(0);
+  });
+
+  it('once fallen in, long after its band has gone, leaves the ford to be waded again', () => {
+    const s = band();
+    const b = planned(s);
+    const i = b.span![0];
+    const wadeCost = s.grid.cost[i], wadeLevel = s.grid.walkLevel[i];
+    completeBuilding(s, b, s.members()[0]);
+    expect(s.grid.cost[i]).toBe(10);
+    // (its band gone a generation)
+    s.camp.gone = s.tick - 13 * TICKS_PER_YEAR;
+    (s as any).ruinsFall();
+    expect(s.buildings.includes(b)).toBe(false);
+    expect(s.grid.cost[i]).toBe(wadeCost);
+    expect(s.grid.walkLevel[i]).toBe(wadeLevel);
   });
 });

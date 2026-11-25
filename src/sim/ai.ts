@@ -72,6 +72,11 @@ function fishGear(s: Sim, p: Person): Item | undefined {
   return s.toolFor(p, kinds);
 }
 /** Where to stand to fish from a bank tile: at its edge, by the water (a share of the way from the bank's middle). */
+/** Where a thorn hedge has been laid round to: the tile of its ring the work has reached. */
+function hedgeAt(b: Building) {
+  const ring = b.ring!;
+  return ring[Math.min(ring.length - 1, Math.floor((b.work / specOf(b).work) * ring.length))];
+}
 export function fishStand(N: number, bank: number, w: number, side = 0) {
   const bx = (bank % N) + 0.5, bz = Math.floor(bank / N) + 0.5;
   const dx = (w % N) - (bank % N), dz = Math.floor(w / N) - Math.floor(bank / N);
@@ -1252,7 +1257,7 @@ export function setup(s: Sim, p: Person, kind: TaskKind, recipe?: RecipeKey): Ta
           p.thought = owner && owner.alive ? `Building a ${label} for ${owner.id === p.id ? 'their family' : owner.name + "'s family"}.` : `Building the ${label}.`;
           // (a thorn hedge is laid round from its gate: the work goes on where it has got to)
           if (b.kind === 'hedge' && b.ring?.length) {
-            const at = b.ring[Math.min(b.ring.length - 1, Math.floor((b.work / specOf(b).work) * b.ring.length))];
+            const at = hedgeAt(b);
             return newTask(s, 'build', at, (at % N) + 0.5, Math.floor(at / N) + 0.5, b.id, true);
           }
           // (a footbridge is laid from its near bank, out over the water as it goes)
@@ -4092,6 +4097,11 @@ export function runTask(s: Sim, p: Person) {
       }
       if (b.work >= specOf(b).work) completeBuilding(s, b, p);
       if (--t.timer <= 0 || b.built) finish(s, p);
+      // (a thorn hedge: once the hedge has been laid on past where they stand, they move along to where it has got to)
+      else if (b.kind === 'hedge' && b.ring?.length && hedgeAt(b) !== t.goal && t.stage === 1) {
+        const at = hedgeAt(b);
+        if (hyp((at % s.N) + 0.5 - t.gx, Math.floor(at / s.N) + 0.5 - t.gz) > 1.5) finish(s, p);
+      }
       return;
     }
     case 'fuel': {

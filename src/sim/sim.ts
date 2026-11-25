@@ -2462,6 +2462,10 @@ export class Sim {
     }
     return false;
   }
+  /** Whether a tile lies on the line of a thorn hedge, laid or planned (nothing else is put there). */
+  onHedgeLine(i: number) {
+    return this.buildings.some((b) => b.kind === 'hedge' && b.ring?.includes(i));
+  }
   /** The tiles a thorn hedge round a camp's buildings would run over, round from its gate (null if it can't be laid). */
   hedgeRing(c = this.camp): { ring: number[]; reach: number } | null {
     const N = this.N, w = this.world;
@@ -3873,6 +3877,7 @@ export class Sim {
   /** Huts, sheds and racks left standing fall in, a generation after their band has gone. */
   private ruinsFall() {
     const n = this.buildings.length;
+    const bridges = this.buildings.filter((b) => b.kind === 'bridge' && b.built);
     const fallen = new Set<number>();
     this.buildings = this.buildings.filter((b) => {
       const c = this.campById(b.band);
@@ -3884,6 +3889,12 @@ export class Sim {
     if (this.buildings.length === n) return;
     this.buildingsVersion++;
     for (const p of this.people) if (fallen.has(p.home)) p.home = -1;
+    // (a footbridge that has fallen in is gone from over the water: the ford is waded again)
+    if (bridges.some((b) => fallen.has(b.id))) {
+      for (const b of bridges) if (fallen.has(b.id)) for (const i of b.span ?? []) this.grid.reset(this.world, i);
+      this.grid.invalidate();
+      this.layBridges();
+    }
   }
 
   /** No one left: the camp goes back to the land. */
@@ -4807,6 +4818,8 @@ export class Sim {
         const i = z * N + x;
         if (w.water[i] !== WATER.None || !this.grid.walkable(i) || i === c.graveyard) continue;
         if (w.terrain[i] !== T.Grass && w.terrain[i] !== T.Forest) continue;
+        // (nor on the line of a thorn hedge)
+        if (this.onHedgeLine(i)) continue;
         // plots lie side by side in a field; anything else keeps a tile's room
         let clash = false;
         for (const b of this.buildings) {
@@ -5075,7 +5088,7 @@ export class Sim {
         if (this.buildings.some((b) => Math.abs(b.x - x) <= 1 && Math.abs(b.z - z) <= 1)) continue;
         if (i === this.camp.graveyard) continue;
         // (nor on the line of a thorn hedge)
-        if (this.buildings.some((b) => b.kind === 'hedge' && b.ring?.includes(i))) continue;
+        if (this.onHedgeLine(i)) continue;
         // a burial mound goes up by the burial ground, beside the graves and not over them
         const byGraves = kind === 'barrow' && this.camp.graveyard >= 0;
         // (a monument stands wider than its tile: no grave under any of it, for clearing its ground would take the grave too)
