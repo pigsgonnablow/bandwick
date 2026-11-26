@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { generateWorld } from '../../src/sim/worldgen';
-import { DEFAULT_PARAMS, WATER, T, LEVELS } from '../../src/sim/types';
+import { generateWorld, resolveShape } from '../../src/sim/worldgen';
+import { Grid } from '../../src/sim/path';
+import { DEFAULT_PARAMS, NEW_WORLD_PARAMS, MAP_SHAPES, WATER, T, LEVELS, DIRS4 } from '../../src/sim/types';
 import { Sim } from '../../src/sim/sim';
 import { TICKS_PER_DAY } from '../../src/sim/time';
 import { runChecked } from '../../tools/lib/invariants';
@@ -73,4 +74,55 @@ describe('generateWorld', () => {
       expect(w.propCount).toBeGreaterThan(100);
     });
   }
+
+  it('keeps an old world (one with no lie of land named) an island, and picks a lie of land from the seed for a new one', () => {
+    expect(resolveShape({ ...DEFAULT_PARAMS, seed: 5 })).toBe('island');
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 60; seed++) seen.add(resolveShape({ ...NEW_WORLD_PARAMS, seed }));
+    expect([...seen].sort()).toEqual([...MAP_SHAPES].sort());
+  });
+
+  // the first band comes in by boat: whatever the lie of the land, there is sea, and a beach on it the band can walk up from to its camp
+  for (const shape of MAP_SHAPES)
+    it(`gives every ${shape} sea to sail in on and a beach the first camp can be walked to from`, () => {
+      for (const seed of [11, 12, 13, 14]) {
+        const w = generateWorld({ ...DEFAULT_PARAMS, seed, shape });
+        expect(w.shape).toBe(shape);
+        const N = w.size;
+        let sea = 0, land = 0;
+        for (let i = 0; i < N * N; i++) {
+          if (w.water[i] === WATER.Sea) sea++;
+          if (w.water[i] === WATER.None) land++;
+        }
+        expect(sea / (N * N), `${shape} ${seed}: sea`).toBeGreaterThan(0.04);
+        expect(land / (N * N), `${shape} ${seed}: land`).toBeGreaterThan(0.3);
+        const s = new Sim(w);
+        const camp = s.camps[0];
+        expect(camp, `${shape} ${seed}: a camp`).toBeTruthy();
+        // walk out from the camp, as the opening scene does, until a step from the sea
+        const g = new Grid(w);
+        const dry = (i: number) => w.water[i] === WATER.None && g.walkable(i);
+        const seen = new Uint8Array(N * N);
+        const q = [camp.tile];
+        seen[camp.tile] = 1;
+        let beach = -1;
+        for (let k = 0; k < q.length && beach < 0; k++) {
+          const i = q[k], x = i % N, z = (i / N) | 0;
+          for (const [dx, dz] of DIRS4) {
+            const nx = x + dx, nz = z + dz;
+            if (nx < 1 || nz < 1 || nx >= N - 1 || nz >= N - 1) continue;
+            const j = nz * N + nx;
+            if (w.water[j] === WATER.Sea) { beach = i; break; }
+            if (!seen[j] && dry(j) && g.step(i, j)) { seen[j] = 1; q.push(j); }
+          }
+        }
+        expect(beach, `${shape} ${seed}: a beach to land on`).toBeGreaterThanOrEqual(0);
+      }
+    });
+
+  it('lets a band live a season on land that runs off the edge of the map', () => {
+    const s = new Sim(generateWorld({ ...DEFAULT_PARAMS, seed: 21, shape: 'lakeland' }));
+    const checker = runChecked(s, 0.25);
+    expect(checker.report()).toEqual([]);
+  });
 });

@@ -1,28 +1,30 @@
 // Headless world-generation check: timing, determinism, stats, and a top-down preview image.
-// Usage: npx tsx tools/gentest.ts [seed...] [--size 256] [--out dir]
+// Usage: npx tsx tools/gentest.ts [seed...] [--size 256] [--shape varied|island|coast|...] [--out dir]
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { generateWorld } from '../src/sim/worldgen';
-import { DEFAULT_PARAMS, WATER } from '../src/sim/types';
+import { DEFAULT_PARAMS, WATER, WorldParams } from '../src/sim/types';
 
 const args = process.argv.slice(2);
 let size = DEFAULT_PARAMS.size;
 let out = 'out';
+let shape: WorldParams['shape'];
 const seeds: number[] = [];
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--size') size = Number(args[++i]);
   else if (args[i] === '--out') out = args[++i];
+  else if (args[i] === '--shape') shape = args[++i] as WorldParams['shape'];
   else seeds.push(Number(args[i]));
 }
 if (!seeds.length) seeds.push(1, 2, 3);
 mkdirSync(out, { recursive: true });
 
 for (const seed of seeds) {
-  const params = { ...DEFAULT_PARAMS, size, seed };
+  const params = { ...DEFAULT_PARAMS, size, seed, shape };
   const a = generateWorld(params);
   const b = generateWorld(params);
   const same = a.hash === b.hash;
   console.log(
-    JSON.stringify({ seed, size, ms: Math.round(a.genMs), ms2: Math.round(b.genMs), hash: a.hash, deterministic: same, ...a.stats }),
+    JSON.stringify({ seed, size, shape: a.shape, ms: Math.round(a.genMs), ms2: Math.round(b.genMs), hash: a.hash, deterministic: same, ...a.stats }),
   );
   // top-down preview: ground colour, tinted where water lies, as raw RGB for a PNG converter
   const S = a.texSize, tpt = S / size;

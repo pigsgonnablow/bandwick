@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Engine, Snapshot, Summary } from '../main';
-import { DEFAULT_PARAMS } from '../sim/types';
+import { NEW_WORLD_PARAMS } from '../sim/types';
 import { TICKS_PER_DAY, DAYS_PER_SEASON, DAYS_PER_YEAR } from '../sim/time';
 import { SEASON_NAMES } from '../render/env';
 import { QUALITY_NAMES } from '../render/view';
@@ -76,13 +76,19 @@ export const when = (tick: number) => {
   return `${SEASON_NAMES[c.season]}, year ${c.year}`;
 };
 
+/** The lie of the land, as the title card puts it. */
+const SHAPE_WORDS: Record<string, string> = {
+  island: 'An island', coast: 'A stretch of coast', bay: 'Land round a bay', peninsula: 'A headland',
+  strait: 'Two shores of a sound', lakeland: 'Lake country',
+};
+
 function TitleCard({ s }: { s: Snapshot }) {
   const w = s.world!;
   return (
     <header class="panel">
       <h1 class="title">{s.name}</h1>
       <div class="sub">
-        Seed {w.params.seed} · {w.size} × {w.size} tiles · {(w.size * METERS_PER_UNIT) / 1000} km across
+        {SHAPE_WORDS[w.shape] ?? 'An island'} · Seed {w.params.seed} · {w.size} × {w.size} tiles · {(w.size * METERS_PER_UNIT) / 1000} km across
       </div>
       <div class="build" title="Game version · commit · build date">{BUILD}</div>
     </header>
@@ -435,7 +441,7 @@ function WorldPanel({ s, engine }: { s: Snapshot; engine: Engine }) {
   const [seed, setSeed] = useState(String(w.params.seed));
   const [size, setSize] = useState(String(w.size));
   useEffect(() => setSeed(String(w.params.seed)), [w]);
-  const go = (sd: number) => engine.newWorld({ ...DEFAULT_PARAMS, seed: sd, size: Number(size) });
+  const go = (sd: number) => engine.newWorld({ ...NEW_WORLD_PARAMS, seed: sd, size: Number(size) });
   const cam = engine.view.cam;
   const [folded, setFolded] = useCollapsed('world');
   return (
@@ -526,8 +532,8 @@ function Loading({ s, engine }: { s: Snapshot; engine: Engine }) {
         {!s.error && <div class="bar"><i /></div>}
         {s.error && (
           <div class="row" style={{ justifyContent: 'center', marginTop: 12 }}>
-            {w && <button class="btn" onClick={() => engine.newWorld({ ...DEFAULT_PARAMS, seed: w.params.seed, size: w.size })}>Restart this world</button>}
-            <button class="btn primary" onClick={() => engine.newWorld({ ...DEFAULT_PARAMS, seed: randomSeed() })}>New random world</button>
+            {w && <button class="btn" onClick={() => engine.newWorld({ ...w.params })}>Restart this world</button>}
+            <button class="btn primary" onClick={() => engine.newWorld({ ...NEW_WORLD_PARAMS, seed: randomSeed() })}>New random world</button>
           </div>
         )}
       </div>

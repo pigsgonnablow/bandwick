@@ -3,10 +3,11 @@
 // -> climate -> terrain types -> resources -> props -> painted ground textures.
 
 import { Rng, hash3, hash01 } from './rng';
+export { resolveShape } from './types';
 import { Simplex } from './noise';
 import {
   T, WATER, STEP, SEA, SNOW_LEVEL, LEVELS, surfaceY, SEA_SURFACE,
-  WorldParams, WorldData, DIRS4, treeId, smallPropId,
+  WorldParams, WorldData, DIRS4, treeId, smallPropId, MapShape, resolveShape,
 } from './types';
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -15,7 +16,72 @@ const smooth = (e0: number, e1: number, x: number) => {
   return t * t * (3 - 2 * t);
 };
 
+/** How much more of the map is land than an island's share, for each lie of land. */
+const LAND_EXTRA: Record<MapShape, number> = { island: 0, coast: 0.2, bay: 0.16, peninsula: 0.1, strait: 0.12, lakeland: 0.3 };
+
+/**
+ * Where the sea lies for a lie of land: a field over the map, 0 deep inland and 1 or more well out to sea,
+ * that sinks the raw height (an island's is the distance from the middle). `nx, ny` run -0.5..0.5.
+ */
+function seaField(shape: MapShape, seed: number): (nx: number, ny: number) => number {
+  const r = (k: number) => hash01(seed, 6133, k);
+  const a = r(1) * Math.PI * 2;
+  // the direction the sea lies in, and the point where that direction leaves the square
+  const cx = Math.cos(a), cy = Math.sin(a);
+  const toEdge = 0.5 / Math.max(Math.abs(cx), Math.abs(cy));
+  const ex = cx * toEdge, ey = cy * toEdge;
+  // distance to the segment from (x0,y0) to (x1,y1)
+  const seg = (x0: number, y0: number, x1: number, y1: number) => {
+    const dx = x1 - x0, dy = y1 - y0;
+    const L2 = dx * dx + dy * dy;
+    return (px: number, py: number) => {
+      const t = clamp01(((px - x0) * dx + (py - y0) * dy) / L2);
+      return Math.hypot(px - x0 - dx * t, py - y0 - dy * t);
+    };
+  };
+  switch (shape) {
+    case 'island':
+      return (nx, ny) => Math.sqrt(nx * nx + ny * ny) * 2;
+    case 'coast': {
+      // the sea off one side (or round a corner), the land running on off the other edges
+      const at = 0.52 + (r(2) - 0.5) * 0.16;
+      return (nx, ny) => at + (nx * cx + ny * cy) * 1.5;
+    }
+    case 'lakeland': {
+      // land nearly everywhere, an arm of the sea along one edge; the low ground inland lies under lakes
+      return (nx, ny) => {
+        const u = nx * cx + ny * cy;
+        return 0.05 + Math.max(0, u * toEdge * 2 - 0.62) * 3.4;
+      };
+    }
+    case 'bay': {
+      // the sea reaches deep into the land from one edge, the land all round it
+      const reach = 0.35 + r(3) * 0.45;
+      const d = seg(ex * 1.2, ey * 1.2, ex * (1 - reach * 2), ey * (1 - reach * 2));
+      const k = 2.6 + r(4) * 1.2;
+      return (nx, ny) => 1.3 - d(nx, ny) * k;
+    }
+    case 'peninsula': {
+      // a tongue of land running out from one edge into the sea
+      const tip = 0.1 + r(5) * 0.25;
+      const d = seg(-ex * 1.2, -ey * 1.2, ex * tip * 2, ey * tip * 2);
+      const k = 2.2 + r(6) * 0.8;
+      // (broadest where it leaves the edge, so it is plainly joined to land beyond the map)
+      return (nx, ny) => 0.12 + d(nx, ny) * k * (0.6 + 0.4 * clamp01(nx * cx + ny * cy + 0.5) * 1.4);
+    }
+    case 'strait': {
+      // a channel of sea right across the map, with land on both sides
+      const off = (r(7) - 0.5) * 0.3;
+      return (nx, ny) => {
+        const v = Math.abs(nx * cx + ny * cy - off);
+        return 1.25 - v * 3.4;
+      };
+    }
+  }
+}
+
 export function generateWorld(p: WorldParams): WorldData {
+  const shape = resolveShape(p);
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
   const N = p.size;
   const NN = N * N;
@@ -26,6 +92,7 @@ export function generateWorld(p: WorldParams): WorldData {
   const F = 1 / 128; // features are sized in tiles, so bigger maps show more land, not bigger land
 
   // ---------- 1. Raw height ----------
+  const sea = seaField(shape, p.seed);
   const h = new Float32Array(NN);
   for (let y = 0; y < N; y++) {
     for (let x = 0; x < N; x++) {
@@ -36,7 +103,7 @@ export function generateWorld(p: WorldParams): WorldData {
       const ridge = nRidge.ridged(wx * 3.1, wy * 3.1, 5);
       const range = smooth(-0.1, 0.4, nRange.fbm(fx * 1.25 + 7.3, fy * 1.25 - 2.1, 3));
       const nx = x / (N - 1) - 0.5, ny = y / (N - 1) - 0.5;
-      const d = Math.sqrt(nx * nx + ny * ny) * 2;
+      const d = sea(nx, ny);
       // a noisy falloff sinks the map edges; the interior shape comes from the noise,
       // so coastlines get bays, capes and the odd islet
       const cn = nCoast.fbm(fx * 1.8, fy * 1.8, 4) * 0.34;
@@ -52,7 +119,7 @@ export function generateWorld(p: WorldParams): WorldData {
 
   // ---------- 3. Land, sea and terraces ----------
   const sorted = Float32Array.from(h).sort();
-  const seaT = sorted[Math.floor((1 - p.landFraction) * (NN - 1))];
+  const seaT = sorted[Math.floor((1 - Math.min(0.9, p.landFraction + LAND_EXTRA[shape])) * (NN - 1))];
   const hMax = sorted[NN - 1];
   const level = new Uint8Array(NN);
   const landLevels = LEVELS - 1 - SEA; // 11
@@ -60,7 +127,8 @@ export function generateWorld(p: WorldParams): WorldData {
   for (let y = 0; y < N; y++)
     for (let x = 0; x < N; x++) {
       const i = y * N + x;
-      const edge = Math.min(x, y, N - 1 - x, N - 1 - y);
+      // (an island keeps a moat of sea round it; any other land runs on off the edge of the map)
+      const edge = shape === 'island' ? Math.min(x, y, N - 1 - x, N - 1 - y) : 3;
       const v = h[i];
       if (v > seaT && edge >= 3) {
         isLandRaw[i] = 1;
@@ -101,25 +169,40 @@ export function generateWorld(p: WorldParams): WorldData {
   const water = new Uint8Array(NN);
   const waterY = new Float32Array(NN).fill(-1000);
   {
-    const q: number[] = [];
+    // each stretch of low water that reaches the edge on its own, flooded in turn
+    const bodies: number[][] = [];
     for (let i = 0; i < NN; i++) {
       const x = i % N, y = (i / N) | 0;
-      if ((x === 0 || y === 0 || x === N - 1 || y === N - 1) && !isLandRaw[i]) {
-        water[i] = WATER.Sea;
-        q.push(i);
-      }
-    }
-    for (let k = 0; k < q.length; k++) {
-      const i = q[k];
-      const x = i % N, y = (i / N) | 0;
-      for (const [dx, dy] of DIRS4) {
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
-        const j = ny * N + nx;
-        if (water[j] === WATER.None && !isLandRaw[j]) {
-          water[j] = WATER.Sea;
-          q.push(j);
+      if (!(x === 0 || y === 0 || x === N - 1 || y === N - 1) || isLandRaw[i] || water[i] !== WATER.None) continue;
+      const q = [i];
+      water[i] = WATER.Sea;
+      for (let k = 0; k < q.length; k++) {
+        const c = q[k];
+        const cx = c % N, cy = (c / N) | 0;
+        for (const [dx, dy] of DIRS4) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
+          const j = ny * N + nx;
+          if (water[j] === WATER.None && !isLandRaw[j]) {
+            water[j] = WATER.Sea;
+            q.push(j);
+          }
         }
+      }
+      bodies.push(q);
+    }
+    // where the land runs off the edge of the map, a hollow that happens to touch the edge is a lake, not the sea:
+    // the sea is the big water (and anything near as big)
+    if (shape !== 'island' && bodies.length > 1) {
+      const big = Math.max(...bodies.map((b) => b.length));
+      // (in a lakeland, only the biggest arm of the sea, or the biggest few if one is not sea enough to sail in on:
+      // the rest are lakes)
+      const bySize = [...bodies].sort((a, b) => b.length - a.length);
+      let kept = 0;
+      for (const b of bySize) {
+        const keep = shape === 'lakeland' ? kept < NN * 0.05 : b.length >= big * 0.3;
+        if (keep) kept += b.length;
+        else for (const i of b) water[i] = WATER.None;
       }
     }
     // low ground cut off from the sea becomes a lake basin
@@ -144,24 +227,44 @@ export function generateWorld(p: WorldParams): WorldData {
       }
   }
 
+  // (where the land runs on off the map, the hollows hold broad lakes: deeper away from their shores)
+  if (shape !== 'island') {
+    const shoreDist = bfsDistance(N, (i) => water[i] !== WATER.Lake);
+    for (let i = 0; i < NN; i++)
+      if (water[i] === WATER.Lake) level[i] = Math.max(1, SEA - Math.floor((shoreDist[i] - 1) / 3));
+  }
+
   // ---------- 5. Drainage over the smooth heightfield (natural, meandering paths) ----------
   const receiver = new Int32Array(NN).fill(-1);
+  const offMap = new Uint8Array(NN);
   const order: number[] = [];
   {
     const fill = new Float64Array(NN);
     const seen = new Uint8Array(NN);
     const heap = new MinHeap(NN);
+    // (water runs to the sea, or into a lake in a hollow where there are such: off an island, only the sea)
+    const sink = (i: number) => water[i] === WATER.Sea || (shape !== 'island' && water[i] === WATER.Lake);
     for (let i = 0; i < NN; i++)
-      if (water[i] === WATER.Sea) {
+      if (sink(i)) {
         seen[i] = 1;
         fill[i] = h[i];
         const x = i % N, y = (i / N) | 0;
         let coast = false;
         for (const [dx, dy] of DIRS4) {
           const nx = x + dx, ny = y + dy;
-          if (nx >= 0 && ny >= 0 && nx < N && ny < N && water[ny * N + nx] !== WATER.Sea) coast = true;
+          if (nx >= 0 && ny >= 0 && nx < N && ny < N && !sink(ny * N + nx)) coast = true;
         }
         if (coast) heap.push(fill[i], i);
+      }
+    // where the land runs on off the map, water can run off it too (rather than along the edge to the sea)
+    if (shape !== 'island')
+      for (let i = 0; i < NN; i++) {
+        const x = i % N, y = (i / N) | 0;
+        if (seen[i] || !(x === 0 || y === 0 || x === N - 1 || y === N - 1)) continue;
+        seen[i] = 1;
+        offMap[i] = 1;
+        fill[i] = h[i];
+        heap.push(fill[i], i);
       }
     while (heap.size) {
       const i = heap.pop();
@@ -203,20 +306,25 @@ export function generateWorld(p: WorldParams): WorldData {
   };
   const isRiver = new Uint8Array(NN);
   for (let i = 0; i < NN; i++) {
-    if (water[i] !== WATER.None || acc[i] < riverT || receiver[i] < 0) continue;
+    if (water[i] !== WATER.None || acc[i] < riverT || (receiver[i] < 0 && !offMap[i])) continue;
     isRiver[i] = 1;
   }
   for (let k = order.length - 1; k >= 0; k--) {
     const i = order[k];
     if (!isRiver[i]) continue;
     const r = receiver[i];
-    if (water[r] !== WATER.Sea && level[r] > level[i]) level[r] = level[i];
+    if (r >= 0 && water[r] !== WATER.Sea && level[r] > level[i]) level[r] = level[i];
   }
+  // (a river running off the map flows out over its edge)
+  const offDir = (i: number) => {
+    const x = i % N, y = (i / N) | 0;
+    return y === 0 ? 0 : x === N - 1 ? 1 : y === N - 1 ? 2 : 3;
+  };
   const riverMain: number[] = [];
   for (let i = 0; i < NN; i++)
     if (isRiver[i]) {
       water[i] = WATER.River;
-      flow[i] = dirTo(i, receiver[i]);
+      flow[i] = receiver[i] < 0 ? offDir(i) : dirTo(i, receiver[i]);
       riverMain.push(i);
     }
 
@@ -424,7 +532,7 @@ export function generateWorld(p: WorldParams): WorldData {
   const genMs = typeof performance !== 'undefined' ? performance.now() - t0 : 0;
 
   return {
-    params: p, size: N, level, groundY, terrain, water, waterY, flow, moisture, temperature, fertility,
+    params: p, shape, size: N, level, groundY, terrain, water, waterY, flow, moisture, temperature, fertility,
     stone, ore, clay,
     propCount: props.count, propType: props.type, propPos: props.pos, propRot: props.rot,
     propScale: props.scale, propTile: props.tile,

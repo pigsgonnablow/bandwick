@@ -3,7 +3,7 @@ import natureUrl from './assets/nature.glb?inline';
 import bandUrl from './assets/band.glb?inline';
 import SimWorker from './sim/sim.worker?worker&inline';
 import { Runner, ToSim, FromSim, Frame, refKey } from './sim/runner';
-import { DEFAULT_PARAMS, WorldData, WorldParams } from './sim/types';
+import { NEW_WORLD_PARAMS, WorldData, WorldParams, resolveShape } from './sim/types';
 import type { SimEvent, Ref, Card } from './sim/band';
 import { TASK_KINDS, BUILD } from './sim/band';
 import { TASK_PHRASE } from './ui/words';
@@ -251,7 +251,7 @@ export class Engine {
     document.addEventListener('visibilitychange', () => document.hidden && saveOnLeave());
     window.addEventListener('pagehide', saveOnLeave);
     const fromHash = parseHash(location.hash);
-    if (!(await this.resumeLast(fromHash))) this.newWorld(fromHash ?? { ...DEFAULT_PARAMS, seed: randomSeed() });
+    if (!(await this.resumeLast(fromHash))) this.newWorld(fromHash ?? { ...NEW_WORLD_PARAMS, seed: randomSeed() });
     void this.refreshSaves();
     this.loop();
     setInterval(() => this.emit(), 250);
@@ -355,7 +355,7 @@ export class Engine {
         return;
       }
       this.snap.world = m.world;
-      this.snap.name = worldName(params.seed);
+      this.snap.name = worldName(params.seed, m.world.shape);
       this.snap.tick = m.tick;
       this.snap.loading = null;
       if (this.toastWhenReady) this.showToast(this.toastWhenReady);
@@ -803,7 +803,7 @@ export class Engine {
     this.emit();
     try {
       const save = await this.snapshot();
-      const world = worldName(save.params.seed);
+      const world = worldName(save.params.seed, resolveShape(save.params));
       const camp = this.snap.summary?.camp ?? '';
       const id = auto ? `auto-${save.params.seed}-${save.params.size}` : `save-${Date.now()}`;
       const meta = await writeSave(save, {
@@ -1094,7 +1094,7 @@ function mainThreadLink(onMsg: (m: FromSim) => void): SimLink {
 function parseHash(h: string): WorldParams | null {
   const m = /^#w(\d{1,9})-(128|256)$/.exec(h);
   if (!m) return null;
-  return { ...DEFAULT_PARAMS, seed: Number(m[1]), size: Number(m[2]) };
+  return { ...NEW_WORLD_PARAMS, seed: Number(m[1]), size: Number(m[2]) };
 }
 
 const engine = new Engine();

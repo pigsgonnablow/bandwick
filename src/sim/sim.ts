@@ -857,8 +857,10 @@ export class Sim {
    * The best place for a camp: flat walkable grass near fresh water, wood and berries.
    * Optionally within a distance band of an origin, and clear of the other bands' camps.
    */
-  chooseSite(opts: { from?: { x: number; z: number }; min?: number; max?: number; avoid?: number; reachFrom?: number; timber?: boolean; fish?: boolean } = {}) {
+  chooseSite(opts: { from?: { x: number; z: number }; min?: number; max?: number; avoid?: number; reachFrom?: number; timber?: boolean; fish?: boolean; shore?: boolean } = {}) {
     const w = this.world, N = this.N;
+    // (the first band comes in by boat: its camp has to be somewhere it can walk up to from the beach)
+    const fromShore = opts.shore ? this.seaShoreReach() : null;
     const berryTiles: number[] = [];
     const treeTiles: number[] = [];
     for (let k = 0; k < this.propCount; k++) {
@@ -893,6 +895,7 @@ export class Sim {
       for (let x = 6; x < N - 6; x += 2) {
         const i = z * N + x;
         if (w.terrain[i] !== T.Grass || w.water[i] !== WATER.None) continue;
+        if (fromShore && !fromShore[i]) continue;
         if (opts.from) {
           const d = hyp(x - opts.from.x, z - opts.from.z);
           if (d < (opts.min ?? 0) || d > (opts.max ?? 1e9)) continue;
@@ -928,6 +931,37 @@ export class Sim {
       if (opts.reachFrom === undefined || opts.reachFrom === c.i || this.grid.find(opts.reachFrom, c.i, true)) return c.i;
     }
     return -1;
+  }
+
+  /** The dry ground that can be walked to from a beach on the sea (1: it can). */
+  private seaShoreReach() {
+    const w = this.world, N = this.N, g = this.grid;
+    const out = new Uint8Array(N * N);
+    const dry = (i: number) => w.water[i] === WATER.None && g.walkable(i);
+    const q: number[] = [];
+    for (let z = 1; z < N - 1; z++)
+      for (let x = 1; x < N - 1; x++) {
+        const i = z * N + x;
+        if (!dry(i)) continue;
+        if (DIRS4.some(([dx, dz]) => w.water[(z + dz) * N + x + dx] === WATER.Sea)) {
+          out[i] = 1;
+          q.push(i);
+        }
+      }
+    for (let k = 0; k < q.length; k++) {
+      const i = q[k], x = i % N, z = (i / N) | 0;
+      for (const [dx, dz] of DIRS4) {
+        const nx = x + dx, nz = z + dz;
+        if (nx < 1 || nz < 1 || nx >= N - 1 || nz >= N - 1) continue;
+        const j = nz * N + nx;
+        // (walking down from j toward the beach)
+        if (!out[j] && dry(j) && g.step(j, i)) {
+          out[j] = 1;
+          q.push(j);
+        }
+      }
+    }
+    return out;
   }
 
   /** How many fish the water within `r` tiles of a spot can hold. */
@@ -1037,7 +1071,8 @@ export class Sim {
   private foundBand(strangers = false) {
     const N = this.N, w = this.world;
     // strangers, like a band that moves, look for woods enough to see them through the winters
-    let best = this.chooseSite({ avoid: strangers ? 24 : 0, timber: strangers });
+    let best = strangers ? this.chooseSite({ avoid: 24, timber: true }) : this.chooseSite({ shore: true });
+    if (best < 0 && !strangers) best = this.chooseSite();
     if (best < 0 && !strangers) {
       // fallback: any walkable grass tile nearest the centre
       for (let r = 0; r < N && best < 0; r++)

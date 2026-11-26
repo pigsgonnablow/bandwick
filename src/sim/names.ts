@@ -1,19 +1,24 @@
 // Placeholder world names until cultures generate their own languages (M4).
 import { Rng } from './rng';
+import type { MapShape } from './types';
 
 const ONSET = ['b', 'br', 'c', 'd', 'dr', 'f', 'g', 'gl', 'h', 'k', 'l', 'm', 'n', 'r', 's', 'st', 't', 'th', 'v', 'w'];
 const VOWEL = ['a', 'e', 'i', 'o', 'u', 'ae', 'ei', 'ou', 'y'];
 const CODA = ['', '', 'n', 'r', 'l', 'th', 'm', 'rn', 'ld', 'sk'];
 const END = ['holm', 'mere', 'vale', 'reach', 'fell', 'wick', 'ford', 'moor', 'dale', 'strand', 'haven', 'shire'];
 
-export function worldName(seed: number): string {
+/** How a world named for its lie of land is called (most worlds are, some go by the bare name). */
+const SHAPE_TITLE: Record<MapShape, string> = {
+  island: 'The Isle of', coast: 'The Coast of', bay: 'The Bay of', peninsula: 'The Headland of', strait: 'The Sound of', lakeland: 'The Lakes of',
+};
+export function worldName(seed: number, shape: MapShape = 'island'): string {
   const r = Rng.stream(seed, 'worldname');
   const syll = () => r.pick(ONSET) + r.pick(VOWEL) + r.pick(CODA);
   let root = syll();
   if (r.chance(0.5)) root += r.pick(VOWEL.slice(0, 5)) + r.pick(CODA);
   const name = root + r.pick(END);
   const cap = name[0].toUpperCase() + name.slice(1);
-  return r.chance(0.6) ? `The Isle of ${cap}` : cap;
+  return r.chance(0.6) ? `${SHAPE_TITLE[shape]} ${cap}` : cap;
 }
 
 /** A small generated tongue for a people: their personal names share its sounds. */
