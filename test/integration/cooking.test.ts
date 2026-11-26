@@ -171,7 +171,7 @@ describe('the stew', () => {
     p.food = 40;
     p.x = c.x + 1; p.z = c.z;
     p.task = setup(s, p, 'eat');
-    p.x = p.task!.gx; p.z = p.task!.gz;
+    p.x = p.task!.gx; p.z = p.task!.gz; p.path = null;
     const before = c.stew!.fill, food = p.food;
     runTask(s, p);
     expect(p.carry).toBe(CARRY.Bowl);

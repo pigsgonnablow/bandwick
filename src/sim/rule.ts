@@ -13,6 +13,7 @@ import type { Sim, Camp } from './sim';
 import type { Person } from './band';
 import { TICKS_PER_YEAR, yearOf } from './time';
 import type { Practice } from './know';
+import { mayRule, riseChance, lived } from './ways';
 
 export type RuleKind = 'builder';
 export interface Rule {
@@ -57,6 +58,8 @@ export const RISE_PEOPLE = 8;
 export const HEIR_CHANCE = 0.5;
 /** With no heir, someone else fit to rule and looked up to takes it up this often. */
 export const SUCCEED_CHANCE = 0.35;
+/** A ruler who held the band this many years, and died ruling it, may leave it holding that only one of their sex may lead. */
+export const LONG_RULE = 8;
 
 /** Everyone works this much harder in a builder's band; the builder more. */
 export const BUILDER_DRIVE = 1.12;
@@ -133,7 +136,8 @@ function contender(s: Sim, c: Camp, kind: RuleKind): Person | null {
   for (const p of adults) {
     const age = s.age(p), mine = st.get(p)!;
     // (one the band has thrown off doesn't get to rule it again)
-    if (age < RISE_AGE[0] || age > RISE_AGE[1] || p.health < 40 || !RULERS[kind].suits(s, p) || mine <= bestS || c.deposed?.includes(p.id)) continue;
+    // (nor one the band's customs bar: the wrong sex, or too young where the elders have the last word)
+    if (age < RISE_AGE[0] || age > RISE_AGE[1] || p.health < 40 || !RULERS[kind].suits(s, p) || mine <= bestS || c.deposed?.includes(p.id) || !mayRule(s, c, p)) continue;
     const above = adults.filter((q) => st.get(q)! > mine).length;
     if (above > adults.length * RISE_RANK) continue;
     best = p;
@@ -153,7 +157,8 @@ function rise(s: Sim, c: Camp) {
   const ms = s.members(c);
   if (ms.length < RISE_PEOPLE || s.tick - c.founded < TICKS_PER_YEAR * 2 || !c.knows.includes('huts')) return;
   const p = contender(s, c, 'builder');
-  if (!p || !s.rRule.chance(RISE_CHANCE * (s.hallOf(c) ? HALL_RISE : 1))) return;
+  // (seldom, where braggarts are mocked down to size)
+  if (!p || !s.rRule.chance(riseChance(c, RISE_CHANCE * (s.hallOf(c) ? HALL_RISE : 1)))) return;
   take(s, c, p, 'builder');
   s.event('rule', `${p.name} took hold of ${c.name}. A builder, ${he(p)} set the band to raising things that would last, and the others did as ${he(p)} said.`, [p.id], p.x, p.z, 4);
 }
@@ -166,7 +171,9 @@ function succeed(s: Sim, c: Camp) {
   // a grown child the band doesn't dislike: of the same mind, or raised to it
   const heir = old ? s.members(c).filter((q) => (q.mother === old.id || q.father === old.id) && s.age(q) >= 18 && q.health >= 40 && standing(s, c, q) >= 0)
     .sort((a, b) => a.birth - b.birth || a.id - b.id)[0] : undefined;
-  if (heir && (RULERS[rule.kind].suits(s, heir) || s.rRule.chance(HEIR_CHANCE))) {
+  // (a ruler who held the band long, and died in it, may leave it holding that only one like them may lead)
+  if (old && !old.alive && s.tick - rule.since >= LONG_RULE * TICKS_PER_YEAR) lived(s, c, old.sex ? 'men_lead' : 'women_lead', `after the long rule of ${old.name}`);
+  if (heir && mayRule(s, c, heir) && (RULERS[rule.kind].suits(s, heir) || s.rRule.chance(HEIR_CHANCE))) {
     take(s, c, heir, rule.kind, old);
     s.event('rule', `${gone}, ${his(old!)} ${heir.sex ? 'son' : 'daughter'} ${heir.name} took up the rule of ${c.name}.`, [heir.id], heir.x, heir.z, 4);
     return;
@@ -211,6 +218,8 @@ function overthrow(s: Sim, c: Camp, p: Person) {
   const years = Math.max(1, Math.round((s.tick - c.rule!.since) / TICKS_PER_YEAR));
   delete c.rule;
   (c.deposed ??= []).push(p.id);
+  // (and may come to mock anyone who puts on airs, so it never happens again)
+  lived(s, c, 'humble', `after throwing off ${p.name}`);
   s.remember(p, 'overthrown', -25, 5, -1, `Was thrown off by the people of ${c.name}, after ruling them ${years === 1 ? 'a year' : `${years} years`}.`);
   for (const q of adults) s.adjust(p, q, resent.includes(q) ? -15 : -5);
   for (const q of resent) s.remember(q, 'threw_off', 8, 2, p.id, `Stood against ${p.name}, and would not be driven any more.`);

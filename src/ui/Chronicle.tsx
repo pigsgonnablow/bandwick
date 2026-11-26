@@ -163,6 +163,8 @@ function writeYear(year: number, c: Chron, evs: SimEvent[], byId: Map<number, Pe
   const story: Seg[][] = [];
   // (a ruler taking hold of a band, or the band throwing them off)
   for (const k of ['rule', 'rule_end']) STORY.add(k);
+  // (a band taking up a custom, or a daughter band leaving some behind)
+  for (const k of ['way', 'way_drift', 'theft']) STORY.add(k);
   // (signs seen, and the beliefs and customs that came of them)
   for (const k of ['omen', 'omen_belief', 'omen_true', 'omen_held', 'omen_fade', 'custom']) STORY.add(k);
   for (const e of evs) {
@@ -301,6 +303,9 @@ const LANES = [
 LANES.push({ key: 'signs', label: 'Signs & beliefs', color: '#8f6fd1', kinds: ['omen', 'omen_belief', 'omen_true', 'omen_held', 'omen_fade', 'custom'] });
 // (rulers rising and falling sit with the bands' comings and goings)
 LANES.find((l) => l.key === 'bands')!.kinds.push('rule', 'rule_end');
+// (and so do the customs bands take up and leave behind)
+LANES.find((l) => l.key === 'bands')!.kinds.push('way', 'way_drift');
+LANES.find((l) => l.key === 'hard')!.kinds.push('theft');
 
 function Timeline({ c, events, engine, byId }: { c: Chron; events: SimEvent[]; engine: Engine; byId: Map<number, Person> }) {
   const [ref, width] = useWidth();

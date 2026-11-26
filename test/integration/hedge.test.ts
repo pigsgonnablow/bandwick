@@ -2,12 +2,12 @@
 // the paths run out. Wolves keep further off, nothing out on the land falls on anyone close to it after dark, nobody
 // inside is uneasy in the dark away from the fire, and the foxes are kept off the snares near camp.
 import { describe, it, expect } from 'vitest';
-import { SK, BUILD, HEDGE_WOLF, HEDGE_LEAST, HEDGE_MOST } from '../../src/sim/band';
+import { SK, BUILD, HEDGE_WOLF, HEDGE_LEAST, HEDGE_MOST, UNHEDGED } from '../../src/sim/band';
 import { DISCOVERY, knowHowFor } from '../../src/sim/know';
 import { WATER } from '../../src/sim/types';
 import { TICKS_PER_DAY, isDark } from '../../src/sim/time';
-import { setup, runTask } from '../../src/sim/ai';
-import { Sim } from '../../src/sim/sim';
+import { setup, runTask, completeBuilding } from '../../src/sim/ai';
+import { Sim, isTreeType } from '../../src/sim/sim';
 import { sim, runTo, runYears } from '../helpers';
 
 /** A band a couple of years on, with its huts up, wood put by, and the idea of a hedge. */
@@ -132,5 +132,61 @@ describe('thorn hedge', () => {
     c.gone = s.tick;
     expect(s.hedgeOf(c)).toBeUndefined();
     expect(s.inHedge(c.x + 1, c.z)).toBe(false);
+  });
+  it('clears brush and trees off its line as it is laid round, and nothing grows back up on it', () => {
+    const s = band();
+    for (let k = 0; k < 10 * TICKS_PER_DAY && !hedgeOf(s); k++) s.step();
+    const h = hedgeOf(s)!;
+    // a young tree on a length of the line the hedge has not reached yet
+    const far = h.ring![h.ring!.length - 2];
+    const N = s.N;
+    const tree = s.addProp(0, (far % N) + 0.5, s.world.level[far], Math.floor(far / N) + 0.5, 0, 1);
+    const on = () => { let n = 0; for (let k = 0; k < s.propCount; k++) if (s.propAlive[k] && isTreeType(s.propType[k]) && h.ring!.includes(s.propTile[k])) n++; return n; };
+    expect(s.propAlive[tree]).toBeTruthy();
+    h.wood = BUILD.hedge.wood;
+    h.cordage = BUILD.hedge.cordage;
+    h.work = BUILD.hedge.work * 0.5;
+    s.clearHedge(h);
+    // half laid: the near half of the line is clear, the tree further round still stands
+    expect(s.propAlive[tree]).toBeTruthy();
+    for (const i of h.ring!.slice(0, Math.floor(h.ring!.length * 0.5))) for (let k = 0; k < s.propCount; k++) if (s.propAlive[k] && s.propTile[k] === i) expect(isTreeType(s.propType[k])).toBe(false);
+    completeBuilding(s, h, s.members()[0]);
+    expect(s.propAlive[tree]).toBeFalsy();
+    expect(on()).toBe(0);
+    expect(s.onHedgeLine(far)).toBe(true);
+  });
+
+  it('keeps what is built after it inside it, and is laid again further out round anything that ends up outside', () => {
+    const s = band();
+    const h = hedged(s);
+    const c = s.camp;
+    const cx = Math.floor(c.x) + 0.5, cz = Math.floor(c.z) + 0.5;
+    const d = (t: number) => Math.hypot((t % s.N) + 0.5 - cx, Math.floor(t / s.N) + 0.5 - cz);
+    for (const kind of ['kiln', 'loom', 'sweat', 'longhouse'] as const) expect(d(s.siteFor(kind, null))).toBeLessThan(h.reach!);
+    // (a monument still goes up out beyond it)
+    expect(UNHEDGED).toContain('stones');
+    if (h.reach! >= HEDGE_MOST - 0.5) return;
+    // a store put up just outside the hedge, as if there had been no room within
+    const t = Math.floor(cz) * s.N + Math.floor(cx + h.reach! + 1);
+    const out = s.newBuilding('storehouse', t, -1);
+    out.built = true;
+    for (let k = 0; k < 3 * TICKS_PER_DAY && !s.buildings.some((b) => b.kind === 'hedge' && b.band === c.id && !b.built); k++) s.step();
+    const wider = s.buildings.find((b) => b.kind === 'hedge' && b.band === c.id && !b.built)!;
+    expect(wider).toBeDefined();
+    expect(wider.reach!).toBeGreaterThan(h.reach!);
+    expect(d(t)).toBeLessThan(wider.reach!);
+    // the old hedge keeps the camp until the new one is finished, and then is grubbed up
+    expect(s.hedgeOf(c)).toBe(h);
+    completeBuilding(s, wider, s.members()[0]);
+    expect(s.buildings.filter((b) => b.kind === 'hedge' && b.band === c.id)).toEqual([wider]);
+    expect(s.hedgeOf(c)).toBe(wider);
+  });
+
+  it('only shuts in its own band: someone of another band inside it is as uneasy in the dark as anywhere', () => {
+    const s = band();
+    const h = hedged(s);
+    const c = s.camp;
+    expect(s.inHedge(c.x + h.reach! - 1.5, c.z, c.id)).toBe(true);
+    expect(s.inHedge(c.x + h.reach! - 1.5, c.z, c.id + 1000)).toBe(false);
   });
 });

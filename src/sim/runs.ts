@@ -5,6 +5,7 @@
 // how fences a narrow stretch with a weir, which leads the fish into a basket trap and thins the run above it.
 // The runs follow from the world and the year alone (nothing about them is saved): only the fish in the water,
 // and in a weir's basket, are.
+import { salmonThanks } from './ways';
 import { WorldData, WATER, DIRS4 } from './types';
 import { hash3 } from './rng';
 import {
@@ -162,7 +163,8 @@ export function runExtra(s: Sim, i: number, weirs = weirTiles(s)) {
   const run = runOn(s, i);
   if (!run || (freshFrozen(s.tick) && s.world.water[i] !== WATER.Sea)) return 0;
   const k = runYear(s, yearOf(s.tick)) * (weirBetween(s, i, run, weirs) ? WEIR_PASS : 1);
-  return run === 1 ? RUN_FISH * (1 - (0.6 * s.runs.salmon[i]) / RUN_REACH) * k : EEL_FISH * (1 - (0.5 * s.runs.eel[i]) / EEL_REACH) * k;
+  // (the salmon run thicker past a band that gave the first of them back to the river)
+  return run === 1 ? RUN_FISH * (1 - (0.6 * s.runs.salmon[i]) / RUN_REACH) * k * salmonThanks(s, (i % s.N) + 0.5, Math.floor(i / s.N) + 0.5) : EEL_FISH * (1 - (0.5 * s.runs.eel[i]) / EEL_REACH) * k;
 }
 
 /**

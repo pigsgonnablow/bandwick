@@ -110,6 +110,7 @@ describe('clay lamps', () => {
     p.x = st.x + 1; p.z = st.z; p.path = null;
     p.task.gx = p.x; p.task.gz = p.z; p.task.goal = s.tileOf(p);
     s.camp.stock.fiber += 30;
+    p.rest = 100; p.food = 100; // (fresh and fed: it is the lamp being watched, not when they give up)
     let lit = 0, dark = 0, swaps = 0, last: number | undefined;
     for (let i = 0; i < 200 && p.task?.kind === 'craft' && isDark(s.tick); i++) {
       s.step();
@@ -214,7 +215,9 @@ describe('clay lamps', () => {
     runTask(s, p);
     expect(s.heldBy(p)?.kind).not.toBe('lamp');
     toNight(s);
-    Object.assign(s.camp.stock, { meat: 0, fish: 0, preserved: 0 });
+    // (whoever lit it on the way into the night puts it back out, and there is nothing left to burn)
+    for (const l of s.items) if (l.kind === 'lamp') { l.holder = -1; delete l.lit; }
+    Object.assign(s.camp.stock, { fat: 0, meat: 0, fish: 0, preserved: 0 });
     expect(s.lampToLight()).toBeUndefined();
     expect(s.lightLamp(p)).toBe(false);
   });

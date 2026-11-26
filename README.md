@@ -42,6 +42,40 @@ panel says who rules it and since when, and the person card says who rules. Abou
 is ruled. `npx tsx tools/ruletrace.ts --seed 1` follows rulers through a run. More kinds of ruler are to
 come.
 
+**Customs.** Every band lives by a few customs: rules for how people treat one another, apart from what it believes
+about the signs. The meat is shared out equally (the band feels closer for every deer brought home, and thinks better of
+the hunter), or the hunter keeps the best of the kill (and the band's hunters go out more readily). Newcomers are made
+welcome (a starving band is readily taken in, and someone who marries in is soon one of them), or kept at arm's length
+(a starving band is seldom taken in, someone who marries in feels an outsider for a couple of years, and young people
+pair off with other bands half as often). A widow takes no other partner. Only a man, or only a woman, may lead: found
+the band, rule it, or lead a group away. The elders' word is final (quarrels come to blows far less often while an elder
+of 50 or more lives, and nobody under 40 takes hold of the band). Braggarts are mocked down to size (the ambitious are
+thought less of every year, and someone seldom takes hold of the band). No blood is spilt at the feast (nobody comes to
+blows in the days round the longest night, and old quarrels are put aside at it). The dead are buried with their things
+(the tool in their hand and what they wore go into the ground, and their kin feel the better for it). The first salmon
+goes back to the river (the first fish of each year's run is let go, and the run near camp is the thicker for it). The
+white deer is never hunted. Twins are a bad sign (the grown-ups think less of them, and the band is uneasy). Children
+are raised by everyone (a child grieves less for a lost parent, and keeps a sense of belonging). A thief is cast out:
+in a hungry time a greedy grown-up may steal from the stores, and one who is caught is driven out to make a camp alone
+(elsewhere the band only thinks less of them). Guests are fed first (a band taken in is fed full before the hosts eat,
+and thinks the better of them). Hunters sweat in the lodge before a hunt (a skilled hunter goes on any evening, and
+strikes the better after). A bride goes to live with her husband's band, or a groom with his wife's (otherwise whoever
+has fewer kin at home moves). A band that comes over the hills
+brings the customs its leader leans to (a kind leader shares the meat, a cautious one is wary of newcomers, a pious one
+keeps widows from remarrying and the old rites, an old elder brings the elders' word). Others come of what the band lives through: a hungry
+year teaches it to share the meat, taking in a starving band to welcome newcomers, a killing by someone who married in to
+keep them at arm's length, a killing at the feast to keep its peace, a ruler thrown off to mock braggarts, the long rule
+of a man or a woman that only one like them may lead, an elder the whole band looks up to to give the elders the last
+word, a great hunter who is greedy to let the hunter keep the best, a devout band to keep widows from remarrying, a
+year of three burials to bury the dead with their things, a year the salmon failed to give the first one back, a white
+deer killed to spare the next, a twin lost to take twins for a bad sign, an orphan to raise children together, a theft
+to cast thieves out, being turned away hungry to feed guests first, and a kill made just after a sweat to sweat before
+the hunt.
+A band that splits keeps most of its customs, drops some, and its new leader may bring one of their own, so bands born of
+the same first band slowly drift apart in how they live. The band panel lists its customs, how each came about and since
+when; the Chronicle tells when a band took one up or left one behind. `npx tsx tools/waytrace.ts --seed 1` follows them
+through a run.
+
 **Landing.** A new world opens with the first band coming in from the sea in a boat. They land
 on the nearest shore, walk inland to their camp, lay the hearth and mark out the stockpile, and
 then life begins. Time stands still until they are settled. Press Skip (or Esc, or pick a speed)
@@ -378,9 +412,12 @@ woodcutting 10), lying awake to the wolves howling round camp or finding the gar
 the band lays one once the households have their homes: blackthorn and bramble cut out on the land (24 wood) and laid
 between stakes in a ring a couple of paces beyond the furthest of the camp's buildings (6 to 9 tiles from the fire),
 the thorns turned outward, round from a gate where the most trodden path runs out, and with a gap left wherever another
-path worn plain runs through its line. It goes up a length at a time, the builders working where it has got to, and
-nothing is built on its line after. Wolves keep 6 tiles further from a hedged camp, nothing out on the land falls on
-anyone within 4 tiles of the hedge after dark, nobody inside it is uneasy in the dark away from the fire, and the foxes
+path worn plain runs through its line. It goes up a length at a time, the builders working where it has got to and
+clearing the brush and trees off its line as they go, and nothing is built or grows up on its line after. Huts, stores
+and the like put up later go inside it while there is room; if one ends up outside, the band lays a new hedge further
+out round everything (up to 9 tiles from the fire) and grubs up the old one once it is finished. Wolves keep 6 tiles
+further from a hedged camp, nothing out on the land falls on anyone within 4 tiles of the hedge after dark, nobody of
+the band inside it is uneasy in the dark away from the fire (a visitor from another band still is), and the foxes
 are kept off the snares within 16 tiles of it, as a camp's dogs keep them off. A band that moves on leaves its hedge
 behind. The hedge's card gives its length and how far it stands from the fire.
 
@@ -391,7 +428,9 @@ behind. The hedge's card gives its length and how far it stands from the fire.
 bridges the ford it has waded most once it has been waded 60 times: where the river is no more than 3 tiles across
 straight over and the banks are about level, two trunks are laid side by side from bank to bank on posts in the river
 bed (14 wood, 3 cordage), worked from the near bank. Once it is finished the ford is crossed dry-shod and at a walk.
-A band lays up to three, never two at the same ford. The bridge's card gives its span.
+A band lays up to three, never two at the same ford. The count fades: each new year it is halved, and a ford waded
+fewer than 4 times is forgotten, so a ford that was busy years ago but is seldom crossed now isn't bridged. The bridge's
+card gives its span.
 `npx tsx tools/bridgesave.ts` and `node tools/bridgeshots.mjs` photograph one.
 
 **Bad food.** Meat, fish and eggs eaten raw can turn the stomach: about 1 meal in 100, two and a half times that in

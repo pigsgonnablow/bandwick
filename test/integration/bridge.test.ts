@@ -1,7 +1,7 @@
 // Fords and footbridges: wading is slow and, in the cold, chilling. A band counts the steps waded at the fords near
 // camp, and once it knows how, lays a log footbridge over the one it wades most: crossed dry-shod and at a walk.
 import { describe, it, expect } from 'vitest';
-import { SK, BUILD, BRIDGE_USE, BRIDGE_SPAN, WADE_COLD } from '../../src/sim/band';
+import { SK, BUILD, BRIDGE_USE, BRIDGE_SPAN, WADE_COLD, FORD_FADE, FORD_FORGOT } from '../../src/sim/band';
 import { DISCOVERY, knowHowFor } from '../../src/sim/know';
 import { WATER } from '../../src/sim/types';
 import { TICKS_PER_DAY, TICKS_PER_YEAR } from '../../src/sim/time';
@@ -11,7 +11,10 @@ import { sim, runYears } from '../helpers';
 
 /** A band a couple of years on by a river, with an axe, wood put by, and the idea of a footbridge. */
 function band(seed = 4471) {
-  const s = runYears(sim(seed, 128), 2);
+  // (a band with no customs: where it fords and when it bridges is a matter of its history)
+  const s0 = sim(seed, 128);
+  s0.camp.ways = [];
+  const s = runYears(s0, 2);
   const c = s.camp;
   for (const k of ['axe', 'bridge']) if (!c.knows.includes(k)) c.knows.push(k);
   c.stock.wood += 60;
@@ -83,6 +86,8 @@ describe('footbridge', () => {
     const p = s.members().find((q) => s.age(q) >= 18 && q.sick === 0)!;
     b.wood = BUILD.bridge.wood;
     b.cordage = BUILD.bridge.cordage;
+    // (the bridge the only site waiting: no fence or hut wanting supplies first)
+    s.buildings = s.buildings.filter((x) => x === b || x.built || x.band !== s.camp.id);
     const t = setup(s, p, 'build');
     expect(t?.kind).toBe('build');
     expect(t!.goal).toBe(b.tile);
@@ -144,5 +149,15 @@ describe('footbridge', () => {
     expect(s.buildings.includes(b)).toBe(false);
     expect(s.grid.cost[i]).toBe(wadeCost);
     expect(s.grid.walkLevel[i]).toBe(wadeLevel);
+  });
+  it('forgets a ford with the years: the steps waded fade each new year, and one seldom crossed now is dropped', () => {
+    const s = runYears(sim(4471, 128), 1);
+    const c = s.camp;
+    c.fords = { 1: 200, 2: FORD_FORGOT + 1 };
+    // on to the first morning of the next year
+    const next = (Math.floor(s.tick / TICKS_PER_YEAR) + 1) * TICKS_PER_YEAR + TICKS_PER_DAY;
+    while (s.tick < next) s.step();
+    expect(c.fords[1]).toBe(200 * FORD_FADE);
+    expect(c.fords[2]).toBeUndefined();
   });
 });

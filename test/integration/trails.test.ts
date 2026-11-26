@@ -10,7 +10,10 @@ const hyp = (x: number, z: number) => Math.hypot(x, z);
 
 describe('footpaths', () => {
   it('wear in around the camp where people walk, and nowhere they have not been', () => {
-    const s = runTo(sim(1), sim(1).tick + 10 * TICKS_PER_DAY);
+    // (a band with no customs: how worn the yard is after ten days is a matter of who happened to walk where)
+    const s0 = sim(1);
+    s0.camp.ways = [];
+    const s = runTo(s0, s0.tick + 10 * TICKS_PER_DAY);
     const c = s.camp, N = s.N;
     let near = 0, far = 0;
     for (let i = 0; i < N * N; i++) {

@@ -1,5 +1,6 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
+import { meatHome, huntDrive, buriedWithThings, laidWithThings, firstSalmon, sweatsToHunt, sweatAim, lived } from './ways';
 import { SHELTER_PULL, sheltering, sparesWhite, shunned, whiteKilled, omenTale, heardTale, taleOf, lodgeTales } from './omen';
 import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE, aDish } from './sim';
@@ -430,7 +431,8 @@ export function decide(s: Sim, p: Person) {
   if (lodge && p.food >= 30 && (p.sweat === undefined || s.tick - p.sweat >= SWEAT_EVERY * TICKS_PER_DAY) && atLodge(s, lodge).length < SWEAT_HOLDS
     && (s.lodgeHot(lodge) || (s.hearthLit() && c.stock.wood >= SWEAT_WOOD + 4))) {
     const shelter = !!sheltering(s, p);
-    if (shelter || (hour >= 15 && hour < 21 && temp < 10)) {
+    // (and a hunter goes on any evening, where the hunters sweat before the hunt)
+    if (shelter || (hour >= 15 && hour < 21 && (temp < 10 || sweatsToHunt(s, p)))) {
       let w = 1 + (p.warmth < 75 ? ((75 - p.warmth) / 75) * 1.3 : 0) + (p.sick > 0 ? 1.1 : 0) + (temp < 0 ? 0.15 : 0);
       // (stones already hot, or being heated, call whoever is about: a sweat is better shared)
       if (s.lodgeHot(lodge) || heatingFor(s, lodge)) w += SWEAT_CALL;
@@ -467,7 +469,8 @@ export function decide(s: Sim, p: Person) {
       const nerve = s.has(p, 'brave') ? 1.4 : s.has(p, 'cautious') ? 0.55 : 1;
       // (and one or two of the best hunters out after the piglets for the pen, while it is empty)
       const piglets = (j.piglets ?? 0) > 0 && !dark && s.people.filter((q) => q.alive && q.band === p.band && q.task?.kind === 'hunt' && q.task.alive).length < 2 ? j.piglets * drive * fit(p, SK.hunt) * fit(p, SK.hunt) : 0;
-      add('hunt', Math.max(food * fit(p, SK.hunt) * nerve * 0.95 * crowd('hunt'), piglets));
+      // (more readily where the hunter keeps the best of the kill)
+      add('hunt', Math.max(food * fit(p, SK.hunt) * nerve * 0.95 * crowd('hunt') * huntDrive(s.campById(p.band)), piglets));
     }
     // (the older children fish too, with a hook and line)
     if (age >= 11 || (age >= LINE_AGE && !dark && s.toolFor(p, ['line']))) add('fish', food * fit(p, SK.fish) * 0.85 * crowd('fish') * (age < 11 ? 0.7 : 1));
@@ -544,6 +547,10 @@ export function decide(s: Sim, p: Person) {
     // (someone bringing wood from far across the land doesn't stop those at camp from feeding it now)
     const fueling = s.fuelOnHand(c);
     if (atCamp && (dark || hour >= 15) && age >= 13 && !fueling && busyWith(s, 'fuel') < 2 && s.fireShort()) add('fuel', dark ? 2.0 : 1.0);
+    // embers about to go out with wood in the stores: whoever is about camp puts some on, whatever the weather
+    // (a fire let die must be made again; a lone keeper out after branches would otherwise watch it go)
+    // ("about to": less than the hours it takes to fetch wood from the pile and see to it, at the rate it burns now)
+    if (atCamp && age >= 10 && s.hearth().fuel < Math.max(1, s.burnRate(s.hearth()) * 4) && c.stock.wood >= 1 && !fueling && busyWith(s, 'fuel') === 0) add('fuel', 2.1);
     // a dying fire in the cold is everyone's problem: a few go for wood whatever the hour
     const fireLow = s.hearth().fuel < 2;
     // (even the weak: a cold hearth in a hungry winter is how a whole band dies)
@@ -1612,6 +1619,8 @@ export function deposit(s: Sim, p: Person) {
     }
   }
   // the teeth of a deer brought home, and now and then a shell from the shallows, are kept for ornaments
+  // a deer brought home is shared out equally, or the hunter keeps the best of it, as is the band's custom
+  if (kind === 'meat' && p.task?.kind === 'hunt' && a >= 4) meatHome(s, p);
   if (kind === 'meat' && p.task?.kind === 'hunt' && a >= 4 && st.trinkets < TRINKETS_KEPT) st.trinkets = Math.min(TRINKETS_KEPT, st.trinkets + TEETH_PER_DEER + (p.task.boar ? TUSKS_PER_BOAR : 0));
   if (kind === 'fish' && p.task?.kind === 'fish' && st.trinkets < TRINKETS_KEPT && s.rAi.chance(0.12)) st.trinkets += 1;
   // a load brought home in a hide bag is a use of it
@@ -3680,13 +3689,17 @@ export function runTask(s: Sim, p: Person) {
         // a stag with his antlers locked in another's, or roaring for the rut, makes an easier mark
         const chance = 0.15 + p.skills[SK.hunt] * 0.022 + (s.has(p, 'brave') ? 0.05 : 0) + (d.state === 4 ? 0.1 : d.state === 3 ? 0.04 : 0)
           // a dog holds the deer at bay
-          + (s.hasDog(p) ? 0.07 : 0);
+          + (s.hasDog(p) ? 0.07 : 0)
+          // and a hunter who sweated in the lodge before the hunt, where that is the custom, has a steadier arm
+          + sweatAim(s, p);
         flash(p, FLASH.Thrust);
         if (r.next() < chance * aim(s, p)) {
           d.alive = false;
           p.kills++;
           s.stats.kills++;
           if (d.white) whiteKilled(s, p);
+          // (a kill the day after a sweat in the lodge may set a band to sweating before every hunt)
+          if (s.sweatOf(c) && p.sweat !== undefined && s.tick - p.sweat < TICKS_PER_DAY * 1.5) lived(s, c, 'sweat_hunt', `after ${p.name} came out of the sweat lodge and made a kill`);
           // once in a long while the whole herd is driven into the hunters' hands
           if (r.chance(0.02)) {
             const more = s.deer.filter((q) => q.alive && !q.white && q.herd === d.herd && hyp(q.x - d.x, q.z - d.z) < 4).slice(0, 2);
@@ -3858,6 +3871,12 @@ export function runTask(s: Sim, p: Person) {
           s.fish[w] -= got;
           s.fishVersion++;
           train(p, 'fish.catch');
+          // the band's first salmon of the run goes back to the river, where that is the custom
+          if (runOn(s, w) === 1 && firstSalmon(s, p)) {
+            s.fish[w] += got;
+            p.thought = 'Gave the first salmon back to the river.';
+            return finish(s, p);
+          }
           // standing in the shallows with reeds to hand is what makes someone think of a woven trap
           if (c.stock.fiber >= 3) s.practise(p, 'fish_fiber', got < 3 ? 1.5 : 1);
           if (kind === 'spear') s.practise(p, 'fish_miss', 0.25);
@@ -4088,6 +4107,8 @@ export function runTask(s: Sim, p: Person) {
       else face(p, b.x + 0.5, b.z + 0.5);
       b.work += (1 + p.skills[SK.build] * 0.06) * (s.age(p) >= 58 ? 0.7 : 1);
       if (!b.builders.includes(p.id)) b.builders.push(p.id);
+      // (a thorn hedge clears its line of brush and trees as it is laid round)
+      if (b.kind === 'hedge') s.clearHedge(b);
       if (s.tick % 10 === 0) s.buildingsVersion++;
       if (s.tick % 20 === 0) {
         train(p, 'build');
@@ -4259,9 +4280,16 @@ export function runTask(s: Sim, p: Person) {
       body.buried = true;
       delete body.grave;
       body.indoors = true;
-      // what they had in hand goes back on the pile with whoever buried them
+      // what they had in hand goes back on the pile with whoever buried them (or, where the dead go into the ground
+      // with their things, it goes in with them, and what they wore)
       const tool = s.heldBy(body);
-      if (tool) {
+      if (buriedWithThings(s, body)) {
+        const theirs = s.items.filter((it) => it.holder === body.id || it.wearer === body.id);
+        for (const it of theirs) s.items.splice(s.items.indexOf(it), 1);
+        if (body.worn) body.worn = {};
+        if (theirs.length) s.book('goods.buried', theirs.length);
+        laidWithThings(s, body, theirs.length);
+      } else if (tool) {
         tool.holder = -1;
         tool.band = p.band;
       }
@@ -4381,6 +4409,12 @@ export function completeBuilding(s: Sim, b: Building, p: Person) {
   s.buildingsVersion++;
   // a footbridge's deck is walked on from now: the ford under it is crossed dry-shod
   if (b.kind === 'bridge') s.layBridges();
+  // a thorn hedge's line is clear of brush and trees all the way round
+  if (b.kind === 'hedge') {
+    s.clearHedge(b);
+    // (and a hedge laid further out takes the place of the old one, grubbed up now)
+    if (s.buildings.some((q) => q.kind === 'hedge' && q.band === b.band && q !== b)) s.buildings = s.buildings.filter((q) => !(q.kind === 'hedge' && q.band === b.band && q !== b));
+  }
   // the wedges that split its planks take the wear of it (worn out, they are made again)
   if (b.walls === 'plank') {
     const wedges = s.toolsOf(s.campById(b.band) ?? s.camp, 'wedges')[0];

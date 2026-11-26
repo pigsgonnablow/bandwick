@@ -465,7 +465,8 @@ describe('the band\'s goods', () => {
     const dead = adult(s);
     s.kill(dead, 'fever');
     dead.birth = s.tick - TICKS_PER_YEAR;
-    for (let d = 0; d < 6 && !dead.buried; d++) runTo(s, s.tick + TICKS_PER_DAY);
+    // (looked at the moment the child is laid in the ground: someone grown dying meanwhile takes the bowl, rightly)
+    for (let k = 0; k < 6 * TICKS_PER_DAY && !dead.buried; k++) s.step();
     expect(dead.buried).toBe(true);
     expect(s.items.includes(fine)).toBe(true);
   });

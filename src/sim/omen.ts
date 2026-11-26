@@ -10,6 +10,7 @@
 // season when nobody takes a partner, food left out at every midwinter. Beliefs go where the people who hold
 // them go (to a new band when a band splits, or with someone who marries in), and fade from a band where
 // nothing proves them for a generation. Customs stay.
+import { spareWhite, lived } from './ways';
 import type { Sim, Camp } from './sim';
 import { isTreeType, treeStage } from './sim';
 import type { Person } from './band';
@@ -272,7 +273,7 @@ export function sheltering(s: Sim, p: Person): string | null {
 /** Whether someone would let a white deer be: they hold a belief about white deer, or their band's custom forbids it. */
 export function sparesWhite(s: Sim, p: Person) {
   if (believesSign(p, 'white_deer')) return true;
-  return !!s.campById(p.band)?.customs?.some((k) => k.kind === 'spare_white');
+  return !!s.campById(p.band)?.customs?.some((k) => k.kind === 'spare_white') || spareWhite(s, p);
 }
 
 /** Whether someone keeps away from wood near this place: a struck tree they believe in, or one the band's custom keeps them from. */
@@ -433,6 +434,8 @@ export function whiteKilled(s: Sim, hunter: Person) {
   const scorn = ms.filter((q) => q !== hunter && believesSign(q, 'white_deer'));
   for (const q of scorn) s.adjust(q, hunter, -WHITE_KILL_SCORN);
   s.remember(hunter, 'white_kill', scorn.length ? -6 : 6, 3, -1, 'Killed a white deer.');
+  // (a band afraid of what will come of it may come to forbid it)
+  if (scorn.length) lived(s, c, 'white_deer', `after ${hunter.name} killed the white deer`);
   s.event('omen', scorn.length ? `${hunter.name} killed the white deer. Many at ${c.name} were afraid of what would come of it.` : `${hunter.name} brought down a white deer.`, [hunter.id], hunter.x, hunter.z, 3);
   sight(s, c, 'white_deer', ms.filter((p) => s.age(p) >= 4));
 }

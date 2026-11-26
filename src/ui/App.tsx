@@ -206,7 +206,7 @@ function BandCard({ sum, engine }: { sum: Summary; engine: Engine }) {
               {sum.lore.beliefs.map((b, i) => <div key={i}>{b.text}{b.held ? '' : <span class="muted"> ({b.hold} of {b.of} grown-ups)</span>}</div>)}
             </dd></>}
             {sum.lore.customs.length > 0 && <><dt data-tip={BAND_TIPS['Customs']}>Customs</dt><dd class="small">
-              {sum.lore.customs.map((k, i) => <div key={i}>{k.text}<span class="muted"> · since year {k.since}</span></div>)}
+              {sum.lore.customs.map((k, i) => <div key={i}>{k.text}<span class="muted"> · {'why' in k && k.why ? `${k.why}, ` : ''}since year {k.since}</span></div>)}
             </dd></>}
           </dl>
           {sum.plan.length > 0 && (
@@ -375,7 +375,7 @@ const KIND_MARK: Record<string, string> = {
   epidemic: '#d98a6a', epidemic_end: '#9fd07a', fight: '#d98a6a', death_quarrel: '#d98a6a', attack: '#d98a6a', turned_away: '#d98a6a',
   bully_defend: '#b3aa96', bully_snap: '#d98a6a', bully_shun: '#d98a6a', bully_flee: '#e3ab4e',
   murrain: '#e0a24a', blight: '#e0a24a', plenty: '#9fd07a', provided: '#9fd07a', great_hunt: '#c9a46a', quiet: '#9fd07a', elder: '#cfe3f2',
-  rule: '#e3ab4e', rule_end: '#b3aa96',
+  rule: '#e3ab4e', rule_end: '#b3aa96', way: '#d18f6f', way_drift: '#b3aa96', way_habit: '#b3aa96', theft: '#3987e5',
   omen: '#b79be0', omen_belief: '#b79be0', omen_true: '#b79be0', omen_held: '#b79be0', omen_habit: '#b3aa96', omen_fade: '#b3aa96', custom: '#b79be0',
 };
 
