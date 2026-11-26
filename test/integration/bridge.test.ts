@@ -11,7 +11,10 @@ import { sim, runYears } from '../helpers';
 
 /** A band a couple of years on by a river, with an axe, wood put by, and the idea of a footbridge. */
 function band(seed = 4471) {
-  const s = runYears(sim(seed, 128), 2);
+  // (a band with no customs: where it fords and when it bridges is a matter of its history)
+  const s0 = sim(seed, 128);
+  s0.camp.ways = [];
+  const s = runYears(s0, 2);
   const c = s.camp;
   for (const k of ['axe', 'bridge']) if (!c.knows.includes(k)) c.knows.push(k);
   c.stock.wood += 60;
@@ -83,6 +86,8 @@ describe('footbridge', () => {
     const p = s.members().find((q) => s.age(q) >= 18 && q.sick === 0)!;
     b.wood = BUILD.bridge.wood;
     b.cordage = BUILD.bridge.cordage;
+    // (the bridge the only site waiting: no fence or hut wanting supplies first)
+    s.buildings = s.buildings.filter((x) => x === b || x.built || x.band !== s.camp.id);
     const t = setup(s, p, 'build');
     expect(t?.kind).toBe('build');
     expect(t!.goal).toBe(b.tile);

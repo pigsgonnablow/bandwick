@@ -51,13 +51,26 @@ pair off with other bands half as often). A widow takes no other partner. Only a
 the band, rule it, or lead a group away. The elders' word is final (quarrels come to blows far less often while an elder
 of 50 or more lives, and nobody under 40 takes hold of the band). Braggarts are mocked down to size (the ambitious are
 thought less of every year, and someone seldom takes hold of the band). No blood is spilt at the feast (nobody comes to
-blows in the days round the longest night, and old quarrels are put aside at it). A band that comes over the hills
+blows in the days round the longest night, and old quarrels are put aside at it). The dead are buried with their things
+(the tool in their hand and what they wore go into the ground, and their kin feel the better for it). The first salmon
+goes back to the river (the first fish of each year's run is let go, and the run near camp is the thicker for it). The
+white deer is never hunted. Twins are a bad sign (the grown-ups think less of them, and the band is uneasy). Children
+are raised by everyone (a child grieves less for a lost parent, and keeps a sense of belonging). A thief is cast out:
+in a hungry time a greedy grown-up may steal from the stores, and one who is caught is driven out to make a camp alone
+(elsewhere the band only thinks less of them). Guests are fed first (a band taken in is fed full before the hosts eat,
+and thinks the better of them). Hunters sweat in the lodge before a hunt (a skilled hunter goes on any evening, and
+strikes the better after). A bride goes to live with her husband's band, or a groom with his wife's (otherwise whoever
+has fewer kin at home moves). A band that comes over the hills
 brings the customs its leader leans to (a kind leader shares the meat, a cautious one is wary of newcomers, a pious one
-keeps widows from remarrying, an old elder brings the elders' word). Others come of what the band lives through: a hungry
+keeps widows from remarrying and the old rites, an old elder brings the elders' word). Others come of what the band lives through: a hungry
 year teaches it to share the meat, taking in a starving band to welcome newcomers, a killing by someone who married in to
 keep them at arm's length, a killing at the feast to keep its peace, a ruler thrown off to mock braggarts, the long rule
 of a man or a woman that only one like them may lead, an elder the whole band looks up to to give the elders the last
-word, a great hunter who is greedy to let the hunter keep the best, and a devout band to keep widows from remarrying.
+word, a great hunter who is greedy to let the hunter keep the best, a devout band to keep widows from remarrying, a
+year of three burials to bury the dead with their things, a year the salmon failed to give the first one back, a white
+deer killed to spare the next, a twin lost to take twins for a bad sign, an orphan to raise children together, a theft
+to cast thieves out, being turned away hungry to feed guests first, and a kill made just after a sweat to sweat before
+the hunt.
 A band that splits keeps most of its customs, drops some, and its new leader may bring one of their own, so bands born of
 the same first band slowly drift apart in how they live. The band panel lists its customs, how each came about and since
 when; the Chronicle tells when a band took one up or left one behind. `npx tsx tools/waytrace.ts --seed 1` follows them

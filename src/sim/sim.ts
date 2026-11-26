@@ -27,7 +27,7 @@ import { decide, runTask, abandon, sendHome, delivering, foodInHand, afloat, FAR
 import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard, deadfallNight, DEADFALL_RANGE } from './beasts';
 import { updatePigs, pigsDaily, packPigs, pigCard, penOf, pigsOf, pigsWanted, pigToKill, pigFeed, pigMeat, grown, PIG_ID } from './pigs';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets, ELITE } from './know';
-import { Way, WayKind, foundWays, carryWays, mayLead, mayPair, takeInChance, matchChance, newcomer, belongingKept, quarrelChance, feastPeace, lived, waysDaily, waysSummary } from './ways';
+import { Way, WayKind, foundWays, carryWays, mayLead, mayPair, takeInChance, matchChance, newcomer, belongingKept, quarrelChance, feastPeace, lived, waysDaily, waysSummary, buriedWithThings, twinsBorn, childGrief, childBelong, guestFed, GUEST_THANKS, whoGoes, theftDaily } from './ways';
 import { Rule, WOMAN_LEADS, ruleDaily, ruledIdeas, builderBand, rulerOf, ruleSummary, BUILDER_SPLIT, BUILDER_WALLS, BUILDER_RAISE, seatHolder } from './rule';
 import { Lore, Custom, Omen, Sky, SignKind, omenDaily, omenHourly, omenOutcome, deathSign, noPairing, midwinterOffering, carryCustoms, loreSummary, beliefsOf, skyNow, OMEN_KINDS } from './omen';
 import { RunMap, mapRuns, runsTick, runOn, runExtra, runNear, weirSite, weirRot } from './runs';
@@ -246,6 +246,8 @@ export interface Camp {
   /** the customs the band lives by (absent: none yet), and what it has lived through lately that may harden into one */
   ways?: Way[];
   lived?: { kind: WayKind; tick: number; why: string }[];
+  /** the year the band last gave the first salmon of the run back to the river */
+  salmonFreed?: number;
   /** a sign the band has seen, while it waits to see what follows */
   omen?: Omen;
   /** a spell when believers (or, on a day of custom, everyone) leave their work and keep to the fire */
@@ -1537,7 +1539,7 @@ export class Sim {
       this.remember(p, 'tool_broke', -2, 0.3, -1, 'Their hide shoes wore through.');
     }
     // (faster for a newcomer kept at arm's length)
-    p.belonging -= 0.09 / belongingKept(this, p);
+    p.belonging -= (0.09 / belongingKept(this, p)) * childBelong(this, p);
     // cold
     const temp = this.tempAt(p);
     // a windbreak behind the fire throws its heat back and keeps the wind off: a wider, warmer circle
@@ -1604,8 +1606,21 @@ export class Sim {
     // return anything set aside for their task, lay down a body they carried; logs drop where they fall
     abandon(this, p, true);
     if (p.carry !== CARRY.None) this.dropCarry(p);
-    // and the tool or lamp in their hand goes back on the pile, or it is lost to the band for good
-    this.returnTool(p);
+    // and the tool or lamp in their hand goes back on the pile, or it is lost to the band for good (or, where the dead
+    // go into the ground with their things, it stays with them)
+    if (!buriedWithThings(this, p)) this.returnTool(p);
+    // (a band that lost a twin, or left a child with no parent, may come to take a custom from it)
+    const pc = this.campById(p.band);
+    if (pc && !pc.gone) {
+      const mother = this.byId.get(p.mother);
+      if (this.age(p) < 2 && mother && mother.children.some((k) => k !== p.id && this.byId.get(k)?.birth === p.birth))
+        lived(this, pc, 'twins_bad', `after the twins born to ${mother.name} did not both live`);
+      for (const cid of p.children) {
+        const ch = this.byId.get(cid);
+        const other = ch ? this.byId.get(ch.mother === p.id ? ch.father : ch.mother) : undefined;
+        if (ch && ch.alive && ch.band === p.band && this.age(ch) < 12 && !(other && other.alive)) lived(this, pc, 'raised_by_all', `after ${ch.name} was left with no mother or father`);
+      }
+    }
     p.act = ACT.Dead;
     this.stats.deaths++;
     if (cause === 'starvation') this.stats.starved++;
@@ -1633,7 +1648,8 @@ export class Sim {
         // a partner, a parent, and a child still growing up take it hardest; a grown child like other kin
         const orphaned = (q.mother === p.id || q.father === p.id) && this.age(q) < 14;
         const w = kin ? (q.id === p.partner || p.mother === q.id || p.father === q.id || orphaned ? -55 : -40) : -20;
-        this.remember(q, 'death', w, kin ? 4 : 2, p.id, `${p.name} died (${cause}).`);
+        // (a child the whole band raises takes it less hard)
+        this.remember(q, 'death', w * childGrief(this, q), kin ? 4 : 2, p.id, `${p.name} died (${cause}).`);
       }
     }
     const causeText: Record<string, string> = {
@@ -2240,6 +2256,8 @@ export class Sim {
           this.remember(w, 'tool_broke', -2, 0.3, -1, `Their ${ITEMS[it.kind].label.toLowerCase()} wore through.`);
         }
       } else {
+        // (where the dead go into the ground with their things, what they wore stays on them until they are buried)
+        if (w && !w.alive && !w.buried && buriedWithThings(this, w)) continue;
         if (w && w.worn?.[slot] === it.id) delete w.worn![slot];
         delete it.wearer;
         // a necklace goes into the grave with whoever wore it
@@ -2758,13 +2776,16 @@ export class Sim {
   private teach() {
     const c = this.camp;
     if (!c.learning?.length) return;
-    const due = c.learning.filter((l) => l.at <= this.tick);
+    // (in order: something is taught only once what it builds on is known, and waits for it otherwise)
+    const order = inOrder(c.learning.map((l) => l.k), c.knows);
+    const due = c.learning.filter((l) => l.at <= this.tick).sort((a, b) => order.indexOf(a.k) - order.indexOf(b.k));
     if (!due.length) return;
     c.learning = c.learning.filter((l) => l.at > this.tick);
     for (const l of due) {
       const d = DISCOVERY.get(l.k);
       const by = this.byId.get(l.by);
       if (!d || c.knows.includes(l.k) || !by || !by.alive || by.band !== c.id) continue;
+      if (!d.needs.every((n) => c.knows.includes(n))) { c.learning.push(l); continue; }
       this.learn(c, l.k, 'taught', by.id);
       this.remember(by, 'taught', 12, 2, -1, `Taught the people of ${c.name} to ${d.taught}.`);
       this.event('discovery', `${by.name} taught the people of ${c.name} to ${d.taught}.`, [by.id], by.x, by.z, 3);
@@ -2781,7 +2802,7 @@ export class Sim {
 
   /** What one band knows that another doesn't, in the order it should be learned. */
   private unknownTo(from: Camp, to: Camp) {
-    return DISCOVERIES.filter((d) => from.knows.includes(d.key) && !to.knows.includes(d.key)).map((d) => d.key);
+    return inOrder(DISCOVERIES.filter((d) => from.knows.includes(d.key) && !to.knows.includes(d.key)).map((d) => d.key), to.knows);
   }
 
   private daily() {
@@ -2793,6 +2814,8 @@ export class Sim {
     if (dayOfYear === MIDWINTER) for (const c of this.liveCamps()) { this.midwinter(c); midwinterOffering(this, c); }
     // (what a band has lived through may harden into a custom)
     waysDaily(this, dayOfYear);
+    // (and in a hungry time someone may steal from the stores)
+    theftDaily(this, (thief, by, c) => this.exile(thief, by, c, 'thief'));
     // a new year: new climate
     const here = this.liveCamps()[0] ?? this.camp;
     if (dayOfYear === 0) {
@@ -3444,6 +3467,7 @@ export class Sim {
         : `${names} was born to ${parents}${still ? '; their twin did not live' : ''}.`, [mother.id, ...(father ? [father.id] : []), ...babies.map((b) => b.id)],
       mother.x, mother.z, babies.length === 2 ? 4 : 2);
       this.remember(mother, 'birth', 35, 3, babies[0].id, `Gave birth to ${names}.`);
+      if (babies.length === 2) twinsBorn(this, mother, babies);
       if (father) this.remember(father, 'birth', 30, 3, babies[0].id, `Became a parent to ${names}.`);
     }
     if (r.chance(0.018)) this.kill(mother, 'childbirth');
@@ -3789,6 +3813,8 @@ export class Sim {
       return this.considerMerge(c, false, to);
     }
     (c.refusedBy ??= {})[to.id] = this.tick;
+    // (and a band turned away hungry may come to feed its own guests first)
+    lived(this, c, 'guests_first', `after they were turned away hungry from ${to.name}`);
     // (being turned away again in the same hunger stings afresh, but it is the one memory, not one for every door)
     for (const p of ms) if (this.age(p) >= 14) {
       p.memories = p.memories.filter((m) => m.kind !== 'turned_away');
@@ -3819,6 +3845,28 @@ export class Sim {
         if (got >= want - 1e-6) break;
       }
       p.food = clamp(p.food + 48 * (got / portion));
+    }
+    // (where guests are fed first, they are fed full, and think the better of the band for it)
+    const full = guestFed(to);
+    if (full) {
+      let fed = 0;
+      for (const p of ms) {
+        if (!p.alive || p.food >= full) continue;
+        fed++;
+        const want = ((full - p.food) / 48) * (this.age(p) < 12 ? 0.6 : 1);
+        let got = 0;
+        for (const k of ['preserved', 'nuts', 'roots', 'grain', 'berries', 'meat', 'fish'] as const) {
+          const take = Math.min(st[k], want - got);
+          if (take <= 0) continue;
+          st[k] -= take;
+          this.book(`eaten.${k}`, take);
+          got += take;
+          if (got >= want - 1e-6) break;
+        }
+        p.food = clamp(p.food + 48 * got / (this.age(p) < 12 ? 0.6 : 1));
+        for (const q of this.members(to)) if (!ms.includes(q)) this.adjust(p, q, GUEST_THANKS);
+      }
+      if (fed) this.event('way_habit', `${to.name} fed its guests before it ate itself, as is the custom.`, ms.map((p) => p.id), to.x, to.z, 2);
     }
   }
 
@@ -3987,7 +4035,8 @@ export class Sim {
         const [p, q] = pick;
         // whoever has fewer ties at home goes
         const ties = (x: Person) => this.members(this.campById(x.band)!).filter((y) => this.isKin(x, y)).length;
-        const [goer, stay] = ties(p) <= ties(q) ? [p, q] : [q, p];
+        // (or by the bands' custom: a bride to her husband's band, or a groom to his wife's)
+        const [goer, stay] = whoGoes(this, p, q) ?? (ties(p) <= ties(q) ? [p, q] : [q, p]);
         const home = this.campById(stay.band)!, from = this.campById(goer.band)!;
         this.adjust(p, q, 45);
         this.adjust(q, p, 45);
@@ -4291,7 +4340,7 @@ export class Sim {
   }
 
   /** A killer the band can't forgive is driven out, with whoever stands by them (or a bully who would not stop). */
-  private exile(att: Person, vic: Person, c: Camp, why: 'killed' | 'bully' = 'killed') {
+  private exile(att: Person, vic: Person, c: Camp, why: 'killed' | 'bully' | 'thief' = 'killed') {
     const ms = this.members(c).filter((q) => q !== att);
     let regard = 0;
     for (const q of ms) regard += this.opinion(q, att);
@@ -4306,7 +4355,7 @@ export class Sim {
     const group = (loyal ? this.household(att) : [att]).filter((x) => x !== vic);
     const site = this.chooseSite({ from: c, min: 14, max: 40, avoid: 14, reachFrom: this.tileOf(att) });
     if (site < 0) {
-      if (why === 'bully') return;
+      if (why === 'bully' || why === 'thief') return;
       this.event('death_quarrel', `${att.name} killed ${vic.name} in a quarrel. There was nowhere to send ${att.sex ? 'him' : 'her'}.`, [att.id, vic.id], att.x, att.z, 4);
       return;
     }
@@ -4330,7 +4379,7 @@ export class Sim {
       this.remember(partner, 'exiled', -10, 3, att.id, `Stayed behind when ${att.name} was driven out.`);
     }
     for (const p of group) this.remember(p, 'exiled', -30, 4, -1, p === att ? `Was driven out of ${c.name}.` : `Went into exile with ${att.name}.`);
-    this.event('exile', `${att.name} ${why === 'bully' ? `would not stop tormenting ${vic.name}` : `killed ${vic.name} in a quarrel`} and was driven out of ${c.name}${group.length > 1 ? `. ${group.length === 2 ? `${partner!.name} went too` : `${partner!.name} and the children went too`}` : ''}. They made a camp alone at ${nc.name}.`,
+    this.event('exile', `${att.name} ${why === 'bully' ? `would not stop tormenting ${vic.name}` : why === 'thief' ? `was caught by ${vic.name} stealing from the stores in the hungry time` : `killed ${vic.name} in a quarrel`} and was driven out of ${c.name}${why === 'thief' ? ', as is the custom' : ''}${group.length > 1 ? `. ${group.length === 2 ? `${partner!.name} went too` : `${partner!.name} and the children went too`}` : ''}. They made a camp alone at ${nc.name}.`,
       [att.id, vic.id, ...group.filter((p) => p !== att).map((p) => p.id)], att.x, att.z, 5);
     this.camp = c;
   }
@@ -6771,4 +6820,14 @@ export function unb64(s: string): Uint8Array {
 }
 function structuredCloneSafe<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;
+}
+
+/** Discoveries put in an order they can be learned in: each after everything it needs (that isn't already known). */
+export function inOrder(keys: string[], known: string[]) {
+  const out: string[] = [], left = keys.slice();
+  while (left.length) {
+    const i = left.findIndex((k) => (DISCOVERY.get(k)?.needs ?? []).every((n) => known.includes(n) || out.includes(n) || !left.includes(n)));
+    out.push(left.splice(i < 0 ? 0 : i, 1)[0]);
+  }
+  return out;
 }

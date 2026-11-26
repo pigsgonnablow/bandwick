@@ -8,7 +8,11 @@ import { CARRY } from '../../src/sim/band';
 import {
   WayKind, WAYS, holds, takeUp, foundWays, carryWays, mayLead, mayPair, mayRule, takeInChance, matchChance, quarrelChance, riseChance,
   huntDrive, lived, waysDaily, feastPeace, newcomer, belongingKept, WAY_DAY, BEST_CUT, ELDER_AGE, ELDER_RULE, WARY_COLD, WELCOME_WARM, FEAST_DAYS, BEST_DRIVE,
+  buriedWithThings, firstSalmon, salmonThanks, SALMON_THANKS, SALMON_NEAR, twinsBorn, TWINS_SHUN, childGrief, childBelong, RAISED_GRIEF, RAISED_BELONG,
+  guestFed, GUEST_FED, sweatsToHunt, sweatAim, SWEAT_HUNTER, SWEAT_AIM, whoGoes, theftDaily, THEFT_SCORN, BURIALS, WAY_KINDS, FOUND_LEAN,
 } from '../../src/sim/ways';
+import { sparesWhite } from '../../src/sim/omen';
+import { SK, Person } from '../../src/sim/band';
 import { ruleDaily, RISE_DAY } from '../../src/sim/rule';
 import { sim, runYears } from '../helpers';
 
@@ -238,5 +242,227 @@ describe('customs', () => {
     expect(nc).not.toBe(c);
     expect(holds(nc, 'elders')).toBe(true);
     expect(holds(nc, 'share_meat')).toBe(true);
+  });
+  it('the dead are buried with their things: the tool in their hand goes into the ground with them, and their kin remember it', () => {
+    const s = band(1, ['buried_things']);
+    const dead = adults(s).find((q) => s.members().some((k) => k !== q && k.alive && s.isKin(k, q)))!;
+    const kin = s.members().find((k) => k !== dead && s.isKin(k, dead))!;
+    const axe = { id: s.newId(), kind: 'axe' as const, band: s.camp.id, holder: dead.id, wear: 0, made: s.tick, maker: -1 };
+    s.items.push(axe);
+    expect(buriedWithThings(s, dead)).toBe(true);
+    s.kill(dead, 'fever');
+    expect(axe.holder).toBe(dead.id);
+    for (let k = 0; k < 6 * TICKS_PER_DAY && !dead.buried; k++) s.step();
+    expect(dead.buried).toBe(true);
+    expect(s.items.includes(axe)).toBe(false);
+    expect(kin.memories.some((m) => m.kind === 'grave_things')).toBe(true);
+    // and where it is not the custom, the tool goes back on the pile
+    const t = band(1);
+    const other = adults(t)[0];
+    const stick = { id: t.newId(), kind: 'stick' as const, band: t.camp.id, holder: other.id, wear: 0, made: t.tick, maker: -1 };
+    t.items.push(stick);
+    t.kill(other, 'fever');
+    expect(stick.holder).not.toBe(other.id);
+  });
+
+  it('a year of burials may teach a band to bury its dead with their things', () => {
+    const s = band(1);
+    const old = adults(s).slice(0, BURIALS);
+    for (const p of old) s.kill(p, 'fever');
+    always(s);
+    waysDaily(s, WAY_DAY);
+    expect(s.camp.lived!.some((l) => l.kind === 'buried_things')).toBe(true);
+    waysDaily(s, WAY_DAY);
+    expect(holds(s.camp, 'buried_things')).toBe(true);
+  });
+
+  it('the first salmon goes back to the river, once a year, and the run near camp is the thicker for it', () => {
+    const s = band(1, ['first_salmon']);
+    const p = adults(s)[0];
+    expect(salmonThanks(s, s.camp.x, s.camp.z)).toBe(1);
+    expect(firstSalmon(s, p)).toBe(true);
+    expect(firstSalmon(s, p)).toBe(false);
+    expect(s.events.at(-1)!.kind).toBe('way_habit');
+    expect(salmonThanks(s, s.camp.x, s.camp.z)).toBe(SALMON_THANKS);
+    expect(salmonThanks(s, s.camp.x + SALMON_NEAR + 5, s.camp.z)).toBe(1);
+    s.tick += TICKS_PER_YEAR;
+    expect(salmonThanks(s, s.camp.x, s.camp.z)).toBe(1);
+    expect(firstSalmon(s, p)).toBe(true);
+    s.camp.ways = [];
+    s.tick += TICKS_PER_YEAR;
+    expect(firstSalmon(s, p)).toBe(false);
+  });
+
+  it('the white deer is never hunted, where that is the custom', () => {
+    const s = band(1);
+    const p = adults(s)[0];
+    p.beliefs = [];
+    s.camp.customs = [];
+    expect(sparesWhite(s, p)).toBe(false);
+    takeUp(s, s.camp, 'white_deer', 'for the test', null);
+    expect(sparesWhite(s, p)).toBe(true);
+  });
+
+  it('twins are a bad sign: the grown-ups think the less of them, and a twin lost may teach the band so', () => {
+    const s = band(1, ['twins_bad']);
+    const mother = adults(s).find((q) => q.sex === 0)!;
+    const [a, b] = s.members().filter((q) => s.age(q) < 12).slice(0, 2);
+    const grown = adults(s).find((q) => q !== mother)!;
+    const before = s.opinion(grown, a);
+    const n = s.events.length;
+    twinsBorn(s, mother, [a, b]);
+    expect(s.opinion(grown, a)).toBe(Math.max(-100, before - TWINS_SHUN));
+    expect(s.events.slice(n).some((e) => e.kind === 'way_habit')).toBe(true);
+    expect(grown.memories.some((m) => m.kind === 'twins_omen')).toBe(true);
+    // no custom, no omen
+    const t = band(1);
+    const m2 = adults(t).find((q) => q.sex === 0)!;
+    const [c2, d2] = t.members().filter((q) => t.age(q) < 12).slice(0, 2);
+    const g2 = adults(t).find((q) => q !== m2)!;
+    const b2 = t.opinion(g2, c2);
+    twinsBorn(t, m2, [c2, d2]);
+    expect(t.opinion(g2, c2)).toBe(b2);
+    // a twin baby who dies: the band may come to take twins for a bad sign
+    const baby = t.members().find((q) => t.age(q) < 2) ?? t.members().filter((q) => t.age(q) < 12)[0];
+    const mum = t.byId.get(baby.mother)!;
+    baby.birth = t.tick - 100;
+    const twin = t.members().find((q) => q !== baby && q.mother === mum.id) ?? t.members().find((q) => q !== baby && t.age(q) < 12)!;
+    twin.birth = baby.birth;
+    if (!mum.children.includes(twin.id)) mum.children.push(twin.id);
+    t.kill(baby, 'infancy');
+    expect(t.camp.lived!.some((l) => l.kind === 'twins_bad')).toBe(true);
+  });
+
+  it('children are raised by everyone: a child grieves less for a parent and keeps belonging, and an orphan may teach it', () => {
+    const s = band(1, ['raised_by_all']);
+    const child = s.members().find((q) => s.age(q) < 12)!;
+    const grown = adults(s)[0];
+    expect(childGrief(s, child)).toBe(RAISED_GRIEF);
+    expect(childBelong(s, child)).toBe(RAISED_BELONG);
+    expect(childGrief(s, grown)).toBe(1);
+    s.camp.ways = [];
+    expect(childGrief(s, child)).toBe(1);
+    // both parents dead: the band may come to raise its children together
+    const mum = s.byId.get(child.mother), dad = s.byId.get(child.father);
+    if (dad?.alive) s.kill(dad, 'fever');
+    if (mum?.alive) s.kill(mum, 'fever');
+    expect(s.camp.lived!.some((l) => l.kind === 'raised_by_all')).toBe(true);
+  });
+
+  it('a thief is cast out: someone greedy who steals in a hungry time and is caught is driven out, or else the band may come to it', () => {
+    const s = band(1, ['thief_out']);
+    const c = s.camp;
+    c.rationing = true;
+    c.stock.preserved = 100;
+    const thief = adults(s)[0];
+    thief.traits = ['greedy'];
+    thief.food = 20;
+    for (const q of adults(s)) if (q !== thief) q.traits = q.traits.filter((t) => t !== 'greedy');
+    always(s);
+    const exiled: Person[] = [];
+    theftDaily(s, (p) => exiled.push(p));
+    expect(thief.food).toBeGreaterThan(20);
+    expect(c.stock.preserved).toBe(99);
+    expect(exiled).toEqual([thief]);
+    // without the custom: thought the less of, told in the chronicle, and the band may come to cast thieves out
+    const t = band(1);
+    const tc = t.camp;
+    tc.rationing = true;
+    tc.stock.preserved = 100;
+    const th = adults(t)[0];
+    th.traits = ['greedy'];
+    th.food = 20;
+    for (const q of adults(t)) if (q !== th) q.traits = q.traits.filter((x) => x !== 'greedy');
+    const other = adults(t).find((q) => q !== th)!;
+    const before = t.opinion(other, th);
+    always(t);
+    theftDaily(t, () => { throw new Error('not cast out without the custom'); });
+    expect(t.opinion(other, th)).toBe(Math.max(-100, before - THEFT_SCORN));
+    expect(t.events.at(-1)!.kind).toBe('theft');
+    expect(tc.lived!.some((l) => l.kind === 'thief_out')).toBe(true);
+    // and never in a time of plenty
+    tc.rationing = false; tc.famine = false;
+    th.food = 20;
+    theftDaily(t, () => undefined);
+    expect(th.food).toBe(20);
+  });
+
+  it('a thief cast out makes a camp of their own', () => {
+    const s = band(1, ['thief_out', 'elders']);
+    const c = s.camp;
+    const [thief, by] = adults(s);
+    (s as unknown as { exile(a: Person, v: Person, c: typeof s.camp, why: string): void }).exile(thief, by, c, 'thief');
+    const nc = s.campById(thief.band)!;
+    expect(nc).not.toBe(c);
+    const e = s.events.filter((x) => x.kind === 'exile').at(-1)!;
+    expect(e.text).toContain('stealing from the stores');
+  });
+
+  it('guests are fed first: those taken in are fed full, and think the better of the band', () => {
+    const s = band(1, ['guests_first']);
+    const c = s.camp;
+    c.stock.preserved = 200;
+    expect(guestFed(c)).toBe(GUEST_FED);
+    const [guest, host] = adults(s);
+    guest.food = 20;
+    const before = s.opinion(guest, host);
+    (s as unknown as { feedNewcomers(ms: Person[], to: typeof c): void }).feedNewcomers([guest], c);
+    expect(guest.food).toBeGreaterThanOrEqual(GUEST_FED - 1e-6);
+    expect(s.opinion(guest, host)).toBeGreaterThan(before);
+    expect(s.events.at(-1)!.kind).toBe('way_habit');
+    // (and no word of it when nobody needed feeding)
+    const n = s.events.length;
+    (s as unknown as { feedNewcomers(ms: Person[], to: typeof c): void }).feedNewcomers([guest], c);
+    expect(s.events.length).toBe(n);
+    c.ways = [];
+    expect(guestFed(c)).toBe(0);
+  });
+
+  it('a sweat before the hunt: a skilled hunter goes to the lodge on any evening, and strikes the better after', () => {
+    const s = band(1, ['sweat_hunt']);
+    const p = adults(s)[0];
+    p.skills[SK.hunt] = SWEAT_HUNTER;
+    expect(sweatsToHunt(s, p)).toBe(true);
+    p.skills[SK.hunt] = SWEAT_HUNTER - 1;
+    expect(sweatsToHunt(s, p)).toBe(false);
+    p.sweat = undefined;
+    expect(sweatAim(s, p)).toBe(0);
+    p.sweat = s.tick;
+    expect(sweatAim(s, p)).toBe(SWEAT_AIM);
+    s.camp.ways = [];
+    expect(sweatAim(s, p)).toBe(0);
+  });
+
+  it('brides move to the man\'s band, or grooms to the woman\'s, by the custom of either band', () => {
+    const s = band(1);
+    const man = adults(s).find((q) => q.sex === 1)!, woman = adults(s).find((q) => q.sex === 0)!;
+    expect(whoGoes(s, man, woman)).toBeNull();
+    takeUp(s, s.camp, 'brides_go', 'for the test', null);
+    expect(whoGoes(s, man, woman)).toEqual([woman, man]);
+    expect(whoGoes(s, woman, man)).toEqual([woman, man]);
+    takeUp(s, s.camp, 'grooms_go', 'for the test', null);
+    expect(holds(s.camp, 'brides_go')).toBe(false);
+    expect(whoGoes(s, man, woman)).toEqual([man, woman]);
+    expect(whoGoes(s, man, adults(s).find((q) => q.sex === 1 && q !== man)!)).toBeNull();
+  });
+
+  it('every new custom can come with a founding band, from its leader\'s leanings', () => {
+    const seen = new Set<WayKind>();
+    for (const traits of [['pious', 'cautious'], ['kind', 'charismatic'], ['cruel'], ['brave', 'pious'], ['ambitious']]) {
+      for (const sex of [0, 1]) {
+        const s = sim(1);
+        const c = s.camps[0];
+        const leader = s.byId.get(c.leader)!;
+        leader.traits = traits as Person['traits'];
+        leader.sex = sex as Person['sex'];
+        // (only what the leader leans to comes up)
+        s.rWays = { chance: (p: number) => p >= FOUND_LEAN, next: () => 0.999, int: (a: number) => a } as unknown as Sim['rWays'];
+        foundWays(s, c, leader);
+        for (const w of c.ways!) seen.add(w.kind);
+      }
+    }
+    for (const k of ['buried_things', 'first_salmon', 'white_deer', 'twins_bad', 'raised_by_all', 'thief_out', 'guests_first', 'sweat_hunt', 'brides_go', 'grooms_go'] as WayKind[])
+      expect(seen.has(k), k).toBe(true);
+    expect(WAY_KINDS.length).toBe(20);
   });
 });

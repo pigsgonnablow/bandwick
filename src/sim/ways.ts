@@ -2,7 +2,8 @@
 // omen.ts) but rules about how people treat one another: whether the meat is shared out equally or the hunter keeps
 // the best of it; whether newcomers are welcomed in or held at arm's length; whether a widow may take another
 // partner; who may lead the band; whether the elders have the last word; whether a braggart is mocked down to size;
-// whether blood may be spilt at the midwinter feast.
+// whether blood may be spilt at the midwinter feast; how the dead are buried, twins taken, children raised, thieves,
+// guests and the first salmon dealt with; and which band a bride or groom goes to.
 //
 // A band that comes over the hills brings its ways with it, the ones its leader and its elder hold to. Others come
 // of what the band lives through: a hungry year teaches it to share the meat, a newcomer who killed one of them
@@ -26,11 +27,32 @@
 //   Braggarts are mocked      the ambitious are mocked down to size, and someone seldom takes hold of the band.
 //   No blood at the feast     on the longest night old quarrels are put aside, and nobody comes to blows in the
 //                             days around it.
+//   The dead keep their things  a tool in the hand and what they wore go into the ground with them (lost to the band),
+//                             and their kin feel the better for it. Comes of a year of burials.
+//   The first salmon goes     the first fish of the run is let go each year, and the run near camp is the thicker for
+//   back                      it. Comes of a year the salmon failed.
+//   The white deer is never   nobody hunts it. Comes of a white deer killed and the band scorning it.
+//   hunted
+//   Twins are a bad sign      the grown-ups think the less of twins, and the band is uneasy. Comes of a twin lost.
+//   Children raised by        a child grieves less for a parent and keeps a sense of belonging. Comes of an orphan.
+//   everyone
+//   A thief is cast out       someone caught stealing from the stores in a hungry time is driven out to make a camp
+//                             alone. Comes of a theft (the greedy steal when the band is rationing or starving).
+//   Guests are fed first      a band taken in is fed full before the hosts eat, and thinks the better of them.
+//                             Comes of being turned away hungry.
+//   Sweat before the hunt     skilled hunters go to the lodge on any evening, and strike the better after. Comes of a
+//                             kill made just after a sweat.
+//   Brides go / grooms go     when two people of different bands pair off, the woman goes to the man's band (or the
+//                             man to the woman's), whoever has more kin at home.
 import type { Sim, Camp } from './sim';
 import type { Person } from './band';
+import { SK } from './band';
+import { runYear } from './runs';
+const SK_HUNT = SK.hunt;
 import { TICKS_PER_DAY, TICKS_PER_YEAR, yearOf } from './time';
 
-export type WayKind = 'share_meat' | 'hunter_best' | 'welcome' | 'wary' | 'widows' | 'men_lead' | 'women_lead' | 'elders' | 'humble' | 'feast_peace';
+export type WayKind = 'share_meat' | 'hunter_best' | 'welcome' | 'wary' | 'widows' | 'men_lead' | 'women_lead' | 'elders' | 'humble' | 'feast_peace'
+  | 'buried_things' | 'first_salmon' | 'white_deer' | 'twins_bad' | 'raised_by_all' | 'thief_out' | 'guests_first' | 'sweat_hunt' | 'brides_go' | 'grooms_go';
 
 /** A custom the band lives by. */
 export interface Way {
@@ -52,13 +74,23 @@ export const WAYS: Record<WayKind, { text: string; took: string; against?: WayKi
   elders: { text: 'The elders\' word is final', took: 'From now on the elders have the last word' },
   humble: { text: 'Braggarts are mocked down to size', took: 'From now on anyone who puts on airs is mocked down to size' },
   feast_peace: { text: 'No blood is spilt at the feast', took: 'From now on no blood may be spilt at the midwinter feast' },
+  buried_things: { text: 'The dead are buried with their things', took: 'From now on the dead go into the ground with their things' },
+  first_salmon: { text: 'The first salmon goes back to the river', took: 'From now on the first salmon of the run is given back to the river' },
+  white_deer: { text: 'The white deer is never hunted', took: 'From now on nobody may hunt the white deer' },
+  twins_bad: { text: 'Twins are a bad sign', took: 'From now on twins are taken for a bad sign' },
+  raised_by_all: { text: 'Children are raised by everyone', took: 'From now on every child is everyone\'s to raise' },
+  thief_out: { text: 'A thief is cast out', took: 'From now on anyone who steals from the stores is cast out' },
+  guests_first: { text: 'Guests are fed first', took: 'From now on guests are fed before the band eats' },
+  sweat_hunt: { text: 'Hunters sweat in the lodge before a hunt', took: 'From now on the hunters sweat in the lodge before they hunt' },
+  brides_go: { text: 'A bride goes to live with her husband\'s band', took: 'From now on a bride goes to live with her husband\'s band', against: 'grooms_go' },
+  grooms_go: { text: 'A groom goes to live with his wife\'s band', took: 'From now on a groom goes to live with his wife\'s band', against: 'brides_go' },
 };
 export const WAY_KINDS = Object.keys(WAYS) as WayKind[];
 
 /** How readily a band founded by someone takes up a custom from their own character (and its elder's age). */
-export const FOUND_LEAN = 0.55;
+export const FOUND_LEAN = 0.45;
 /** And the chance of each custom with nothing in the founder's character for or against it. */
-export const FOUND_PLAIN = 0.12;
+export const FOUND_PLAIN = 0.06;
 /** The chance a daughter band keeps each of its parent's customs (otherwise it drops it), and that its leader brings one of their own. */
 export const SPLIT_KEEP = 0.75;
 export const SPLIT_OWN = 0.35;
@@ -71,6 +103,9 @@ export const WAY_DAY = 30;
 /** A hunter with this many kills is a great one; a band this share of whose grown-ups are pious is a devout one. */
 export const GREAT_HUNTER = 15;
 export const DEVOUT = 0.5;
+/** A year with this many burials, or a run that failed (only a blighted year runs this thin), may set a band to a custom. */
+export const BURIALS = 3;
+export const THIN_RUN = 0.6;
 
 /** Meat shared out: each member of the band at home feels this much closer for it, and thinks this much better of the hunter. */
 export const SHARE_BELONG = 1.5;
@@ -104,6 +139,12 @@ export const FEAST_MEND = 10;
 
 const his = (p: Person) => (p.sex ? 'his' : 'her');
 
+/** Whether a salmon river runs near a band's camp. */
+function salmonRiverNear(s: Sim, c: Camp) {
+  for (const i of s.runs.tiles) if (s.runs.salmon[i] >= 0 && Math.hypot((i % s.N) + 0.5 - c.x, Math.floor(i / s.N) + 0.5 - c.z) < SALMON_NEAR) return true;
+  return false;
+}
+
 /** Whether a band lives by a custom. */
 export function holds(c: Camp | undefined, k: WayKind) {
   return !!c?.ways?.some((w) => w.kind === k);
@@ -134,6 +175,12 @@ function leanings(s: Sim, p: Person, elder?: Person): WayKind[] {
   if (elder && elder.alive && s.age(elder) >= ELDER_AGE) out.push('elders');
   if (s.has(p, 'kind') && !s.has(p, 'ambitious')) out.push('humble');
   if (s.has(p, 'pious') || s.has(p, 'kind')) out.push('feast_peace');
+  if (s.has(p, 'pious')) out.push('buried_things', 'first_salmon', 'white_deer');
+  if (s.has(p, 'pious') && s.has(p, 'cautious')) out.push('twins_bad');
+  if (s.has(p, 'kind') || s.has(p, 'charismatic')) out.push('raised_by_all', 'guests_first');
+  if (s.has(p, 'cruel') || (s.has(p, 'cautious') && !s.has(p, 'kind'))) out.push('thief_out');
+  if (s.has(p, 'brave') && s.has(p, 'pious')) out.push('sweat_hunt');
+  if (s.has(p, 'ambitious') && !s.has(p, 'kind')) out.push(p.sex ? 'brides_go' : 'grooms_go');
   return out;
 }
 
@@ -300,6 +347,12 @@ export function waysDaily(s: Sim, dayOfYear: number) {
     const hunter = grown.slice().sort((a, b) => b.kills - a.kills || a.id - b.id)[0];
     if (!has('hunter_best') && !holds(c, 'share_meat') && hunter && hunter.kills >= GREAT_HUNTER && (s.has(hunter, 'greedy') || s.has(hunter, 'ambitious')))
       lived(s, c, 'hunter_best', `with ${hunter.name} bringing home most of the meat`);
+    // a year of burials: the band comes to send its dead into the ground with their things
+    const buried = s.people.filter((q) => !q.alive && q.band === c.id && s.tick - q.death < TICKS_PER_YEAR && s.age(q) >= 3).length;
+    if (!has('buried_things') && buried >= BURIALS) lived(s, c, 'buried_things', 'after a year of burials');
+    // a thin run up the river by camp: the band comes to give the first salmon back, so that they return
+    const last = yearOf(s.tick) - 1;
+    if (!has('first_salmon') && last >= 1 && runYear(s, last) < THIN_RUN && salmonRiverNear(s, c)) lived(s, c, 'first_salmon', `after the salmon failed in year ${last}`);
     // a devout band: a widow is to keep faith with her dead
     if (!has('widows') && grown.length >= 6 && grown.filter((q) => s.has(q, 'pious')).length >= grown.length * DEVOUT)
       lived(s, c, 'widows', 'with so many of them devout');
@@ -310,6 +363,136 @@ export function waysDaily(s: Sim, dayOfYear: number) {
         for (const q of ms) if (q !== p && s.opinion(q, p) > HUMBLE_FLOOR) s.adjust(q, p, -Math.min(HUMBLE_MOCK, s.opinion(q, p) - HUMBLE_FLOOR));
         s.remember(p, 'mocked_airs', -6, 1, -1, 'Was laughed at for putting on airs.');
       }
+    }
+  }
+}
+
+// ------------------------------------------------------------------ the later customs
+
+/** The dead buried with their things: the kin of someone so buried remember it, and feel the better for it. */
+export const GRAVE_THINGS_EASE = 8;
+/** The first salmon given back: the run is this much thicker in the rivers near a band that gave it back this year. */
+export const SALMON_THANKS = 1.2;
+export const SALMON_NEAR = 30;
+/** Twins a bad sign: the band remembers their birth with this unease, and the grown-ups think this much less of the twins. */
+export const TWINS_UNEASE = 10;
+export const TWINS_SHUN = 12;
+/** Children raised by everyone: a child's grief for a parent is this share of what it would be, and their belonging fades this much slower. */
+export const RAISED_GRIEF = 0.55;
+export const RAISED_BELONG = 0.5;
+/** Theft: in a hungry time, a greedy grown-up who is hungry steals from the stores this often a day, eating this much, and is caught this often. */
+export const THEFT_CHANCE = 0.015;
+export const THEFT_FOOD = 40;
+export const THEFT_CAUGHT = 0.5;
+export const THEFT_SCORN = 20;
+/** Guests fed first: newcomers taken in are fed to this, and think this much better of the band for it. */
+export const GUEST_FED = 95;
+export const GUEST_THANKS = 8;
+/** Hunters sweat before the hunt: a hunter this skilled goes to the lodge on any evening, and one who has sweated lately strikes this much more often. */
+export const SWEAT_HUNTER = 8;
+export const SWEAT_AIM = 0.06;
+
+/** Whether the band would bury someone with their things (their tool and what they wear stay with the body). */
+export function buriedWithThings(s: Sim, p: Person) {
+  return holdsP(s, p, 'buried_things');
+}
+/** Someone was laid in the ground with their things: their kin remember it. */
+export function laidWithThings(s: Sim, body: Person, n: number) {
+  if (!n) return;
+  for (const q of s.people) if (q.alive && q.band === body.band && (s.isKin(q, body) || q.id === body.partner))
+    s.remember(q, 'grave_things', GRAVE_THINGS_EASE, 2, body.id, `Saw ${body.name} laid in the ground with ${n === 1 ? 'their own tool' : 'their own things'}, as is right.`);
+}
+
+/** A fish caught from a run: the band's first of the year goes back to the river, if that is the custom (true: let go). */
+export function firstSalmon(s: Sim, p: Person) {
+  const c = s.campById(p.band);
+  if (!c || !holds(c, 'first_salmon') || c.salmonFreed === yearOf(s.tick)) return false;
+  c.salmonFreed = yearOf(s.tick);
+  s.remember(p, 'first_salmon', 4, 1, -1, 'Caught the first salmon of the run, and gave it back to the river.');
+  s.event('way_habit', `${p.name} caught the first salmon of the run and gave it back to the river, as is the custom at ${c.name}.`, [p.id], p.x, p.z, 2);
+  return true;
+}
+/** How much thicker a run is at a river tile: near a band that gave the first salmon back this year. */
+export function salmonThanks(s: Sim, x: number, z: number) {
+  const y = yearOf(s.tick);
+  for (const c of s.liveCamps()) if (c.salmonFreed === y && Math.hypot(c.x - x, c.z - z) < SALMON_NEAR) return SALMON_THANKS;
+  return 1;
+}
+
+/** Whether someone would let a white deer be, by their band's custom. */
+export function spareWhite(s: Sim, p: Person) {
+  return holdsP(s, p, 'white_deer');
+}
+
+/** Twins born in a band that takes them for a bad sign. */
+export function twinsBorn(s: Sim, mother: Person, twins: Person[]) {
+  const c = s.campById(mother.band);
+  if (!c || !holds(c, 'twins_bad')) return;
+  for (const q of s.members(c)) {
+    if (twins.includes(q) || s.age(q) < 12) continue;
+    s.remember(q, 'twins_omen', -TWINS_UNEASE, 1, mother.id, `Twins were born to ${mother.name}: a bad sign.`);
+    if (s.age(q) >= 16) for (const t of twins) s.adjust(q, t, -TWINS_SHUN);
+  }
+  s.event('way_habit', `Twins were born at ${c.name}, and the band took it for a bad sign.`, [mother.id, ...twins.map((t) => t.id)], mother.x, mother.z, 2);
+}
+
+/** How hard a child takes a parent's death, by the band's customs (a share of the usual grief). */
+export function childGrief(s: Sim, q: Person) {
+  return s.age(q) < 14 && holdsP(s, q, 'raised_by_all') ? RAISED_GRIEF : 1;
+}
+/** How fast a child's sense of belonging fades, by the band's customs. */
+export function childBelong(s: Sim, q: Person) {
+  return s.age(q) < 14 && holdsP(s, q, 'raised_by_all') ? RAISED_BELONG : 1;
+}
+
+/** Guests fed first: how well those taken in are fed, and whether they think the better of the band for it. */
+export function guestFed(to: Camp) {
+  return holds(to, 'guests_first') ? GUEST_FED : 0;
+}
+
+/** Whether a hunter goes to sweat before a hunt on a mild evening, and how much better a hunter who has sweated strikes. */
+export function sweatsToHunt(s: Sim, p: Person) {
+  return p.skills[SK_HUNT] >= SWEAT_HUNTER && holdsP(s, p, 'sweat_hunt');
+}
+export function sweatAim(s: Sim, p: Person) {
+  return holdsP(s, p, 'sweat_hunt') && s.sweatWarded(p) ? SWEAT_AIM : 0;
+}
+
+/** Who goes to live with whom when two young people of different bands pair off: by the bands' customs, or (null) by ties. */
+export function whoGoes(s: Sim, p: Person, q: Person): [Person, Person] | null {
+  if (p.sex === q.sex) return null;
+  const [man, woman] = p.sex ? [p, q] : [q, p];
+  const bm = s.campById(man.band), bw = s.campById(woman.band);
+  const brides = holds(bm, 'brides_go') || holds(bw, 'brides_go'), grooms = holds(bm, 'grooms_go') || holds(bw, 'grooms_go');
+  if (brides && !grooms) return [woman, man];
+  if (grooms && !brides) return [man, woman];
+  return null;
+}
+
+/**
+ * Each day: in a hungry time a greedy grown-up may steal from the stores; caught, they are cast out where that is the
+ * custom, and otherwise the band thinks the less of them and may come to make it the custom.
+ */
+export function theftDaily(s: Sim, exile: (thief: Person, by: Person, c: Camp) => void) {
+  const r = s.rWays;
+  for (const c of s.liveCamps()) {
+    if (!c.famine && !c.rationing) continue;
+    const ms = s.members(c);
+    for (const p of ms) {
+      if (!p.alive || s.age(p) < 16 || !s.has(p, 'greedy') || p.food >= 50 || !r.chance(THEFT_CHANCE)) continue;
+      const food = (['preserved', 'grain', 'nuts', 'roots', 'meat', 'fish', 'berries'] as const).find((k) => c.stock[k] >= 1);
+      if (!food) continue;
+      c.stock[food] -= 1;
+      s.book(`eaten.${food}`, 1, c);
+      p.food = Math.min(100, p.food + THEFT_FOOD);
+      if (!r.chance(THEFT_CAUGHT)) continue;
+      const by = ms.filter((q) => q !== p && q.alive && s.age(q) >= 14 && !s.isKin(q, p) && q.id !== p.partner)[0];
+      if (!by) continue;
+      for (const q of ms) if (q !== p && s.age(q) >= 14) s.adjust(q, p, -THEFT_SCORN);
+      s.remember(p, 'thief', -10, 2, by.id, `Was caught taking food from the stores.`);
+      if (holds(c, 'thief_out')) { exile(p, by, c); break; }
+      s.event('theft', `${by.name} caught ${p.name} taking food from the stores at ${c.name} in the hungry time.`, [p.id, by.id], p.x, p.z, 3);
+      lived(s, c, 'thief_out', `after ${p.name} stole from the stores`);
     }
   }
 }

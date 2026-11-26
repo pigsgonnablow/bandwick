@@ -26,7 +26,7 @@ while (s.tick < end) {
     show();
     for (; seen < s.events.length; seen++) {
       const e = s.events[seen];
-      if (['way', 'way_drift', 'way_habit', 'rule', 'rule_end'].includes(e.kind)) console.log(`  y${yearOf(e.tick)} [${e.kind}] ${e.text}`);
+      if (['way', 'way_drift', 'way_habit', 'rule', 'rule_end', 'theft', 'exile'].includes(e.kind)) console.log(`  y${yearOf(e.tick)} [${e.kind}] ${e.text}`);
     }
   }
 }
