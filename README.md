@@ -44,7 +44,7 @@ come.
 
 **Customs.** Every band lives by a few customs: rules for how people treat one another, apart from what it believes
 about the signs. The meat is shared out equally (the band feels closer for every deer brought home, and thinks better of
-the hunter), or the hunter keeps the best of the kill (and the band's hunters go out more readily). Newcomers are made
+the hunter). Newcomers are made
 welcome (a starving band is readily taken in, and someone who marries in is soon one of them), or kept at arm's length
 (a starving band is seldom taken in, someone who marries in feels an outsider for a couple of years, and young people
 pair off with other bands half as often). A widow takes no other partner. Only a man, or only a woman, may lead: found
@@ -57,7 +57,7 @@ keeps widows from remarrying, an old elder brings the elders' word). Others come
 year teaches it to share the meat, taking in a starving band to welcome newcomers, a killing by someone who married in to
 keep them at arm's length, a killing at the feast to keep its peace, a ruler thrown off to mock braggarts, the long rule
 of a man or a woman that only one like them may lead, an elder the whole band looks up to to give the elders the last
-word, a great hunter who is greedy to let the hunter keep the best, and a devout band to keep widows from remarrying.
+word, and a devout band to keep widows from remarrying.
 A band that splits keeps most of its customs, drops some, and its new leader may bring one of their own, so bands born of
 the same first band slowly drift apart in how they live. The band panel lists its customs, how each came about and since
 when; the Chronicle tells when a band took one up or left one behind. `npx tsx tools/waytrace.ts --seed 1` follows them

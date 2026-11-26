@@ -20,6 +20,8 @@ function band(seed = 1) {
   const s = runYears(sim(seed), 3);
   const c = s.camp;
   if (!c.knows.includes('huts')) c.knows.push('huts');
+  // (and none of the customs that bar or curb a ruler: who may lead, the elders' word, mocking braggarts)
+  c.ways = [];
   for (const p of s.members()) p.traits = p.traits.filter((t) => t !== 'ambitious');
   return s;
 }
