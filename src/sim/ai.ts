@@ -4088,6 +4088,8 @@ export function runTask(s: Sim, p: Person) {
       else face(p, b.x + 0.5, b.z + 0.5);
       b.work += (1 + p.skills[SK.build] * 0.06) * (s.age(p) >= 58 ? 0.7 : 1);
       if (!b.builders.includes(p.id)) b.builders.push(p.id);
+      // (a thorn hedge clears its line of brush and trees as it is laid round)
+      if (b.kind === 'hedge') s.clearHedge(b);
       if (s.tick % 10 === 0) s.buildingsVersion++;
       if (s.tick % 20 === 0) {
         train(p, 'build');
@@ -4381,6 +4383,12 @@ export function completeBuilding(s: Sim, b: Building, p: Person) {
   s.buildingsVersion++;
   // a footbridge's deck is walked on from now: the ford under it is crossed dry-shod
   if (b.kind === 'bridge') s.layBridges();
+  // a thorn hedge's line is clear of brush and trees all the way round
+  if (b.kind === 'hedge') {
+    s.clearHedge(b);
+    // (and a hedge laid further out takes the place of the old one, grubbed up now)
+    if (s.buildings.some((q) => q.kind === 'hedge' && q.band === b.band && q !== b)) s.buildings = s.buildings.filter((q) => !(q.kind === 'hedge' && q.band === b.band && q !== b));
+  }
   // the wedges that split its planks take the wear of it (worn out, they are made again)
   if (b.walls === 'plank') {
     const wedges = s.toolsOf(s.campById(b.band) ?? s.camp, 'wedges')[0];

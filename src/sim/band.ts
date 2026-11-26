@@ -517,16 +517,24 @@ export const HEDGE_SAFE = 4;
 export const HEDGE_FOX = 16;
 /** A path worn this plain (of 255) through the line of the hedge is left open as a gap. */
 export const HEDGE_GAP = 110;
+/** How far inside a hedge's line a building is kept (it stands a tile across, and the hedge's own tiles are taken). */
+export const HEDGE_IN = 1.2;
+/** The buildings a thorn hedge is not laid round, and that may go up outside it afterwards: plots and fences, monuments,
+ * the things down at the water, the clamp (for its smoke) and the hedge itself. */
+export const UNHEDGED: readonly string[] = ['plot', 'fence', 'barrow', 'stones', 'weir', 'canoe', 'clamp', 'hedge', 'bridge'];
 /**
  * Fords and footbridges. Wading a river or a lake's edge is slow going, and in the cold it chills: each step into
  * the water below WADE_COLD takes up to WADE_CHILL off someone's warmth (the colder the water, the more). A band
  * keeps count of the steps waded at each ford near camp, and once one has been waded BRIDGE_USE times it bridges it,
  * where the river there is no wider than BRIDGE_SPAN tiles and the banks either side are about level. It keeps up to
- * BRIDGES of them. A bridge is crossed dry-shod, at a walk.
+ * BRIDGES of them. A bridge is crossed dry-shod, at a walk. The count fades: each new year it is cut by FORD_FADE, and
+ * a ford waded fewer than FORD_FORGOT times is forgotten, so a ford busy years ago and seldom crossed now is not bridged.
  */
 export const WADE_COLD = 10;
 export const WADE_CHILL = 2.5;
 export const BRIDGE_USE = 60;
+export const FORD_FADE = 0.5;
+export const FORD_FORGOT = 4;
 export const BRIDGE_SPAN = 3;
 export const BRIDGES = 3;
 /** Fords this close to a bridge (in steps) are the same ford: not bridged again. */
@@ -1307,6 +1315,8 @@ export interface Building {
   /** a thorn hedge: the tiles it runs over, round from its gate, and how far it stands from the fire */
   ring?: number[];
   reach?: number;
+  /** a thorn hedge: how many tiles of its ring have been cleared of brush and trees as it was laid round */
+  cleared?: number;
   /** a footbridge: the river tiles it spans, bank to bank, and the walking level of its deck */
   span?: number[];
   deck?: number;
