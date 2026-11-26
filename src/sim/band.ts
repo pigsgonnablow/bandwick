@@ -1054,6 +1054,10 @@ export interface Person {
   band: number;
   name: string;
   sex: 0 | 1; // 0 female, 1 male
+  /** a widow or widower: the tick their partner died (absent: never widowed) */
+  widowed?: number;
+  /** the tick they came to live in this band from another (married in, or taken in) */
+  joined?: number;
   birth: number;
   mother: number;
   father: number;

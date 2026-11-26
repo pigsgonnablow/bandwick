@@ -27,6 +27,7 @@ import { decide, runTask, abandon, sendHome, delivering, foodInHand, afloat, FAR
 import { placeBeasts, updateBeasts, beastsDaily, packBeasts, packDens, beastCard, deadfallNight, DEADFALL_RANGE } from './beasts';
 import { updatePigs, pigsDaily, packPigs, pigCard, penOf, pigsOf, pigsWanted, pigToKill, pigFeed, pigMeat, grown, PIG_ID } from './pigs';
 import { DISCOVERIES, DISCOVERY, Discovery, Practice, knowHowFor, meets, ELITE } from './know';
+import { Way, WayKind, foundWays, carryWays, mayLead, mayPair, takeInChance, matchChance, newcomer, belongingKept, quarrelChance, feastPeace, lived, waysDaily, waysSummary } from './ways';
 import { Rule, WOMAN_LEADS, ruleDaily, ruledIdeas, builderBand, rulerOf, ruleSummary, BUILDER_SPLIT, BUILDER_WALLS, BUILDER_RAISE, seatHolder } from './rule';
 import { Lore, Custom, Omen, Sky, SignKind, omenDaily, omenHourly, omenOutcome, deathSign, noPairing, midwinterOffering, carryCustoms, loreSummary, beliefsOf, skyNow, OMEN_KINDS } from './omen';
 import { RunMap, mapRuns, runsTick, runOn, runExtra, runNear, weirSite, weirRot } from './runs';
@@ -242,6 +243,9 @@ export interface Camp {
   /** what the band's people believe the signs foretell (absent: nothing yet), and the customs those beliefs have hardened into */
   lore?: Lore[];
   customs?: Custom[];
+  /** the customs the band lives by (absent: none yet), and what it has lived through lately that may harden into one */
+  ways?: Way[];
+  lived?: { kind: WayKind; tick: number; why: string }[];
   /** a sign the band has seen, while it waits to see what follows */
   omen?: Omen;
   /** a spell when believers (or, on a day of custom, everyone) leave their work and keep to the fire */
@@ -403,6 +407,7 @@ export class Sim {
   /** rulers rising, succeeding and falling (their own stream, so a world without one runs as it did) */
   rRule: Rng;
   rOmen: Rng;
+  rWays: Rng;
   /** a sight in the sky that every band sees: coming, or under way (absent: none) */
   sky?: Sky;
   anomaly = 0;
@@ -493,6 +498,7 @@ export class Sim {
     this.rPig = Rng.stream(seed, 'pigs');
     this.rRule = Rng.stream(seed, 'rule');
     this.rOmen = Rng.stream(seed, 'omen');
+    this.rWays = Rng.stream(seed, 'ways');
     this.tongue = new Tongue(Rng.stream(seed, 'tongue'));
     // props
     const cap = world.propCount + 4096;
@@ -600,7 +606,7 @@ export class Sim {
       params: { ...this.world.params },
       worldHash: this.world.hash,
       tick: this.tick, anomaly: this.anomaly, nextId: this.nextId, nextEvent: this.nextEvent, eventHash: this.eventHash,
-      rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState(), wolves: this.rWolf.getState(), beasts: this.rBeast.getState(), pigs: this.rPig.getState(), rule: this.rRule.getState(), omen: this.rOmen.getState() },
+      rng: { life: this.rLife.getState(), ai: this.rAi.getState(), wild: this.rWild.getState(), tongue: this.tongue.r.getState(), wolves: this.rWolf.getState(), beasts: this.rBeast.getState(), pigs: this.rPig.getState(), rule: this.rRule.getState(), omen: this.rOmen.getState(), ways: this.rWays.getState() },
       props: {
         count: n,
         type: pick(this.propType), x: pick(this.propX), y: pick(this.propY), z: pick(this.propZ), rot: pick(this.propRot),
@@ -674,6 +680,7 @@ export class Sim {
     if (d.rng.pigs) this.rPig.setState(d.rng.pigs);
     if (d.rng.rule) this.rRule.setState(d.rng.rule);
     if (d.rng.omen) this.rOmen.setState(d.rng.omen);
+    if (d.rng.ways) this.rWays.setState(d.rng.ways);
     this.sky = d.sky ? { ...d.sky } : undefined;
     this.tongue.r.setState(d.rng.tongue);
     // props: replace the freshly generated ones with the saved, lived-in set
@@ -1084,6 +1091,8 @@ export class Sim {
     // (who leads them here: the man of the founding couple, or now and then the woman; drawn from the rulers' own
     // stream, so the rest of the world's luck is untouched)
     camp.leader = this.rRule.chance(WOMAN_LEADS) ? aWoman.id : aMan.id;
+    // (and they bring their ways with them: the ones their leader leans to, and their elder's)
+    foundWays(this, camp, this.byId.get(camp.leader)!, elder);
     for (const p of band) {
       p.x = cx + 0.5 + r.range(-2, 2);
       p.z = cz + 0.5 + r.range(-2, 2);
@@ -1527,7 +1536,8 @@ export class Sim {
       delete p.worn!.feet;
       this.remember(p, 'tool_broke', -2, 0.3, -1, 'Their hide shoes wore through.');
     }
-    p.belonging -= 0.09;
+    // (faster for a newcomer kept at arm's length)
+    p.belonging -= 0.09 / belongingKept(this, p);
     // cold
     const temp = this.tempAt(p);
     // a windbreak behind the fire throws its heat back and keeps the wind off: a wider, warmer circle
@@ -1613,7 +1623,8 @@ export class Sim {
       }
     }
     this.buildingsVersion++;
-    if (partner) partner.partner = -1;
+    if (partner && partner.partner === p.id) { partner.partner = -1; partner.widowed = this.tick; }
+    else if (partner) partner.partner = -1;
     // grief spreads through kin and friends
     for (const q of this.living()) {
       const op = this.opinion(q, p);
@@ -2195,6 +2206,8 @@ export class Sim {
   private midwinter(c: Camp) {
     const ms = this.members(c);
     if (!ms.length) return;
+    // (old quarrels put aside, where the band keeps the peace of the feast)
+    feastPeace(this, c);
     // a full meal and a half each, and still a good store left behind
     const spare = foodTotal(c.stock) - ms.length * FEAST_MEAL;
     if (!c.rationing && spare >= ms.length * 6) {
@@ -2778,6 +2791,8 @@ export class Sim {
     const r = this.rLife;
     // midwinter: a feast, if the stores will bear it
     if (dayOfYear === MIDWINTER) for (const c of this.liveCamps()) { this.midwinter(c); midwinterOffering(this, c); }
+    // (what a band has lived through may harden into a custom)
+    waysDaily(this, dayOfYear);
     // a new year: new climate
     const here = this.liveCamps()[0] ?? this.camp;
     if (dayOfYear === 0) {
@@ -3274,7 +3289,8 @@ export class Sim {
     }
     // pairing (only among those still alive: some may have died above, this very morning)
     // (not in a season the band's customs keep for no partnering)
-    const single = noPairing(this, this.camp) ? [] : living.filter((p) => p.alive && p.partner < 0 && this.age(p) >= 16);
+    // (nor a widow, where the band's custom forbids her another partner)
+    const single = noPairing(this, this.camp) ? [] : living.filter((p) => p.alive && p.partner < 0 && this.age(p) >= 16 && mayPair(this, p));
     for (const p of single) {
       if (p.partner >= 0) continue;
       let best: Person | null = null, bestOp = 28;
@@ -3312,6 +3328,8 @@ export class Sim {
       for (const p of still) this.remember(p, 'famine', -25, 3, -1, 'Went hungry in the famine.');
     } else if (this.camp.famine && food > pop * 3) {
       this.camp.famine = false;
+      // (a hungry time lived through may teach a band to share the meat out equally)
+      lived(this, this.camp, 'share_meat', `after the hunger of year ${yearOf(this.tick)}`);
       this.event('famine_end', `The hunger at ${this.camp.name} eases.`, [], this.camp.x, this.camp.z, 2);
     }
     // last night: who slept under a lean-to or out in the open, and who sat by the fire in the evening
@@ -3572,7 +3590,8 @@ export class Sim {
     let leader: Person | null = null, best = -1e9;
     for (const p of adults) {
       const age = this.age(p);
-      if (age < 20 || age > 50 || p.health < HEALTH.lead || p.id === c.leader || p.id === c.rule?.ruler) continue;
+      // (and only one the band's customs let lead)
+      if (age < 20 || age > 50 || p.health < HEALTH.lead || p.id === c.leader || p.id === c.rule?.ruler || !mayLead(c, p)) continue;
       let warmth = 0;
       for (const q of adults) if (q !== p) warmth += this.opinion(p, q);
       warmth /= Math.max(1, adults.length - 1);
@@ -3660,6 +3679,8 @@ export class Sim {
     nc.origin = bitter ? 'turmoil' : 'amicable';
     this.camp = from;
     this.join(group, nc);
+    // (they keep most of the old band's customs, and drop some; their leader may bring one of their own)
+    carryWays(this, from, nc, leader);
     from.settled = nc.settled = this.tick;
     const dir = compass(nc.x - from.x, nc.z - from.z);
     for (const p of group) this.remember(p, 'left', 8, 2, leader.id, `Followed ${p === leader ? 'their own heart' : leader.name} away from ${from.name} to found ${nc.name}.`);
@@ -3706,6 +3727,8 @@ export class Sim {
     // (and the same ruler, if they have one)
     if (c.rule) nc.rule = { ...c.rule };
     carryCustoms(c, nc);
+    if (c.ways) nc.ways = c.ways.map((w) => ({ ...w }));
+    if (c.lived) nc.lived = c.lived.map((l) => ({ ...l }));
     if (c.deposed) nc.deposed = c.deposed.slice();
     // (the same people: a full store at the new camp is not news to them)
     nc.providedOnce = c.providedOnce;
@@ -3758,8 +3781,13 @@ export class Sim {
     const theirs = this.members(to);
     const spare = foodTotal(to.stock) / (theirs.length + ms.length);
     const kin = ms.some((p) => theirs.some((q) => this.isKin(p, q)));
-    const chance = FAMINE_TAKE_IN * Math.min(1, spare / FAMINE_SPARE) + (kin ? 0.15 : 0);
-    if (this.rLife.chance(Math.min(0.9, chance))) return this.considerMerge(c, false, to);
+    // (readily by a band that makes newcomers welcome, seldom by one that keeps them at arm's length)
+    const chance = takeInChance(to, FAMINE_TAKE_IN * Math.min(1, spare / FAMINE_SPARE) + (kin ? 0.15 : 0));
+    if (this.rLife.chance(Math.min(0.9, chance))) {
+      // (and taking in the hungry may teach a band to welcome newcomers)
+      lived(this, to, 'welcome', `after taking in the hungry people of ${c.name}`);
+      return this.considerMerge(c, false, to);
+    }
     (c.refusedBy ??= {})[to.id] = this.tick;
     // (being turned away again in the same hunger stings afresh, but it is the one memory, not one for every door)
     for (const p of ms) if (this.age(p) >= 14) {
@@ -3817,6 +3845,7 @@ export class Sim {
     const to = famineTo ?? this.liveCamps().filter((o) => o !== c && !this.barred(c, o) && (!cold || (o.stock.wood >= 30 && hyp(o.x - c.x, o.z - c.z) < 60))).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
     if (!to || !ms.length) return false;
     this.join(ms, to);
+    for (const p of ms) newcomer(this, p, to);
     // their pigs can't be driven to another band's pen: they are killed, and the meat goes with the stores
     // (what was set aside for a job, a piglet carried home included, is back in them now)
     this.butcherHerd(c);
@@ -3940,8 +3969,9 @@ export class Sim {
     for (let i = 0; i < live.length; i++)
       for (let j = i + 1; j < live.length; j++) {
         const a = live[i], b = live[j];
-        if (hyp(a.x - b.x, a.z - b.z) > 40 || !r.chance(0.12)) continue;
-        const singles = (c: Camp) => this.members(c).filter((p) => p.partner < 0 && this.age(p) >= 16 && this.age(p) <= 36);
+        // (less often where either band keeps newcomers at arm's length)
+        if (hyp(a.x - b.x, a.z - b.z) > 40 || !r.chance(matchChance(a, b, 0.12))) continue;
+        const singles = (c: Camp) => this.members(c).filter((p) => p.partner < 0 && this.age(p) >= 16 && this.age(p) <= 36 && mayPair(this, p));
         const sa = singles(a), sb = singles(b);
         let pick: [Person, Person] | null = null;
         for (const p of sa) {
@@ -3971,6 +4001,8 @@ export class Sim {
           (home.learning ??= []).push({ k, at: this.tick + TICKS_PER_DAY * DAYS_PER_YEAR / 4, by: goer.id });
         }
         for (const m of this.members(home)) if (m !== goer) { this.adjust(goer, m, 12); this.adjust(m, goer, 10); }
+        // (made welcome, or held at arm's length, by the band's custom)
+        newcomer(this, goer, home);
         this.remember(goer, 'married_out', 15, 3, stay.id, `Left ${from.name} to live with ${stay.name} at ${home.name}.`);
         this.event('pairing', `${goer.name} of ${from.name} and ${stay.name} of ${home.name} became partners. ${goer.name} went to live at ${home.name}.`,
           [goer.id, stay.id], stay.x, stay.z, 3);
@@ -4041,11 +4073,15 @@ export class Sim {
 
   private feud(c: Camp, ms: Person[]) {
     const r = this.rLife;
+    // (the elders settle quarrels before they come to blows, and nobody spills blood at the feast, where those are the customs)
+    const day = dayOf(this.tick) % DAYS_PER_YEAR;
+    const settle = quarrelChance(this, c, day, MIDWINTER, 1);
+    if (settle <= 0) return;
     const adults = ms.filter((p) => this.age(p) >= 16 && p.health > 30);
     for (const a of adults)
       for (const b of adults) {
         if (a.id >= b.id || this.opinion(a, b) > -65 || this.opinion(b, a) > -65) continue;
-        let chance = 0.015;
+        let chance = 0.015 * settle;
         for (const p of [a, b]) chance *= this.has(p, 'cruel') ? 2 : this.has(p, 'greedy') ? 1.4 : this.has(p, 'kind') ? 0.5 : 1;
         if (!r.chance(chance)) continue;
         // the harder of the two strikes first
@@ -4061,6 +4097,10 @@ export class Sim {
             if (q.band === att.band) this.remember(q, 'murder', kin ? -40 : -15, 3, att.id, `${att.name} killed ${vic.name}.`);
           }
           this.remember(att, 'killed', -20, 5, vic.id, `Killed ${vic.name} in a quarrel.`);
+          // (a killing by someone who came from another band teaches a band to keep newcomers at arm's length; any
+          // killing, near the feast, that no blood may be spilt there)
+          if (att.joined !== undefined && this.tick - att.joined < 6 * TICKS_PER_YEAR) lived(this, c, 'wary', `after ${att.name}, who had come from another band, killed ${vic.name}`);
+          else if (Math.abs(day - MIDWINTER) <= 12) lived(this, c, 'feast_peace', `after ${att.name} killed ${vic.name} at the time of the feast`);
           this.exile(att, vic, c);
         } else {
           vic.health = Math.max(5, vic.health - 40);
@@ -4280,6 +4320,8 @@ export class Sim {
     nc.exiledFrom = { band: c.id, who: att.id, at: this.tick };
     this.camp = c;
     this.join(group, nc);
+    // (the customs they grew up with go with them, most of them)
+    carryWays(this, c, nc, att);
     nc.settled = this.tick;
     // a partner who stays behind is no longer theirs: each is free to take another
     if (partner && partner.partner === att.id && !group.includes(partner)) {
@@ -5822,7 +5864,7 @@ export class Sim {
       /** who rules the band, while someone does */
       rule: ruleSummary(this, c),
       /** what the band believes the signs foretell, and its customs */
-      lore: loreSummary(this, c),
+      lore: (() => { const l = loreSummary(this, c); return { ...l, customs: [...waysSummary(c), ...l.customs] }; })(),
       /** the sight in the sky just now, for the renderer */
       sky: skyNow(this),
       /** every band, living ones first */
@@ -6673,7 +6715,7 @@ export interface SaveData {
   nextEvent: number;
   eventHash: number;
   /** (saves from before the wolves have no `wolves` stream; it starts afresh) */
-  rng: { life: number[]; ai: number[]; wild: number[]; tongue: number[]; wolves: number[]; beasts: number[]; pigs: number[]; rule: number[]; omen: number[] };
+  rng: { life: number[]; ai: number[]; wild: number[]; tongue: number[]; wolves: number[]; beasts: number[]; pigs: number[]; rule: number[]; omen: number[]; ways: number[] };
   props: { count: number; type: string; x: string; y: string; z: string; rot: string; scale: string; alive: string; val: string; tile: string };
   propNote: Entries<number, string>;
   reserved: Entries<number, number>;
