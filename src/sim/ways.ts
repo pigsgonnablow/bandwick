@@ -1,5 +1,6 @@
 // Customs: the ways a band lives by. Every band has a few, and they are not beliefs about the signs (those are in
-// omen.ts) but rules about how people treat one another: whether the meat is shared out equally; whether newcomers are welcomed in or held at arm's length; whether a widow may take another
+// omen.ts) but rules about how people treat one another: whether the meat is shared out equally or the hunter keeps
+// the best of it; whether newcomers are welcomed in or held at arm's length; whether a widow may take another
 // partner; who may lead the band; whether the elders have the last word; whether a braggart is mocked down to size;
 // whether blood may be spilt at the midwinter feast.
 //
@@ -12,6 +13,8 @@
 //
 //   Meat shared equally       a deer brought home is shared out: the band feels the closer for it, and thinks the
 //                             better of the hunter.
+//   The hunter keeps the best the hunter eats the best of it and is proud of it, and the band's hunters go out
+//                             more often.
 //   Newcomers welcome         a band in need is taken in readily, and someone who marries in is soon one of the band.
 //   Newcomers kept at arm's   a starving band is seldom taken in, someone who marries in feels an outsider for a
 //   length                    year or two, and young people pair off with other bands less often.
@@ -25,9 +28,9 @@
 //                             days around it.
 import type { Sim, Camp } from './sim';
 import type { Person } from './band';
-import { TICKS_PER_YEAR, yearOf } from './time';
+import { TICKS_PER_DAY, TICKS_PER_YEAR, yearOf } from './time';
 
-export type WayKind = 'share_meat' | 'welcome' | 'wary' | 'widows' | 'men_lead' | 'women_lead' | 'elders' | 'humble' | 'feast_peace';
+export type WayKind = 'share_meat' | 'hunter_best' | 'welcome' | 'wary' | 'widows' | 'men_lead' | 'women_lead' | 'elders' | 'humble' | 'feast_peace';
 
 /** A custom the band lives by. */
 export interface Way {
@@ -39,7 +42,8 @@ export interface Way {
 }
 
 export const WAYS: Record<WayKind, { text: string; took: string; against?: WayKind }> = {
-  share_meat: { text: 'Meat is shared out equally', took: 'From now on the meat is shared out equally, whoever brings it home' },
+  share_meat: { text: 'Meat is shared out equally', took: 'From now on the meat is shared out equally, whoever brings it home', against: 'hunter_best' },
+  hunter_best: { text: 'The hunter keeps the best of the kill', took: 'From now on whoever makes a kill keeps the best of it', against: 'share_meat' },
   welcome: { text: 'Newcomers are made welcome', took: 'From now on newcomers are made welcome', against: 'wary' },
   wary: { text: 'Newcomers are kept at arm\'s length', took: 'From now on newcomers are kept at arm\'s length', against: 'welcome' },
   widows: { text: 'A widow does not take another partner', took: 'From now on a widow takes no other partner' },
@@ -64,12 +68,18 @@ export const LIVED_CHANCE = 0.3;
 export const LIVED_YEARS = 2;
 /** The day of the year (late summer, after the year's troubles) a band may take up a custom from what it lived through. */
 export const WAY_DAY = 30;
-/** A band this share of whose grown-ups are pious is a devout one. */
+/** A hunter with this many kills is a great one; a band this share of whose grown-ups are pious is a devout one. */
+export const GREAT_HUNTER = 15;
 export const DEVOUT = 0.5;
 
 /** Meat shared out: each member of the band at home feels this much closer for it, and thinks this much better of the hunter. */
 export const SHARE_BELONG = 1.5;
 export const SHARE_THANKS = 0.6;
+/** The hunter who keeps the best: eats this much of it, and hunts this much more readily. */
+export const BEST_CUT = 22;
+/** How much hunger one meal's worth of food takes away. */
+const MEAL = 48;
+export const BEST_DRIVE = 1.15;
 /** Newcomers welcome: a starving band is taken in this much more readily; someone marrying in is thought this much better of. */
 export const WELCOME_TAKE = 0.25;
 export const WELCOME_WARM = 10;
@@ -116,6 +126,7 @@ export function takeUp(s: Sim, c: Camp, k: WayKind, why: string, tell: string | 
 function leanings(s: Sim, p: Person, elder?: Person): WayKind[] {
   const out: WayKind[] = [];
   if (s.has(p, 'kind') && !s.has(p, 'greedy')) out.push('share_meat');
+  if (s.has(p, 'greedy') || (s.has(p, 'ambitious') && !s.has(p, 'kind'))) out.push('hunter_best');
   if (s.has(p, 'charismatic') || (s.has(p, 'kind') && !s.has(p, 'cautious'))) out.push('welcome');
   if (s.has(p, 'cautious') || s.has(p, 'cruel')) out.push('wary');
   if (s.has(p, 'pious')) out.push('widows');
@@ -174,7 +185,7 @@ export function mayPair(s: Sim, p: Person) {
   return !(p.sex === 0 && p.widowed !== undefined && holdsP(s, p, 'widows'));
 }
 
-/** A deer brought home: shared out equally, where that is the custom. */
+/** A deer brought home: shared out equally, or the best of it kept by the hunter. */
 export function meatHome(s: Sim, p: Person) {
   const c = s.campById(p.band);
   if (holds(c, 'share_meat')) {
@@ -184,7 +195,19 @@ export function meatHome(s: Sim, p: Person) {
       s.adjust(q, p, SHARE_THANKS);
     }
     s.book('way.shared', 1, c!);
+  } else if (holds(c, 'hunter_best')) {
+    p.food = Math.min(100, p.food + BEST_CUT);
+    // (out of the meat brought home: a meal's worth of food is about MEAL of it)
+    c!.stock.meat -= BEST_CUT / MEAL;
+    s.book('eaten.meat', BEST_CUT / MEAL, c!);
+    if (!p.memories.some((m) => m.kind === 'best_cut' && m.tick > s.tick - TICKS_PER_DAY * 12)) s.remember(p, 'best_cut', 4, 0.3, -1, 'Ate the best of the kill, as is the hunter\'s due.');
+    s.book('way.kept', 1, c!);
   }
+}
+
+/** How much more readily someone goes hunting, by their band's customs. */
+export function huntDrive(c: Camp | undefined) {
+  return holds(c, 'hunter_best') ? BEST_DRIVE : 1;
 }
 
 /** How readily a band takes in a starving neighbour, by its customs: [added, multiplied]. */
@@ -271,8 +294,12 @@ export function waysDaily(s: Sim, dayOfYear: number) {
       if (elder && rest.length >= 4 && rest.filter((q) => s.opinion(q, elder) >= 40).length >= rest.length * 0.6)
         lived(s, c, 'elders', `with everyone looking up to ${elder.name} in ${his(elder)} old age`);
     }
+    // a great hunter who is greedy or grasping: the band comes to let the hunter keep the best of the kill
     const has = (k: WayKind) => holds(c, k) || c.lived!.some((l) => l.kind === k);
     const grown = s.members(c).filter((q) => s.age(q) >= 16);
+    const hunter = grown.slice().sort((a, b) => b.kills - a.kills || a.id - b.id)[0];
+    if (!has('hunter_best') && !holds(c, 'share_meat') && hunter && hunter.kills >= GREAT_HUNTER && (s.has(hunter, 'greedy') || s.has(hunter, 'ambitious')))
+      lived(s, c, 'hunter_best', `with ${hunter.name} bringing home most of the meat`);
     // a devout band: a widow is to keep faith with her dead
     if (!has('widows') && grown.length >= 6 && grown.filter((q) => s.has(q, 'pious')).length >= grown.length * DEVOUT)
       lived(s, c, 'widows', 'with so many of them devout');

@@ -7,7 +7,7 @@ import { deposit } from '../../src/sim/ai';
 import { CARRY } from '../../src/sim/band';
 import {
   WayKind, WAYS, holds, takeUp, foundWays, carryWays, mayLead, mayPair, mayRule, takeInChance, matchChance, quarrelChance, riseChance,
-  lived, waysDaily, feastPeace, newcomer, belongingKept, WAY_DAY, ELDER_AGE, ELDER_RULE, WARY_COLD, WELCOME_WARM, FEAST_DAYS,
+  huntDrive, lived, waysDaily, feastPeace, newcomer, belongingKept, WAY_DAY, BEST_CUT, ELDER_AGE, ELDER_RULE, WARY_COLD, WELCOME_WARM, FEAST_DAYS, BEST_DRIVE,
 } from '../../src/sim/ways';
 import { ruleDaily, RISE_DAY } from '../../src/sim/rule';
 import { sim, runYears } from '../helpers';
@@ -37,16 +37,17 @@ describe('customs', () => {
     foundWays(s, c, leader, elder);
     for (const k of ['share_meat', 'welcome', 'widows', 'elders', 'humble', 'feast_peace'] as WayKind[]) expect(holds(c, k)).toBe(true);
     // never both sides of a pair, and never that only the other sex leads
+    expect(holds(c, 'share_meat') && holds(c, 'hunter_best')).toBe(false);
     expect(holds(c, 'welcome') && holds(c, 'wary')).toBe(false);
     expect(holds(c, leader.sex ? 'women_lead' : 'men_lead')).toBe(false);
   });
 
   it('taking up a custom drops the one against it, and is told in the chronicle', () => {
-    const s = band(1, ['welcome']);
+    const s = band(1, ['share_meat']);
     const n = s.events.length;
-    takeUp(s, s.camp, 'wary', 'after a test', 'After a test,');
-    expect(holds(s.camp, 'wary')).toBe(true);
-    expect(holds(s.camp, 'welcome')).toBe(false);
+    takeUp(s, s.camp, 'hunter_best', 'after a test', 'After a test,');
+    expect(holds(s.camp, 'hunter_best')).toBe(true);
+    expect(holds(s.camp, 'share_meat')).toBe(false);
     expect(s.events.slice(n).some((e) => e.kind === 'way' && e.text.includes(s.camp.name))).toBe(true);
   });
 
@@ -80,6 +81,20 @@ describe('customs', () => {
     deposit(s, p);
     expect(q.belonging).toBeGreaterThan(50);
     expect(s.opinion(q, p)).toBeGreaterThan(before);
+  });
+
+  it('the hunter keeps the best: eats the best of the kill, and the band\'s hunters go out more readily', () => {
+    const s = band(1, ['hunter_best']);
+    const p = adults(s)[0];
+    p.food = 40;
+    p.task = { kind: 'hunt', stage: 0, goal: 0, gx: 0, gz: 0, ref: -1, timer: 0, started: s.tick, amount: 0, near: false };
+    p.carry = CARRY.Carcass;
+    p.carryAmt = 10;
+    deposit(s, p);
+    expect(p.food).toBe(40 + BEST_CUT);
+    expect(huntDrive(s.camp)).toBe(BEST_DRIVE);
+    s.camp.ways = [];
+    expect(huntDrive(s.camp)).toBe(1);
   });
 
   it('newcomers welcome, or kept at arm\'s length: taken in, matched, and thought of accordingly', () => {

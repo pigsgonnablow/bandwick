@@ -1,6 +1,6 @@
 // Utility AI: each person weighs their own needs against the work the camp needs,
 // coloured by traits, skills and age, then carries the chosen task out step by step.
-import { meatHome } from './ways';
+import { meatHome, huntDrive } from './ways';
 import { SHELTER_PULL, sheltering, sparesWhite, shunned, whiteKilled, omenTale, heardTale, taleOf, lodgeTales } from './omen';
 import type { Sim, Camp } from './sim';
 import { PIGLET_RANGE, aDish } from './sim';
@@ -468,7 +468,8 @@ export function decide(s: Sim, p: Person) {
       const nerve = s.has(p, 'brave') ? 1.4 : s.has(p, 'cautious') ? 0.55 : 1;
       // (and one or two of the best hunters out after the piglets for the pen, while it is empty)
       const piglets = (j.piglets ?? 0) > 0 && !dark && s.people.filter((q) => q.alive && q.band === p.band && q.task?.kind === 'hunt' && q.task.alive).length < 2 ? j.piglets * drive * fit(p, SK.hunt) * fit(p, SK.hunt) : 0;
-      add('hunt', Math.max(food * fit(p, SK.hunt) * nerve * 0.95 * crowd('hunt'), piglets));
+      // (more readily where the hunter keeps the best of the kill)
+      add('hunt', Math.max(food * fit(p, SK.hunt) * nerve * 0.95 * crowd('hunt') * huntDrive(s.campById(p.band)), piglets));
     }
     // (the older children fish too, with a hook and line)
     if (age >= 11 || (age >= LINE_AGE && !dark && s.toolFor(p, ['line']))) add('fish', food * fit(p, SK.fish) * 0.85 * crowd('fish') * (age < 11 ? 0.7 : 1));
@@ -1613,7 +1614,7 @@ export function deposit(s: Sim, p: Person) {
     }
   }
   // the teeth of a deer brought home, and now and then a shell from the shallows, are kept for ornaments
-  // a deer brought home is shared out equally, where that is the band's custom
+  // a deer brought home is shared out equally, or the hunter keeps the best of it, as is the band's custom
   if (kind === 'meat' && p.task?.kind === 'hunt' && a >= 4) meatHome(s, p);
   if (kind === 'meat' && p.task?.kind === 'hunt' && a >= 4 && st.trinkets < TRINKETS_KEPT) st.trinkets = Math.min(TRINKETS_KEPT, st.trinkets + TEETH_PER_DEER + (p.task.boar ? TUSKS_PER_BOAR : 0));
   if (kind === 'fish' && p.task?.kind === 'fish' && st.trinkets < TRINKETS_KEPT && s.rAi.chance(0.12)) st.trinkets += 1;
