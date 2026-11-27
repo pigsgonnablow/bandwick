@@ -1,4 +1,5 @@
 // Shared world data types and constants (sim + renderer).
+import { hash01 } from './rng';
 
 export const T = {
   DeepWater: 0,
@@ -34,13 +35,32 @@ export interface WorldParams {
   size: number; // tiles per side
   landFraction: number; // share of the map above sea
   mountains: number; // 0..2 multiplier
+  /**
+   * The lie of the land: where the sea is. 'varied' picks one from the seed. Left out it is an island, as every
+   * world was before there was a choice (so an old save comes back as the world it was played on).
+   */
+  shape?: MapShape | 'varied';
 }
+
+/** The lies of land a world can have. Every one of them has the sea somewhere for the first band to come in from. */
+export const MAP_SHAPES = ['island', 'coast', 'bay', 'peninsula', 'strait', 'lakeland'] as const;
+export type MapShape = (typeof MAP_SHAPES)[number];
 
 export const DEFAULT_PARAMS: Omit<WorldParams, 'seed'> = {
   size: 128,
   landFraction: 0.44,
   mountains: 1,
 };
+/** The lie of land a world's params come to: an island when none is named, one picked from the seed for 'varied'. */
+export function resolveShape(p: WorldParams): MapShape {
+  if (!p.shape) return 'island';
+  if (p.shape !== 'varied') return p.shape;
+  // the island is one of six, and no likelier than the rest
+  return MAP_SHAPES[Math.floor(hash01(p.seed, 6131, 17) * MAP_SHAPES.length)];
+}
+
+/** A new world started in the game: any lie of land, picked from its seed. */
+export const NEW_WORLD_PARAMS: Omit<WorldParams, 'seed'> = { ...DEFAULT_PARAMS, shape: 'varied' };
 
 // ---- Prop catalog (shared with the Blender build script by naming convention) ----
 export const SPECIES = ['pine', 'oak', 'birch'] as const;
@@ -97,6 +117,8 @@ export interface WorldData {
   texSize: number;
   colorTex: Uint8Array; // RGBA
   maskTex: Uint8Array; // R vegetation, G snow threshold, B flowers, A wetness
+  /** the lie of the land it was made with (never 'varied': that is settled before anything is made) */
+  shape: MapShape;
   // bookkeeping
   hash: string;
   genMs: number;

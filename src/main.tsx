@@ -3,7 +3,7 @@ import natureUrl from './assets/nature.glb?inline';
 import bandUrl from './assets/band.glb?inline';
 import SimWorker from './sim/sim.worker?worker&inline';
 import { Runner, ToSim, FromSim, Frame, refKey } from './sim/runner';
-import { DEFAULT_PARAMS, WorldData, WorldParams } from './sim/types';
+import { DEFAULT_PARAMS, NEW_WORLD_PARAMS, MAP_SHAPES, MapShape, WorldData, WorldParams, resolveShape } from './sim/types';
 import type { SimEvent, Ref, Card } from './sim/band';
 import { TASK_KINDS, BUILD } from './sim/band';
 import { TASK_PHRASE } from './ui/words';
@@ -251,7 +251,7 @@ export class Engine {
     document.addEventListener('visibilitychange', () => document.hidden && saveOnLeave());
     window.addEventListener('pagehide', saveOnLeave);
     const fromHash = parseHash(location.hash);
-    if (!(await this.resumeLast(fromHash))) this.newWorld(fromHash ?? { ...DEFAULT_PARAMS, seed: randomSeed() });
+    if (!(await this.resumeLast(fromHash))) this.newWorld(fromHash ?? { ...NEW_WORLD_PARAMS, seed: randomSeed() });
     void this.refreshSaves();
     this.loop();
     setInterval(() => this.emit(), 250);
@@ -355,13 +355,13 @@ export class Engine {
         return;
       }
       this.snap.world = m.world;
-      this.snap.name = worldName(params.seed);
+      this.snap.name = worldName(params.seed, m.world.shape);
       this.snap.tick = m.tick;
       this.snap.loading = null;
       if (this.toastWhenReady) this.showToast(this.toastWhenReady);
       this.toastWhenReady = '';
       try {
-        history.replaceState(null, '', `#w${params.seed}-${params.size}`);
+        history.replaceState(null, '', worldHash(params));
       } catch {
         /* the viewer may not allow it */
       }
@@ -803,9 +803,10 @@ export class Engine {
     this.emit();
     try {
       const save = await this.snapshot();
-      const world = worldName(save.params.seed);
+      const world = worldName(save.params.seed, resolveShape(save.params));
       const camp = this.snap.summary?.camp ?? '';
-      const id = auto ? `auto-${save.params.seed}-${save.params.size}` : `save-${Date.now()}`;
+      // (an old island and a new world on the same seed are different worlds: each keeps its own autosave)
+      const id = auto ? `auto-${save.params.seed}-${save.params.size}${save.params.shape ? `-${save.params.shape}` : ''}` : `save-${Date.now()}`;
       const meta = await writeSave(save, {
         id, auto, world, camp, pop: this.snap.summary?.pop ?? 0,
         name: name?.trim() || (auto ? `${camp || world}, autosave` : `${camp || world}, ${yearSeason(save.tick)}`),
@@ -844,7 +845,8 @@ export class Engine {
     let latest: SaveMeta | undefined;
     try {
       const all = await listSaves();
-      latest = want ? all.find((m) => m.seed === want.seed && m.size === want.size) : all[0];
+      // (the save of just that world if there is one; else, as before there were lies of land, any on its seed and size)
+      latest = want ? all.find((m) => m.seed === want.seed && m.size === want.size && m.shape === want.shape) ?? all.find((m) => m.seed === want.seed && m.size === want.size) : all[0];
       if (!latest) return false;
       const save = await readSave(latest.id);
       if (save.v !== SAVE_VERSION) throw new Error('it was made by an older version of the game');
@@ -1091,10 +1093,22 @@ function mainThreadLink(onMsg: (m: FromSim) => void): SimLink {
   return { send: (m) => setTimeout(() => on && runner.handle(m), 0), stop: () => (on = false) };
 }
 
+/**
+ * A world's link: `#w<seed>-<size>` for a new world, whose lie of land comes from its seed. An old island (made before
+ * there were lies of land) adds `-isle`, and a world made with one lie of land named adds its name.
+ */
+function worldHash(p: WorldParams) {
+  const tail = p.shape === 'varied' ? '' : !p.shape ? '-isle' : `-${p.shape}`;
+  return `#w${p.seed}-${p.size}${tail}`;
+}
 function parseHash(h: string): WorldParams | null {
-  const m = /^#w(\d{1,9})-(128|256)$/.exec(h);
+  const m = /^#w(\d{1,9})-(128|256)(?:-([a-z]+))?$/.exec(h);
   if (!m) return null;
-  return { ...DEFAULT_PARAMS, seed: Number(m[1]), size: Number(m[2]) };
+  const base = { seed: Number(m[1]), size: Number(m[2]) };
+  if (!m[3]) return { ...NEW_WORLD_PARAMS, ...base };
+  if (m[3] === 'isle') return { ...DEFAULT_PARAMS, ...base };
+  if ((MAP_SHAPES as readonly string[]).includes(m[3])) return { ...DEFAULT_PARAMS, ...base, shape: m[3] as MapShape };
+  return null;
 }
 
 const engine = new Engine();

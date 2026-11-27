@@ -857,8 +857,10 @@ export class Sim {
    * The best place for a camp: flat walkable grass near fresh water, wood and berries.
    * Optionally within a distance band of an origin, and clear of the other bands' camps.
    */
-  chooseSite(opts: { from?: { x: number; z: number }; min?: number; max?: number; avoid?: number; reachFrom?: number; timber?: boolean; fish?: boolean } = {}) {
+  chooseSite(opts: { from?: { x: number; z: number }; min?: number; max?: number; avoid?: number; reachFrom?: number; timber?: boolean; fish?: boolean; shore?: boolean } = {}) {
     const w = this.world, N = this.N;
+    // (the first band comes in by boat: its camp has to be somewhere it can walk up to from the beach)
+    const fromShore = opts.shore ? this.seaShoreReach() : null;
     const berryTiles: number[] = [];
     const treeTiles: number[] = [];
     for (let k = 0; k < this.propCount; k++) {
@@ -893,6 +895,7 @@ export class Sim {
       for (let x = 6; x < N - 6; x += 2) {
         const i = z * N + x;
         if (w.terrain[i] !== T.Grass || w.water[i] !== WATER.None) continue;
+        if (fromShore && !fromShore[i]) continue;
         if (opts.from) {
           const d = hyp(x - opts.from.x, z - opts.from.z);
           if (d < (opts.min ?? 0) || d > (opts.max ?? 1e9)) continue;
@@ -928,6 +931,37 @@ export class Sim {
       if (opts.reachFrom === undefined || opts.reachFrom === c.i || this.grid.find(opts.reachFrom, c.i, true)) return c.i;
     }
     return -1;
+  }
+
+  /** The dry ground that can be walked to from a beach on the sea (1: it can). */
+  private seaShoreReach() {
+    const w = this.world, N = this.N, g = this.grid;
+    const out = new Uint8Array(N * N);
+    const dry = (i: number) => w.water[i] === WATER.None && g.walkable(i);
+    const q: number[] = [];
+    for (let z = 1; z < N - 1; z++)
+      for (let x = 1; x < N - 1; x++) {
+        const i = z * N + x;
+        if (!dry(i)) continue;
+        if (DIRS4.some(([dx, dz]) => w.water[(z + dz) * N + x + dx] === WATER.Sea)) {
+          out[i] = 1;
+          q.push(i);
+        }
+      }
+    for (let k = 0; k < q.length; k++) {
+      const i = q[k], x = i % N, z = (i / N) | 0;
+      for (const [dx, dz] of DIRS4) {
+        const nx = x + dx, nz = z + dz;
+        if (nx < 1 || nz < 1 || nx >= N - 1 || nz >= N - 1) continue;
+        const j = nz * N + nx;
+        // (walking down from j toward the beach)
+        if (!out[j] && dry(j) && g.step(j, i)) {
+          out[j] = 1;
+          q.push(j);
+        }
+      }
+    }
+    return out;
   }
 
   /** How many fish the water within `r` tiles of a spot can hold. */
@@ -1037,7 +1071,8 @@ export class Sim {
   private foundBand(strangers = false) {
     const N = this.N, w = this.world;
     // strangers, like a band that moves, look for woods enough to see them through the winters
-    let best = this.chooseSite({ avoid: strangers ? 24 : 0, timber: strangers });
+    let best = strangers ? this.chooseSite({ avoid: 24, timber: true }) : this.chooseSite({ shore: true });
+    if (best < 0 && !strangers) best = this.chooseSite();
     if (best < 0 && !strangers) {
       // fallback: any walkable grass tile nearest the centre
       for (let r = 0; r < N && best < 0; r++)
@@ -1126,12 +1161,16 @@ export class Sim {
   }
 
   private spawnDeer(h: Herd, x: number, z: number, fawn: boolean) {
-    const i = Math.floor(z) * this.N + Math.floor(x);
-    if (!this.grid.walkable(i) || this.world.water[i] !== WATER.None) { x = h.hx; z = h.hz; }
+    // (dry ground on the map: a deer born by the edge of land that runs on past it is born on this side)
+    if (!this.dryLand(x, z) || !this.onMap(x, z)) { x = h.hx; z = h.hz; }
     this.deer.push({ id: this.nextId++, herd: h.id, x, z, tx: x, tz: z, fx: x + 1, fz: z, state: 0, timer: 0, alive: true, fawn });
   }
 
   // ------------------------------------------------------------------ helpers
+  /** Whether a spot is on the map (an animal never steps off it, where the land runs on past the edge). */
+  onMap(x: number, z: number) {
+    return x >= 0.05 && z >= 0.05 && x <= this.N - 0.05 && z <= this.N - 0.05;
+  }
   tileOf(p: { x: number; z: number }) {
     const x = Math.min(this.N - 1, Math.max(0, Math.floor(p.x)));
     const z = Math.min(this.N - 1, Math.max(0, Math.floor(p.z)));
@@ -3734,12 +3773,20 @@ export class Sim {
    * to share, and the more of its people are kin to them, the likelier. If it won't, they go home hungry, and may
    * try again in a few days. Whether they were taken in.
    */
+  /**
+   * Whether people of one band can walk to another's camp. Where a sound or a bay cuts the land in two, a band on the
+   * far shore is near as the crow flies but out of reach: nobody pairs off, flees or goes to live there.
+   */
+  reaches(a: Camp, b: Camp) {
+    return a === b || !!this.grid.find(a.tile, b.tile, true, 40000);
+  }
+
   private askTakenIn(c: Camp) {
     c.askedIn = this.tick;
     const ms = this.members(c);
     const refused = (o: Camp) => this.tick - (c.refusedBy?.[o.id] ?? -1e9) < FAMINE_REFUSED_DAYS * TICKS_PER_DAY ? 1 : 0;
     const to = this.liveCamps().filter((o) => o !== c && !o.famine && this.members(o).length && !this.barred(c, o) && hyp(o.x - c.x, o.z - c.z) < FAMINE_REACH)
-      .sort((a, b) => refused(a) - refused(b) || hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
+      .sort((a, b) => refused(a) - refused(b) || hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z)).find((o) => this.reaches(c, o));
     if (!to || !ms.length) return false;
     const theirs = this.members(to);
     const spare = foodTotal(to.stock) / (theirs.length + ms.length);
@@ -3800,7 +3847,7 @@ export class Sim {
     if (!cold && !famineTo && adults.length >= 2 && ms.length > 3) return false;
     // (a band whose fire has gone cold goes only to a neighbour with a fire and the wood to keep it; a starving one, to
     // whoever agreed to take it in)
-    const to = famineTo ?? this.liveCamps().filter((o) => o !== c && !this.barred(c, o) && (!cold || (o.stock.wood >= 30 && hyp(o.x - c.x, o.z - c.z) < 60))).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z))[0];
+    const to = famineTo ?? this.liveCamps().filter((o) => o !== c && !this.barred(c, o) && (!cold || (o.stock.wood >= 30 && hyp(o.x - c.x, o.z - c.z) < 60))).sort((a, b) => hyp(a.x - c.x, a.z - c.z) - hyp(b.x - c.x, b.z - c.z)).find((o) => this.reaches(c, o));
     if (!to || !ms.length) return false;
     this.join(ms, to);
     // their pigs can't be driven to another band's pen: they are killed, and the meat goes with the stores
@@ -3926,7 +3973,7 @@ export class Sim {
     for (let i = 0; i < live.length; i++)
       for (let j = i + 1; j < live.length; j++) {
         const a = live[i], b = live[j];
-        if (hyp(a.x - b.x, a.z - b.z) > 40 || !r.chance(0.12)) continue;
+        if (hyp(a.x - b.x, a.z - b.z) > 40 || !r.chance(0.12) || !this.reaches(a, b)) continue;
         const singles = (c: Camp) => this.members(c).filter((p) => p.partner < 0 && this.age(p) >= 16 && this.age(p) <= 36);
         const sa = singles(a), sb = singles(b);
         let pick: [Person, Person] | null = null;
@@ -4219,7 +4266,7 @@ export class Sim {
     for (const o of this.liveCamps()) {
       if (o === from || !this.members(o).length) continue;
       const dist = hyp(o.x - from.x, o.z - from.z);
-      if (dist < near) { near = dist; to = o; }
+      if (dist < near && this.reaches(from, o)) { near = dist; to = o; }
     }
     if (!to) return;
     this.join(group, to);
@@ -5232,7 +5279,7 @@ export class Sim {
           const step = Math.min(0.12, gap / 2);
           const nx = d.x + (dx / len) * step, nz = d.z + (dz / len) * step;
           const from = this.tileOf(d), to = this.tileOf({ x: nx, z: nz });
-          if (to === from || (this.grid.step(from, to) && this.world.water[to] === WATER.None)) {
+          if (this.onMap(nx, nz) && (to === from || (this.grid.step(from, to) && this.world.water[to] === WATER.None))) {
             d.x = nx;
             d.z = nz;
           } else {
@@ -5252,7 +5299,7 @@ export class Sim {
       }
       const nx = d.x + (dx / len) * Math.min(speed, len), nz = d.z + (dz / len) * Math.min(speed, len);
       const from = this.tileOf(d), to = this.tileOf({ x: nx, z: nz });
-      if (to === from || (this.grid.step(from, to) && this.world.water[to] === WATER.None)) {
+      if (this.onMap(nx, nz) && (to === from || (this.grid.step(from, to) && this.world.water[to] === WATER.None))) {
         d.fx = d.x + dx;
         d.fz = d.z + dz;
         d.x = nx;
@@ -5287,7 +5334,7 @@ export class Sim {
   }
 
   private spawnWolf(k: Pack, x: number, z: number, pup: boolean) {
-    if (!this.dryLand(x, z)) {
+    if (!this.dryLand(x, z) || !this.onMap(x, z)) {
       // (the middle of the range, else beside a grown wolf of the pack, else nowhere)
       const mate = this.wolves.find((w) => w.alive && w.pack === k.id && !w.pup);
       if (this.dryLand(k.hx, k.hz)) { x = k.hx; z = k.hz; }
@@ -5474,7 +5521,7 @@ export class Sim {
         }
         const nx = w.x + (dx / len) * Math.min(speed, len), nz = w.z + (dz / len) * Math.min(speed, len);
         const from = this.tileOf(w), to = this.tileOf({ x: nx, z: nz });
-        if (to === from || (this.grid.step(from, to) && this.world.water[to] === WATER.None)) {
+        if (this.onMap(nx, nz) && (to === from || (this.grid.step(from, to) && this.world.water[to] === WATER.None))) {
           if (w.state !== WOLF.Feed) { w.fx = w.x + dx; w.fz = w.z + dz; }
           w.x = nx;
           w.z = nz;
@@ -5484,7 +5531,7 @@ export class Sim {
         } else {
           // round the obstacle: a sidestep
           const sx = w.x - (dz / len) * 0.4, sz = w.z + (dx / len) * 0.4, st = this.tileOf({ x: sx, z: sz });
-          if (st === from || (this.grid.step(from, st) && this.world.water[st] === WATER.None)) { w.x = sx; w.z = sz; }
+          if (this.onMap(sx, sz) && (st === from || (this.grid.step(from, st) && this.world.water[st] === WATER.None))) { w.x = sx; w.z = sz; }
         }
       });
     }
