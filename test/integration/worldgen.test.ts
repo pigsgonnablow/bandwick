@@ -126,3 +126,45 @@ describe('generateWorld', () => {
     expect(checker.report()).toEqual([]);
   });
 });
+
+describe('land that runs on past the edge of the map', () => {
+  it('keeps the animals on the map', () => {
+    for (const [shape, seed] of [['coast', 1], ['peninsula', 3]] as const) {
+      const s = new Sim(generateWorld({ ...DEFAULT_PARAMS, seed, shape }));
+      const N = s.N;
+      for (let day = 0; day < 40; day++) {
+        for (let k = 0; k < TICKS_PER_DAY; k++) s.step();
+        for (const a of [...s.deer, ...s.wolves, ...s.beasts]) {
+          if (!a.alive) continue;
+          const on = a.x >= 0 && a.z >= 0 && a.x <= N && a.z <= N;
+          expect(on, `${shape} ${seed}, day ${day}: an animal at ${a.x.toFixed(1)}, ${a.z.toFixed(1)}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('pairs nobody off with a band across a sound they cannot walk to', () => {
+    const s = new Sim(generateWorld({ ...DEFAULT_PARAMS, seed: 3, shape: 'strait' }));
+    const any = s as any;
+    const a = s.camps[0];
+    const b = any.foundBand(true);
+    expect(s.reaches(a, b)).toBe(false);
+    // bring the far band's camp to just across the water, near enough as the crow flies to meet
+    const N = s.N, g = s.grid;
+    let tile = -1;
+    for (let i = 0; i < N * N && tile < 0; i++) {
+      const x = i % N, z = (i / N) | 0, d = Math.hypot(x - a.x, z - a.z);
+      if (d > 18 && d < 36 && s.world.water[i] === WATER.None && g.walkable(i) && !g.find(a.tile, i, true, 40000)) tile = i;
+    }
+    expect(tile).toBeGreaterThanOrEqual(0);
+    b.tile = tile;
+    b.x = (tile % N) + 0.5;
+    b.z = ((tile / N) | 0) + 0.5;
+    expect(s.reaches(a, b)).toBe(false);
+    // (and young people on both sides who would pair off, if they could meet)
+    for (const p of s.people) p.samesex = false;
+    const bandOf = new Map(s.people.map((p) => [p.id, p.band]));
+    for (let k = 0; k < 300; k++) any.considerMatches();
+    for (const p of s.people) expect(p.band, `${p.name} went across the water`).toBe(bandOf.get(p.id));
+  });
+});

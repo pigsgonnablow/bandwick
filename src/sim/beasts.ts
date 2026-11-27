@@ -52,7 +52,7 @@ function walk(s: Sim, b: Beast, speed: number) {
   const st = Math.min(speed, len);
   const nx = b.x + (dx / len) * st, nz = b.z + (dz / len) * st;
   const from = s.tileOf(b), to = s.tileOf({ x: nx, z: nz });
-  if (to === from || (s.grid.step(from, to) && s.world.water[to] === WATER.None)) {
+  if (s.onMap(nx, nz) && (to === from || (s.grid.step(from, to) && s.world.water[to] === WATER.None))) {
     b.fx = b.x + dx;
     b.fz = b.z + dz;
     b.x = nx;
@@ -148,7 +148,7 @@ function damSite(s: Sim, near: number) {
   return best;
 }
 export function spawnBeast(s: Sim, den: Den, x: number, z: number, young: boolean) {
-  if (den.kind !== BEAST.Beaver && !s.dryLand(x, z)) {
+  if (den.kind !== BEAST.Beaver && (!s.dryLand(x, z) || !s.onMap(x, z))) {
     if (s.dryLand(den.x, den.z)) { x = den.x; z = den.z; } else return;
   }
   const state = den.kind === BEAST.Beaver ? BEAVER.Home : den.kind === BEAST.Fox ? FOX.Curl : BOAR.Stand;

@@ -9,6 +9,8 @@ export interface SaveMeta {
   camp: string;
   seed: number;
   size: number;
+  /** the world's lie of land as its params name it ('varied' for a new world; left out for an old island) */
+  shape?: string;
   tick: number;
   pop: number;
   savedAt: number;
@@ -79,9 +81,9 @@ export async function listSaves(): Promise<SaveMeta[]> {
   const all = await tx<SaveRecord[]>('readonly', (s) => s.getAll());
   return all.map(({ data: _d, ...meta }) => meta).sort((a, b) => b.savedAt - a.savedAt);
 }
-export async function writeSave(save: SaveData, meta: Omit<SaveMeta, 'bytes' | 'savedAt' | 'tick' | 'seed' | 'size'>): Promise<SaveMeta> {
+export async function writeSave(save: SaveData, meta: Omit<SaveMeta, 'bytes' | 'savedAt' | 'tick' | 'seed' | 'size' | 'shape'>): Promise<SaveMeta> {
   const data = await pack(save);
-  const rec: SaveRecord = { ...meta, tick: save.tick, seed: save.params.seed, size: save.params.size, savedAt: Date.now(), bytes: data.length, data };
+  const rec: SaveRecord = { ...meta, tick: save.tick, seed: save.params.seed, size: save.params.size, shape: save.params.shape, savedAt: Date.now(), bytes: data.length, data };
   await tx('readwrite', (s) => s.put(rec));
   const { data: _d, ...out } = rec;
   return out;
